@@ -33,6 +33,12 @@ public static class MpvOptionsBuilder
         yield return P("config", "yes");
         yield return P("config-dir", paths.MpvConfig);
         yield return P("load-scripts", "no");
+        // mpv's caches default to %LOCALAPPDATA%; keep them in the portable folder too.
+        var cache = Path.Combine(paths.MpvConfig, "cache");
+        yield return P("gpu-shader-cache-dir", cache);
+        yield return P("icc-cache-dir", cache);
+        yield return P("demuxer-cache-dir", cache);
+        yield return P("watch-later-dir", Path.Combine(paths.MpvConfig, "watch_later"));
         yield return P("ytdl", "no");
         if (windowId is { } wid)
         {

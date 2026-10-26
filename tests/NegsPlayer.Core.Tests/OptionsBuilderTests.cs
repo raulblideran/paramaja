@@ -92,6 +92,8 @@ public class OptionsBuilderTests
         Assert.Equal(Paths.MpvConfig, o["config-dir"]);
         Assert.StartsWith(Paths.Root, o["config-dir"]);
         Assert.Equal("no", o["ytdl"]);
+        foreach (var key in new[] { "gpu-shader-cache-dir", "icc-cache-dir", "demuxer-cache-dir", "watch-later-dir", "screenshot-directory" })
+            Assert.StartsWith(Paths.Root, o[key]);
     }
 
     [Fact]

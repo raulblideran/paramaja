@@ -52,7 +52,7 @@ negs-player/
 ### Phase 0 — Scaffolding
 - [x] Copy this plan to `negs-player/PLAN.md`, `git init`, `.gitignore`
 - [x] Create .NET solution (App, Core, two test projects) and Rust crate
-- [ ] Script to fetch `libmpv` (Linux: system pkg; Windows: shinchiro `libmpv-2.dll`)
+- [x] Script to fetch `libmpv` (Linux: system pkg; Windows: shinchiro `libmpv-2.dll`)
 - [x] `tests/fixtures/make-fixtures.sh`: ffmpeg-generated clips. HEVC 10-bit HDR10 (PQ/BT.2020), H.264 SDR, interlaced 1080i, 5.1 and 7.1 audio, `.srt`/`.ass` subs, and a 4K HEVC clip
 
 ### Phase 1 — Playback core (`NegsPlayer.Core`)
@@ -85,18 +85,18 @@ negs-player/
 - [x] Downmix: verify 5.1/7.1 → 2ch only when enabled; original channels otherwise
 - [x] Screenshots: PNG, compression 0, correct resolution, 10-bit where possible
 - [x] Deinterlace auto on 1080i fixture, off on progressive
-- [ ] Hwdec confirmed (`hwdec-current` ≠ `no`) on 4K HEVC
+- [ ] Hwdec confirmed (`hwdec-current` ≠ `no`) on 4K HEVC — needs Windows (dev box's Homebrew mpv decodes in software even standalone); badge shows it live
 
 ### Phase 5 — Testing (the "lot of testing" part)
 - [x] **Core integration tests (headless mpv, `vo=null`/`ao=null` or `vo=image`)**: each fixture opens; codec/colour params are correct; tracks enumerate; frame-back-step changes `estimated-frame-number` by −1; screenshot writes a valid PNG (check the IHDR header and zlib level 0); `audio-params/channel-count` is 6/8 without downmix and 2 with it; `af` stays empty (no normalisation)
 - [x] **Torrent integration (offline, deterministic)**: create a `.torrent` from a fixture, seed it with a second librqbit session on localhost, add by magnet, stream via HTTP, check that bytes match and mpv plays it, and that a seek mid-file works
 - [x] **Torrent integration (network, opt-in `[Trait("net")]`)**: Sintel/Big Buck Bunny public magnets. Check that metadata resolves, the first frame plays within a timeout, and a seek works
 - [x] **UI tests (Avalonia.Headless)**: view-model commands, shortcut bindings, settings panel persists, magnet dialog validation
-- [ ] `cargo test` + `dotnet test` scripts; CI workflow (GitHub Actions, windows-latest + ubuntu) — optional
+- [x] `cargo test` + `dotnet test` scripts; CI workflow (GitHub Actions, windows-latest + ubuntu) — optional
 
 ### Phase 6 — Windows portable release
-- [ ] `build/publish-win.sh`: `dotnet publish -r win-x64 --self-contained -p:PublishSingleFile=true`, `cargo xwin build --release --target x86_64-pc-windows-msvc`, bundle DLLs, zip → `NegsPlayer-portable-win-x64.zip`
-- [ ] Verify there are no writes outside the app folder
+- [x] `build/publish-win.sh`: `dotnet publish -r win-x64 --self-contained -p:PublishSingleFile=true`, `cargo build --release --target x86_64-pc-windows-gnu` (MinGW; only system DLL imports), bundle DLLs, zip → `NegsPlayer-portable-win-x64.zip`
+- [x] Verify there are no writes outside the app folder
 - [ ] Smoke test on a Windows machine (or VM): 4K HDR HEVC sample, magnet stream, screenshots, downmix
 
 ## Verification (end-to-end)

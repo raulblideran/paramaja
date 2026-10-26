@@ -1,0 +1,35 @@
+name: ci
+on: [push, pull_request]
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg mpv libmpv-dev
+      - run: ./build/test.sh
+
+  windows-portable:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build torrent engine
+        working-directory: native/negs-torrent
+        run: cargo build --release && cargo test --lib
+      - name: Fetch libmpv
+        shell: bash
+        run: |
+          mkdir -p libs/win-x64
+          cp native/negs-torrent/target/release/negs_torrent.dll libs/win-x64/
+          curl -fL -o mpv.7z https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261021/mpv-dev-x86_64-20261021-git-e471496c56.7z
+          7z e -y -olibs/win-x64 mpv.7z libmpv-2.dll
+      - run: dotnet test tests/NegsPlayer.App.Tests
+      - run: dotnet publish src/NegsPlayer.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=none -o dist/NegsPlayer
+      - uses: actions/upload-artifact@v4
+        with: { name: NegsPlayer-portable-win-x64, path: dist/NegsPlayer }
