@@ -1,0 +1,11 @@
+bin/
+obj/
+target/
+*.user
+.vs/
+tests/fixtures/media/
+artifacts/
+dist/
+cache/
+Screenshots/
+libs/
