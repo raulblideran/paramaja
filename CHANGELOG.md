@@ -3,6 +3,15 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.3.3 — 2026-10-26
+
+- Windows: closing the window right as it was being resized could raise an error
+- Linux: works with an older system libmpv too (Ubuntu 24.04's 0.37): streams open and the
+  player starts, where before they failed. The Flatpak bundles its own libmpv and wasn't
+  affected
+- Releases are now built and published by GitHub from the tagged commit, and every change is
+  tested on Windows and Linux
+
 ## 1.3.2 — 2026-10-26
 
 - Fullscreen on Linux (KDE): the controls bar now really sits on the bottom edge. KDE kept
