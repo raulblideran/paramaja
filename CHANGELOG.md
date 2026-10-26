@@ -3,6 +3,14 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.3.2 — 2026-10-26
+
+- Fullscreen on Linux (KDE): the controls bar now really sits on the bottom edge. KDE kept
+  ordinary windows out of the space its taskbar reserves, even with the video fullscreen
+  over the taskbar, which left a strip of video below the bar (1.3.1 didn't fix this).
+  The bars are now dock windows, which may go there, and they hide while another app is
+  in front
+
 ## 1.3.1 — 2026-10-26
 
 - In fullscreen the controls bar sits on the bottom edge of the screen again, with no strip of video below it

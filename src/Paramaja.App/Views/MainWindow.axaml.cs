@@ -162,10 +162,12 @@ public partial class MainWindow : Window
     {
         if (_bottom is null || _top is null || DataContext is not MainViewModel vm) return;
         var fullscreen = WindowState == WindowState.FullScreen;
+        var appActive = IsActive || _top.IsActive || _bottom.IsActive;
         var visible = vm.ControlsVisible && !vm.IsIdle && WindowState != WindowState.Minimized && IsVisible
-                      && Video.Bounds.Width > 100;
+                      && Video.Bounds.Width > 100
+                      && (!OverlayPlacement.HideWhileInactive || appActive || vm.IsPointerOverControls);
 
-        var topmost = OverlayPlacement.ShouldBeTopmost(fullscreen, IsActive || _top.IsActive || _bottom.IsActive);
+        var topmost = OverlayPlacement.ShouldBeTopmost(fullscreen, appActive);
         if (_top.Topmost != topmost) _top.Topmost = topmost;
         if (_bottom.Topmost != topmost) _bottom.Topmost = topmost;
 

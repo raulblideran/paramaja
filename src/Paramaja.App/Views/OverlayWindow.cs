@@ -31,5 +31,6 @@ public class OverlayWindow : Window
         PointerEntered += (_, _) => { if (DataContext is MainViewModel vm) { vm.IsPointerOverControls = true; vm.NotifyActivity(); } };
         PointerExited += (_, _) => { if (DataContext is MainViewModel vm) vm.IsPointerOverControls = false; };
         PointerMoved += (_, _) => (DataContext as MainViewModel)?.NotifyActivity();
+        if (TryGetPlatformHandle() is { HandleDescriptor: "XID" } x11) X11WindowType.MakeDock(x11.Handle);
     }
 }

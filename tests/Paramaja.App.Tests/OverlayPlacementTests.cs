@@ -36,6 +36,10 @@ public class OverlayPlacementTests
     }
 
     [Fact]
+    public void Linux_dock_bars_hide_while_another_app_is_in_front() =>
+        Assert.Equal(OperatingSystem.IsLinux(), OverlayPlacement.HideWhileInactive);
+
+    [Fact]
     public void Parking_is_only_used_where_the_os_allows_off_screen_windows() =>
         Assert.Equal(OperatingSystem.IsWindows(), OverlayPlacement.ParkInsteadOfHiding);
 

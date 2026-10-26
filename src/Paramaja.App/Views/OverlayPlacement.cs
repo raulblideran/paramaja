@@ -46,6 +46,12 @@ public static class OverlayPlacement
     public static bool IsPointerOverPlayer(PixelPoint pointer, PixelRect window, PixelRect? screen, bool fullscreen) =>
         fullscreen && screen is { } s ? s.Contains(pointer) : window.Contains(pointer);
 
+    /// <summary>
+    /// On Linux the bars are dock windows (see X11WindowType), which the window manager keeps
+    /// above every normal window, so they are hidden while another app is in front.
+    /// </summary>
+    public static bool HideWhileInactive => OperatingSystem.IsLinux();
+
     /// <summary>On top of everything only while fullscreen and in front, never over other apps.</summary>
     public static bool ShouldBeTopmost(bool fullscreen, bool appActive) => fullscreen && appActive;
 }
