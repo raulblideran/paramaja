@@ -42,7 +42,11 @@ public sealed class PlayerService : IPlayer
         _mpv = new MpvClient();
         _hwdec = settings.HardwareDecoding ? "auto-safe" : "no";
         RenderProfile = MpvOptionsBuilder.InitialProfile(settings.RenderQuality);
-        foreach (var (k, v) in MpvOptionsBuilder.Build(settings, paths, windowId)) _mpv.SetOption(k, v);
+        foreach (var (k, v) in MpvOptionsBuilder.Build(settings, paths, windowId))
+        {
+            try { _mpv.SetOption(k, v); }
+            catch (MpvException e) when (e.Code == MpvException.OptionNotFound && MpvOptionsBuilder.OptionalOptions.Contains(k)) { }
+        }
         foreach (var (k, v) in extraOptions ?? []) _mpv.SetOption(k, v);
         Wire();
         _mpv.Initialize();

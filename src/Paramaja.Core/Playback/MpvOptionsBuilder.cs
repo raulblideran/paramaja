@@ -26,6 +26,12 @@ public static class MpvOptionsBuilder
         return o;
     }
 
+    /// <summary>
+    /// Nice-to-haves that older libmpv builds don't know (directory-filter-types is mpv 0.38+).
+    /// A distro's libmpv may be older than the bundled one, and playback shouldn't fail over these.
+    /// </summary>
+    public static readonly IReadOnlySet<string> OptionalOptions = new HashSet<string> { "directory-filter-types" };
+
     private static KeyValuePair<string, string> P(string k, string v) => new(k, v);
     private static string F(double d) => d.ToString("0.###", CultureInfo.InvariantCulture);
 

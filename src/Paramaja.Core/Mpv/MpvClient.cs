@@ -6,6 +6,9 @@ namespace Paramaja.Core.Mpv;
 
 public sealed class MpvException(string message, int code = 0) : Exception(message)
 {
+    /// <summary>MPV_ERROR_OPTION_NOT_FOUND: this libmpv doesn't have the option at all.</summary>
+    public const int OptionNotFound = -5;
+
     public int Code { get; } = code;
 }
 
