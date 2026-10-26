@@ -42,11 +42,17 @@ public partial class MainWindow : Window
         {
             if (_cursor.Position() is { } p)
             {
-                var size = ClientSize * RenderScaling;
-                var inside = p.X >= Position.X && p.Y >= Position.Y && p.X < Position.X + size.Width && p.Y < Position.Y + size.Height;
+                var pointer = new PixelPoint(p.X, p.Y);
+                var inside = OverlayPlacement.IsPointerOverPlayer(pointer,
+                    OverlayPlacement.WindowRect(Position, ClientSize, RenderScaling),
+                    Screens.ScreenFromWindow(this)?.Bounds,
+                    WindowState == WindowState.FullScreen);
                 Vm.ReportPointer(p.X, p.Y, inside);
             }
             Vm.TickAutoHide(DateTime.UtcNow);
+            // Cheap when nothing changed, and heals anything an event missed (e.g. a
+            // fullscreen switch that moved the video after the last layout pass).
+            UpdateOverlays();
             if (++_ticks % 4 == 0 && Vm.IsTorrent) Vm.RefreshTorrentStats();
         };
     }
@@ -65,6 +71,21 @@ public partial class MainWindow : Window
         base.OnOpened(e);
         _bottom = new ControlsBar { DataContext = DataContext };
         _top = new TopBar { DataContext = DataContext };
+        // On Windows the bars are shown once and parked off-screen while hidden; see
+        // OverlayPlacement.Parked.
+        foreach (var bar in new Window[] { _top, _bottom })
+        {
+            if (OverlayPlacement.ParkInsteadOfHiding)
+            {
+                bar.Position = OverlayPlacement.Parked;
+                bar.Show(this);
+            }
+            // Clicking a bar activates it and deactivates us; judge once that has settled.
+            bar.Activated += (_, _) => Dispatcher.UIThread.Post(UpdateOverlays);
+            bar.Deactivated += (_, _) => Dispatcher.UIThread.Post(UpdateOverlays);
+        }
+        Activated += (_, _) => Dispatcher.UIThread.Post(UpdateOverlays);
+        Deactivated += (_, _) => Dispatcher.UIThread.Post(UpdateOverlays);
         _tick.Start();
         UpdateOverlays();
     }
@@ -117,26 +138,31 @@ public partial class MainWindow : Window
     private void UpdateOverlays()
     {
         if (_bottom is null || _top is null || DataContext is not MainViewModel vm) return;
-        var show = vm.ControlsVisible && !vm.IsIdle && WindowState != WindowState.Minimized && IsVisible
-                   && Video.Bounds.Width > 100;
-        if (!show)
+        var fullscreen = WindowState == WindowState.FullScreen;
+        var visible = vm.ControlsVisible && !vm.IsIdle && WindowState != WindowState.Minimized && IsVisible
+                      && Video.Bounds.Width > 100;
+
+        var topmost = OverlayPlacement.ShouldBeTopmost(fullscreen, IsActive || _top.IsActive || _bottom.IsActive);
+        if (_top.Topmost != topmost) _top.Topmost = topmost;
+        if (_bottom.Topmost != topmost) _bottom.Topmost = topmost;
+
+        if (visible)
         {
-            if (_bottom.IsVisible) _bottom.Hide();
+            _top.Width = _bottom.Width = Video.Bounds.Width;
+            _top.Height = TopBar.BarHeight;
+            _bottom.Height = ControlsBar.BarHeight;
+        }
+        if (!visible && !OverlayPlacement.ParkInsteadOfHiding)
+        {
             if (_top.IsVisible) _top.Hide();
+            if (_bottom.IsVisible) _bottom.Hide();
             return;
         }
-        var origin = Video.PointToScreen(new Point(0, 0));
-        var scale = RenderScaling;
-        var width = Video.Bounds.Width;
-
-        _top.Width = width;
-        _top.Height = TopBar.BarHeight;
-        _top.Position = origin;
-
-        _bottom.Width = width;
-        _bottom.Height = ControlsBar.BarHeight;
-        _bottom.Position = new PixelPoint(origin.X, origin.Y + (int)Math.Round((Video.Bounds.Height - ControlsBar.BarHeight) * scale));
-
+        var (top, bottom) = OverlayPlacement.Place(
+            visible ? Video.PointToScreen(new Point(0, 0)) : default,
+            Video.Bounds.Height, ControlsBar.BarHeight, RenderScaling, visible);
+        if (_top.Position != top) _top.Position = top;
+        if (_bottom.Position != bottom) _bottom.Position = bottom;
         if (!_top.IsVisible) _top.Show(this);
         if (!_bottom.IsVisible) _bottom.Show(this);
     }
