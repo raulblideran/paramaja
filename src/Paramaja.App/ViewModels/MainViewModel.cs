@@ -80,6 +80,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>The slider is logarithmic; the tooltip says what it means in decibels.</summary>
     public string VolumeDecibels => VolumeCurve.Describe(Volume);
     public bool HasYtDlp => _ytdlp.BundledPath is not null;
+    public string AppVersion => AppInfo.Display;
+    public string AppVersionLine => $"{AppInfo.Name} {AppInfo.Display}";
 
     public ObservableCollection<TrackItem> AudioTracks { get; } = [];
     public ObservableCollection<TrackItem> SubtitleTracks { get; } = [];

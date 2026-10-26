@@ -99,6 +99,25 @@
       </StackPanel>
     </TabItem>
 
+    <TabItem Header="About">
+      <StackPanel Margin="16,0" Spacing="8">
+        <StackPanel Orientation="Horizontal" Spacing="14" Margin="0,8,0,0">
+          <Image Source="/Assets/paramaja-256.png" Width="72" Height="72" />
+          <StackPanel VerticalAlignment="Center" Spacing="2">
+            <TextBlock Text="Paramaja" FontSize="22" FontWeight="Bold" />
+            <TextBlock x:Name="VersionText" Text="{Binding AppVersion, StringFormat='Version {0}'}" Classes="muted" />
+          </StackPanel>
+        </StackPanel>
+        <Button Content="Copy version" Click="OnCopyVersion" HorizontalAlignment="Left" />
+        <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                   Text="When reporting a problem, include the version above: the part in brackets is the exact build." />
+        <TextBlock Classes="section" Text="Licence" />
+        <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                   Text="GPL-3.0-or-later. Built on mpv, FFmpeg, libplacebo, librqbit, Avalonia, yt-dlp and QuickJS-NG. CHANGELOG.txt next to the app lists what changed in each version." />
+        <TextBlock Text="github.com/raulblideran/paramaja" Classes="muted" FontSize="12" />
+      </StackPanel>
+    </TabItem>
+
     <TabItem Header="Shortcuts">
       <ScrollViewer>
         <ItemsControl Margin="16,8" ItemsSource="{Binding Shortcuts}" x:Name="ShortcutList" />

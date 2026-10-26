@@ -76,7 +76,7 @@ public class HeadlessUiTests
         var w = new SettingsWindow { DataContext = r.Vm };
         w.Show();
         var tabs = w.GetLogicalDescendants().OfType<TabItem>().Select(t => t.Header as string).ToList();
-        Assert.Equal(["Video", "Audio", "Subtitles", "Torrents", "Playback", "Shortcuts"], tabs);
+        Assert.Equal(["Video", "Audio", "Subtitles", "Torrents", "Playback", "About", "Shortcuts"], tabs);
 
         w.GetLogicalDescendants().OfType<TabControl>().Single().SelectedIndex = 1;
         Dispatch();

@@ -74,6 +74,18 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.1.0" date="2026-10-26">
+      <description>
+        <p>Fixes and additions from the first round of testing.</p>
+        <ul>
+          <li>Controls come back when you move the mouse, including in fullscreen</li>
+          <li>BWDIF or Bob deinterlacing, logarithmic volume, subtitle font size shown</li>
+          <li>Faster magnet streaming for 4K HDR, with a bigger buffer before playback starts</li>
+          <li>YouTube and other sites, MEGA file links and direct video URLs</li>
+          <li>Optional AV-receiver passthrough; the original audio plays by default</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-10-26">
       <description>
         <p>First release.</p>

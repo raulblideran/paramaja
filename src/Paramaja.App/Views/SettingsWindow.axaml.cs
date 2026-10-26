@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
+using Paramaja.App.Services;
 using Paramaja.Core.Input;
 
 namespace Paramaja.App.Views;
@@ -10,6 +11,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
+        Title = $"Settings — {AppInfo.Name} {AppInfo.Display}";
         ShortcutList.ItemTemplate = new FuncDataTemplate<(string Keys, PlayerAction Action)>((item, _) =>
         {
             var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("200,*"), Margin = new(0, 3) };
@@ -19,6 +21,11 @@ public partial class SettingsWindow : Window
             grid.Children.Add(label);
             return grid;
         });
+    }
+
+    private async void OnCopyVersion(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (Clipboard is { } c) await c.SetTextAsync($"{AppInfo.Name} {AppInfo.Display}");
     }
 
     internal static string Humanize(PlayerAction action)
