@@ -32,8 +32,12 @@
             <ComboBoxItem Content="Always on" />
             <ComboBoxItem Content="Off" />
           </ComboBox>
+          <ComboBox SelectedIndex="{Binding DeinterlaceAlgorithmIndex}" Width="320">
+            <ComboBoxItem Content="BWDIF — motion adaptive (default)" />
+            <ComboBoxItem Content="Bob — line doubling" />
+          </ComboBox>
           <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                     Text="Uses the GPU deinterlacer with hardware decoding, otherwise bwdif (motion-adaptive, high quality)." />
+                     Text="BWDIF gives the sharpest picture; Bob never shows motion artefacts but is a little softer. Both output one frame per field (50i becomes 50p)." />
 
           <TextBlock Classes="section" Text="Decoding" />
           <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration (D3D11 / VA-API)" OffContent="Software decoding" />
@@ -44,7 +48,8 @@
     <TabItem Header="Audio">
       <StackPanel Margin="16,0" Spacing="8">
         <TextBlock Classes="section" Text="Surround" />
-        <ToggleSwitch IsChecked="{Binding DownmixToStereo}" OnContent="Downmix 5.1 / 7.1 to stereo" OffContent="Output original channels" />
+        <ToggleSwitch IsChecked="{Binding DownmixToStereo}" OnContent="Downmix 5.1 / 7.1 to stereo" OffContent="Output original channels (default)" />
+        <ToggleSwitch IsChecked="{Binding AudioPassthrough}" OnContent="Passthrough Dolby / DTS to an AV receiver" OffContent="Decode audio in the player (default)" />
         <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
                    Text="Off by default. Volume normalisation is always disabled — no ReplayGain, no loudness filters, no downmix normalisation." />
         <TextBlock Classes="section" Text="Preferred audio languages" />
@@ -58,7 +63,7 @@
         <ToggleSwitch IsChecked="{Binding AutoLoadExternalSubtitles}" OnContent="Auto-load matching subtitle files next to the video" OffContent="Only embedded subtitles" />
         <TextBlock Classes="section" Text="Preferred subtitle languages" />
         <TextBox Text="{Binding PreferredSubtitleLanguages}" Watermark="e.g. eng,spa" Width="320" HorizontalAlignment="Left" />
-        <TextBlock Classes="section" Text="{Binding SubtitleScale, StringFormat='Size: {0:0.00}×'}" />
+        <TextBlock Classes="section" Text="{Binding SubtitleSizeText}" />
         <Slider Minimum="0.5" Maximum="2.5" Value="{Binding SubtitleScale}" Width="320" HorizontalAlignment="Left" />
       </StackPanel>
     </TabItem>
@@ -84,6 +89,13 @@
         <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
                    Text="Lossless, uncompressed PNG at the video's native resolution (16-bit for HDR/10-bit sources), saved to the 'Screenshots' folder next to the app." />
         <Button Content="Open screenshots folder" Command="{Binding OpenScreenshotsFolderCommand}" />
+        <TextBlock Classes="section" Text="YouTube &amp; other sites" />
+        <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                   Text="Links from YouTube and ~1800 other sites play through yt-dlp. Sites change often; if one stops working, update it." />
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Button Content="Update YouTube support" Command="{Binding UpdateYtDlpCommand}" IsEnabled="{Binding HasYtDlp}" />
+          <TextBlock Text="{Binding YtDlpStatus}" VerticalAlignment="Center" Classes="muted" FontSize="12" />
+        </StackPanel>
       </StackPanel>
     </TabItem>
 

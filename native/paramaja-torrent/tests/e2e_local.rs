@@ -193,3 +193,4 @@ fn unreachable_magnet_times_out() {
         .unwrap_err();
     assert!(format!("{err:#}").contains("timed out"), "{err:#}");
 }
+

@@ -10,10 +10,11 @@ namespace Paramaja.Core.Playback;
 public static class MpvOptionsBuilder
 {
     public static IReadOnlyList<KeyValuePair<string, string>> Build(
-        PlayerSettings s, PortablePaths paths, long? windowId = null)
+        PlayerSettings s, PortablePaths paths, long? windowId = null, YtDlp? ytdlp = null)
     {
         var o = new List<KeyValuePair<string, string>>();
         o.AddRange(Core(paths, windowId));
+        o.AddRange(Ytdl(ytdlp ?? new YtDlp(AppContext.BaseDirectory)));
         o.AddRange(Video(s));
         o.AddRange(Hdr(s));
         o.AddRange(Deinterlace(s));
@@ -39,7 +40,6 @@ public static class MpvOptionsBuilder
         yield return P("icc-cache-dir", cache);
         yield return P("demuxer-cache-dir", cache);
         yield return P("watch-later-dir", Path.Combine(paths.MpvConfig, "watch_later"));
-        yield return P("ytdl", "no");
         if (windowId is { } wid)
         {
             yield return P("wid", wid.ToString(CultureInfo.InvariantCulture));
@@ -65,6 +65,21 @@ public static class MpvOptionsBuilder
         // Drops are handled by the app (magnet text, subtitles), not by mpv's video window.
         yield return P("drag-and-drop", "no");
     }
+
+    /// <summary>YouTube and other sites: mpv's ytdl hook hands page URLs to yt-dlp.</summary>
+    public static IEnumerable<KeyValuePair<string, string>> Ytdl(YtDlp ytdlp)
+    {
+        yield return P("ytdl", "yes");
+        if (ytdlp.BundledPath is { } exe) yield return P("script-opts", $"ytdl_hook-ytdl_path={Quote(exe)}");
+        // YouTube needs a JavaScript runtime; yt-dlp only enables Deno on its own.
+        if (ytdlp.BundledJsRuntime is { } js) yield return P("ytdl-raw-options", $"js-runtimes={Quote("quickjs:" + js)}");
+    }
+
+    /// <summary>
+    /// mpv's length-prefixed quoting (<c>%N%value</c>), so a path containing commas or
+    /// '=' stays one value in a key/value list. N counts UTF-8 bytes.
+    /// </summary>
+    internal static string Quote(string value) => $"%{System.Text.Encoding.UTF8.GetByteCount(value)}%{value}";
 
     public static IEnumerable<KeyValuePair<string, string>> Video(PlayerSettings s)
     {
@@ -101,35 +116,47 @@ public static class MpvOptionsBuilder
 
     public static IEnumerable<KeyValuePair<string, string>> Deinterlace(PlayerSettings s)
     {
-        // mpv picks bwdif in software and the GPU's deinterlacer (d3d11vpp, vavpp...) with hwdec.
-        yield return P("deinterlace", s.Deinterlace switch
-        {
-            DeinterlaceMode.On => "yes",
-            DeinterlaceMode.Off => "no",
-            _ => "auto",
-        });
+        // mpv's own deinterlace option would pick the GPU's deinterlacer when hardware
+        // decoding, whatever we asked for. PlayerService inserts the chosen filter itself.
+        yield return P("deinterlace", "no");
     }
+
+    public const string DeinterlaceLabel = "@paramaja-deint";
+
+    /// <summary>The video filter for an algorithm. Both output one frame per field (50i → 50p).</summary>
+    public static string DeinterlaceFilter(DeinterlaceAlgorithm algorithm) => algorithm switch
+    {
+        DeinterlaceAlgorithm.Bob => $"{DeinterlaceLabel}:lavfi=[separatefields,scale=w=iw:h=ih*2:flags=bicubic]",
+        _ => $"{DeinterlaceLabel}:bwdif=mode=send_field",
+    };
 
     public static IEnumerable<KeyValuePair<string, string>> Audio(PlayerSettings s)
     {
         // Downmix only when the user asks; otherwise output the source channel layout.
-        yield return P("audio-channels", s.DownmixToStereo ? "stereo" : "auto");
+        yield return P("audio-channels", s.DownmixToStereo && !s.AudioPassthrough ? "stereo" : "auto");
+        // Passthrough hands Dolby/DTS bitstreams to the receiver untouched. On Windows that
+        // needs WASAPI exclusive mode, which also bypasses the system mixer.
+        yield return P("audio-spdif", s.AudioPassthrough ? "ac3,eac3,dts,dts-hd,truehd" : "");
+        if (OperatingSystem.IsWindows()) yield return P("audio-exclusive", s.AudioPassthrough ? "yes" : "no");
         // Never normalise: no downmix normalisation, no ReplayGain, no loudness filters.
         yield return P("audio-normalize-downmix", "no");
         yield return P("replaygain", "no");
         yield return P("af", "");
         yield return P("volume-max", "150");
-        yield return P("volume", F(s.Volume));
+        yield return P("volume", F(VolumeCurve.ToMpv(s.Volume)));
         yield return P("mute", s.Muted ? "yes" : "no");
         yield return P("audio-pitch-correction", "yes");
         if (!string.IsNullOrWhiteSpace(s.PreferredAudioLanguages)) yield return P("alang", s.PreferredAudioLanguages);
     }
 
+    /// <summary>mpv's base subtitle font size (at 720p); the size slider scales it.</summary>
+    public const int SubtitleFontSize = 44;
+
     public static IEnumerable<KeyValuePair<string, string>> Subtitles(PlayerSettings s)
     {
         yield return P("sub-auto", s.AutoLoadExternalSubtitles ? "fuzzy" : "no");
         yield return P("sub-scale", F(s.SubtitleScale));
-        yield return P("sub-font-size", "44");
+        yield return P("sub-font-size", SubtitleFontSize.ToString(CultureInfo.InvariantCulture));
         yield return P("sub-border-size", "2.5");
         yield return P("sub-ass-override", "no");
         yield return P("embeddedfonts", "yes");
@@ -146,6 +173,14 @@ public static class MpvOptionsBuilder
         yield return P("screenshot-directory", paths.Screenshots);
         yield return P("screenshot-template", "%F_%wH-%wM-%wS-%wT");
     }
+
+    /// <summary>
+    /// Per-file options for anything streamed (torrent, MEGA, URLs): rather than stuttering
+    /// through a thin buffer, wait for a few seconds of video before starting or resuming,
+    /// and read further ahead. 4K HDR remuxes need both.
+    /// </summary>
+    public const string StreamingFileOptions =
+        "cache-pause-initial=yes,cache-pause-wait=5,demuxer-readahead-secs=90,demuxer-max-bytes=1024MiB";
 
     public static IEnumerable<KeyValuePair<string, string>> Network()
     {

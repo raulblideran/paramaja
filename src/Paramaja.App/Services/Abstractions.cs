@@ -11,7 +11,7 @@ public interface IDialogService
 {
     Task<string?> PickMediaFileAsync();
     Task<string?> PickSubtitleFileAsync();
-    Task<string?> AskMagnetAsync();
+    Task<string?> AskLinkAsync();
     Task<string?> ReadClipboardTextAsync();
     Task ShowSettingsAsync();
     void OpenFolder(string path);

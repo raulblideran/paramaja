@@ -43,10 +43,10 @@ public sealed class DialogService(Window owner, Func<MainViewModel> vm) : IDialo
         return files.FirstOrDefault()?.TryGetLocalPath();
     }
 
-    public async Task<string?> AskMagnetAsync()
+    public async Task<string?> AskLinkAsync()
     {
         var clip = await ReadClipboardTextAsync();
-        return await new MagnetDialog(new MagnetDialogViewModel(clip)).ShowDialog<string?>(owner);
+        return await new OpenLinkDialog(new OpenLinkDialogViewModel(clip)).ShowDialog<string?>(owner);
     }
 
     public async Task<string?> ReadClipboardTextAsync() =>

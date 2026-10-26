@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private TopBar? _top;
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private int _ticks;
+    private readonly ICursorProbe _cursor = CursorProbe.Create();
 
     private MainViewModel Vm => (MainViewModel)DataContext!;
 
@@ -39,6 +40,12 @@ public partial class MainWindow : Window
 
         _tick.Tick += (_, _) =>
         {
+            if (_cursor.Position() is { } p)
+            {
+                var size = ClientSize * RenderScaling;
+                var inside = p.X >= Position.X && p.Y >= Position.Y && p.X < Position.X + size.Width && p.Y < Position.Y + size.Height;
+                Vm.ReportPointer(p.X, p.Y, inside);
+            }
             Vm.TickAutoHide(DateTime.UtcNow);
             if (++_ticks % 4 == 0 && Vm.IsTorrent) Vm.RefreshTorrentStats();
         };

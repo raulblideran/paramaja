@@ -208,7 +208,7 @@ public class OpeningTests
         using var r = new Rig();
         r.Dialogs.Clipboard = "https://example.com/stream.m3u8";
         await r.Vm.PasteAndPlayCommand.ExecuteAsync(null);
-        Assert.Contains("Open https://example.com/stream.m3u8", r.Player.Calls);
+        Assert.Contains("Open https://example.com/stream.m3u8 [stream]", r.Player.Calls);
     }
 
     [Fact]
@@ -250,9 +250,9 @@ public class TorrentTests
         Assert.True(r.Torrents.IsStarted);
         Assert.Equal(r.Paths.TorrentCache, r.Torrents.Config!.CacheDir);
         Assert.Contains($"Add {Magnet}", r.Torrents.Calls);
-        Assert.Contains("Open http://127.0.0.1:9/stream/1/1 Sintel.mp4", r.Player.Calls);
+        Assert.Contains("Open http://127.0.0.1:9/stream/1/1 Sintel.mp4 [stream]", r.Player.Calls);
         Assert.True(r.Vm.IsTorrent);
-        Assert.False(r.Vm.IsResolvingMagnet);
+        Assert.False(r.Vm.IsResolving);
         Assert.Equal(Magnet, r.Vm.RecentItems[0]);
     }
 
@@ -274,7 +274,7 @@ public class TorrentTests
         await r.Vm.OpenInputAsync(Magnet);
         r.Vm.SelectedTorrentFile = r.Vm.TorrentFiles.Single(f => f.Index == 2);
         Assert.Contains("Select 1 2", r.Torrents.Calls);
-        Assert.Contains("Open http://127.0.0.1:9/stream/1/2 Trailer.mkv", r.Player.Calls);
+        Assert.Contains("Open http://127.0.0.1:9/stream/1/2 Trailer.mkv [stream]", r.Player.Calls);
     }
 
     [Fact]
@@ -292,7 +292,7 @@ public class TorrentTests
         r.Torrents.OnAdd = _ => throw new TorrentException("timed out resolving the magnet link (no peers found)");
         await r.Vm.OpenInputAsync(Magnet);
         Assert.Contains("no peers found", r.Vm.StatusMessage);
-        Assert.False(r.Vm.IsResolvingMagnet);
+        Assert.False(r.Vm.IsResolving);
         Assert.False(r.Vm.IsTorrent);
         Assert.Empty(r.Player.Calls);
     }
@@ -508,32 +508,196 @@ public class AutoHideTests
     }
 }
 
-public class MagnetDialogTests
+public class OpenLinkDialogTests
 {
     [Theory]
-    [InlineData("magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10", true)]
-    [InlineData("08ada5a7a6183aae1e09d831df6748d566095a10", true)]
-    [InlineData("https://example.com", false)]
-    [InlineData("", false)]
-    public void Validates_input(string text, bool valid)
+    [InlineData("magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10", true, "Magnet link")]
+    [InlineData("08ada5a7a6183aae1e09d831df6748d566095a10", true, "Magnet link")]
+    [InlineData("https://www.youtube.com/watch?v=aqz-KE-bpKQ", true, "YouTube")]
+    [InlineData("https://youtu.be/aqz-KE-bpKQ", true, "YouTube")]
+    [InlineData("https://mega.nz/file/AbC#key", true, "MEGA file")]
+    [InlineData("https://example.com/film.mkv", true, "Web link")]
+    [InlineData("hello", false, "isn't a link")]
+    public void Validates_and_explains_each_kind(string text, bool valid, string hint)
     {
-        var vm = new MagnetDialogViewModel { Text = text };
+        var vm = new OpenLinkDialogViewModel { Text = text };
         Assert.Equal(valid, vm.IsValid);
-        if (valid) Assert.StartsWith("magnet:?", vm.Normalized);
+        Assert.Contains(hint, vm.Hint);
     }
 
     [Fact]
-    public void Prefills_from_clipboard_only_with_magnets()
+    public void Prefills_from_clipboard_only_with_links()
     {
-        Assert.StartsWith("magnet:", new MagnetDialogViewModel("magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10").Text);
-        Assert.Equal("", new MagnetDialogViewModel("some text").Text);
+        Assert.StartsWith("https://youtu.be", new OpenLinkDialogViewModel("https://youtu.be/x").Text);
+        Assert.Equal("", new OpenLinkDialogViewModel("some text").Text);
+        Assert.Equal("", new OpenLinkDialogViewModel().Hint);
+    }
+}
+
+public class StreamingFeatureTests
+{
+    [Fact]
+    public async Task Web_and_youtube_links_open_as_streams()
+    {
+        using var r = new Rig();
+        await r.Vm.OpenInputAsync("https://www.youtube.com/watch?v=aqz-KE-bpKQ");
+        Assert.Contains("Open https://www.youtube.com/watch?v=aqz-KE-bpKQ [stream]", r.Player.Calls);
+        Assert.DoesNotContain(r.Torrents.Calls, c => c.StartsWith("Add"));
     }
 
     [Fact]
-    public void Gives_a_hint()
+    public async Task Local_files_do_not_use_stream_buffering()
     {
-        var vm = new MagnetDialogViewModel { Text = "nope" };
-        Assert.Contains("doesn't look like", vm.Hint);
-        Assert.Equal("", new MagnetDialogViewModel().Hint);
+        using var r = new Rig();
+        var f = r.MediaFile();
+        await r.Vm.OpenInputAsync(f);
+        Assert.Contains($"Open {f}", r.Player.Calls);
+    }
+
+    [Fact]
+    public async Task Mega_links_go_through_the_engine_and_play_decrypted()
+    {
+        using var r = new Rig();
+        await r.Vm.OpenInputAsync("https://mega.nz/file/AbC#key");
+        Assert.True(r.Torrents.IsStarted);
+        Assert.Contains("Mega https://mega.nz/file/AbC#key", r.Torrents.Calls);
+        Assert.Contains("Open http://127.0.0.1:9/mega/0 Clip.mkv [stream]", r.Player.Calls);
+        Assert.Contains("Clip.mkv", r.Vm.StatusMessage);
+        Assert.False(r.Vm.IsResolving);
+        Assert.Equal("https://mega.nz/file/AbC#key", r.Vm.RecentItems[0]);
+    }
+
+    [Fact]
+    public async Task Mega_errors_are_shown()
+    {
+        using var r = new Rig();
+        r.Torrents.OnMega = _ => throw new TorrentException("MEGA says this file doesn't exist");
+        await r.Vm.OpenInputAsync("https://mega.nz/file/AbC#key");
+        Assert.Equal("MEGA: MEGA says this file doesn't exist", r.Vm.StatusMessage);
+        Assert.Empty(r.Player.Calls);
+    }
+
+    [Fact]
+    public void Buffering_shows_rotating_quips_on_screen_and_keeps_controls_up()
+    {
+        using var r = new Rig();
+        r.Vm.IsIdle = false;
+        r.Vm.IsBuffering = true;
+        var t0 = DateTime.UtcNow;
+        r.Vm.TickAutoHide(t0);
+        var first = r.Vm.BufferingText;
+        Assert.Contains(first, BufferingQuips.All);
+        Assert.Contains($"ShowText {first}", r.Player.Calls);
+
+        r.Vm.TickAutoHide(t0 + TimeSpan.FromSeconds(1));
+        Assert.Equal(first, r.Vm.BufferingText);
+        r.Vm.TickAutoHide(t0 + MainViewModel.QuipInterval + TimeSpan.FromSeconds(10));
+        Assert.NotEqual(first, r.Vm.BufferingText);
+        Assert.True(r.Vm.ControlsVisible, "controls stay up while buffering");
+
+        r.Vm.IsBuffering = false;
+        r.Vm.TickAutoHide(t0 + TimeSpan.FromMinutes(1));
+        Assert.Equal("", r.Vm.BufferingText);
+    }
+
+    [Fact]
+    public void Resolving_a_link_shows_quips_on_the_welcome_screen()
+    {
+        using var r = new Rig();
+        r.Vm.IsResolving = true;
+        r.Vm.TickAutoHide(DateTime.UtcNow);
+        Assert.Contains(r.Vm.BufferingText, BufferingQuips.All);
+        Assert.DoesNotContain(r.Player.Calls, c => c.StartsWith("ShowText"));
+    }
+
+    [Fact]
+    public async Task Yt_dlp_update_without_a_bundle_says_so()
+    {
+        using var r = new Rig();
+        Assert.False(r.Vm.HasYtDlp);
+        await r.Vm.UpdateYtDlpCommand.ExecuteAsync(null);
+        Assert.Contains("isn't bundled", r.Vm.YtDlpStatus);
+    }
+}
+
+public class PlaybackSettingTests
+{
+    [Fact]
+    public void Volume_is_shown_in_percent_and_decibels()
+    {
+        using var r = new Rig();
+        r.Vm.Volume = 50;
+        Assert.Equal("50%", r.Vm.VolumeText);
+        Assert.Equal("-30.0 dB", r.Vm.VolumeDecibels);
+    }
+
+    [Fact]
+    public void Subtitle_slider_shows_the_font_size()
+    {
+        using var r = new Rig();
+        Assert.Equal("Font size 44  (1.00×)", r.Vm.SubtitleSizeText);
+        var changed = new List<string?>();
+        r.Vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        r.Vm.SubtitleScale = 1.5;
+        Assert.Equal("Font size 66  (1.50×)", r.Vm.SubtitleSizeText);
+        Assert.Contains(nameof(MainViewModel.SubtitleSizeText), changed);
+    }
+
+    [Fact]
+    public void Bob_can_be_chosen_instead_of_bwdif()
+    {
+        using var r = new Rig();
+        Assert.Equal(0, r.Vm.DeinterlaceAlgorithmIndex);
+        r.Vm.DeinterlaceAlgorithmIndex = 1;
+        Assert.Equal(DeinterlaceAlgorithm.Bob, r.Settings.DeinterlaceAlgorithm);
+        Assert.Contains("SetDeinterlaceAlgorithm Bob", r.Player.Calls);
+        Assert.Equal(DeinterlaceAlgorithm.Bob, r.Store.Load().DeinterlaceAlgorithm);
+    }
+
+    [Fact]
+    public void Deinterlace_badge_names_the_filter()
+    {
+        using var r = new Rig();
+        r.Player.State.DeinterlaceActive = true;
+        r.Player.State.DeinterlaceFilter = "BWDIF";
+        r.Player.RaiseState("deinterlace-active");
+        Assert.Equal("BWDIF", r.Vm.DeinterlaceBadge);
+        r.Player.State.DeinterlaceActive = false;
+        r.Player.RaiseState("deinterlace-active");
+        Assert.Equal("", r.Vm.DeinterlaceBadge);
+    }
+
+    [Fact]
+    public void Original_audio_by_default_and_passthrough_excludes_downmix()
+    {
+        using var r = new Rig();
+        Assert.False(r.Vm.DownmixToStereo);
+        Assert.False(r.Vm.AudioPassthrough);
+
+        r.Vm.DownmixToStereo = true;
+        r.Vm.AudioPassthrough = true;
+        Assert.False(r.Vm.DownmixToStereo, "a bitstream can't be downmixed");
+        Assert.Contains("ApplyAudio", r.Player.Calls);
+
+        r.Vm.DownmixToStereo = true;
+        Assert.False(r.Vm.AudioPassthrough);
+        Assert.True(r.Store.Load().DownmixToStereo);
+    }
+
+    [Fact]
+    public void Moving_the_pointer_over_the_window_brings_the_controls_back()
+    {
+        using var r = new Rig();
+        r.Vm.IsIdle = false;
+        r.Vm.ReportPointer(100, 100, insideWindow: true);
+        r.Vm.TickAutoHide(DateTime.UtcNow + TimeSpan.FromMinutes(1));
+        Assert.False(r.Vm.ControlsVisible);
+
+        r.Vm.ReportPointer(100, 100, insideWindow: true);   // not moved
+        Assert.False(r.Vm.ControlsVisible);
+        r.Vm.ReportPointer(5000, 100, insideWindow: false); // moved, but elsewhere on screen
+        Assert.False(r.Vm.ControlsVisible);
+        r.Vm.ReportPointer(110, 105, insideWindow: true);
+        Assert.True(r.Vm.ControlsVisible);
     }
 }

@@ -6,7 +6,7 @@ A modern, portable video player. It plays everything mpv/VLC plays (HEVC/H.265 i
 
 1. Unzip `Paramaja-portable-win-x64.zip` anywhere, such as a USB stick or Downloads.
 2. Run `Paramaja.exe`. Nothing is installed, and nothing is written to AppData or the registry.
-3. Drop a video on the window, press **Ctrl+V** to play a copied magnet link or URL, or use **Open file** / **Magnet link**.
+3. Drop a video on the window, press **Ctrl+V** to play a copied link (magnet, YouTube, MEGA or any video URL), or use **Open file** / **Open link**.
 
 The app keeps all of its data next to the exe:
 
@@ -62,12 +62,14 @@ The manifest builds the Rust and .NET parts with `--share=network` so cargo and 
 |---|---|
 | **Formats** | libmpv + FFmpeg: HEVC/H.265 (8/10-bit), H.264, AV1, VP9, VC-1, MPEG-2…; MKV/MP4/TS/M2TS/AVI…; TrueHD, DTS-HD, FLAC, AC3, Opus… |
 | **HDR → SDR** | `gpu-next` (libplacebo) tonemapping with scene-adaptive peak detection, perceptual gamut mapping and highlight-detail recovery. HDR10, HLG and Dolby Vision (profiles 5/8). Curves: spline (default), bt.2446a, bt.2390, st2094-40, hable, mobius… **H** switches to HDR passthrough for HDR monitors. |
-| **Audio** | Never normalised (no ReplayGain, loudness filters or downmix normalisation). Surround is passed through as-is. **Shift+D** downmixes 5.1/7.1 to stereo, and only when you ask. |
-| **Subtitles** | Embedded (ASS/SSA with fonts, SRT, PGS, VobSub) and external files (auto-loaded by name, or drag & drop) |
-| **Magnet streaming** | Rust engine ([librqbit](https://github.com/ikatson/rqbit)). It downloads only the file you watch, prioritises pieces around the playhead so seeking works, picks the largest video automatically, and lets you switch between files in the torrent. |
+| **Audio** | The original audio stream plays as-is by default. It's never normalised (no ReplayGain, loudness filters or downmix normalisation). **Shift+D** downmixes 5.1/7.1 to stereo, and only when you ask. Optional passthrough sends Dolby/DTS bitstreams untouched to an AV receiver. The volume slider is logarithmic: it moves in equal steps of loudness, so 50% is −30 dB. |
+| **Subtitles** | Embedded (ASS/SSA with fonts, SRT, PGS, VobSub) and external files (auto-loaded by name, or drag & drop). The size slider shows the resulting font size. |
+| **Magnet streaming** | Rust engine ([librqbit](https://github.com/ikatson/rqbit)). It downloads only the file you watch, fetching pieces in order up to 256 MB ahead of the playhead (about 25 s of a 4K HDR remux; librqbit's default is 32 MB). Before starting or after a stall it waits for 5 s of video, instead of stuttering through a thin buffer. It picks the largest video automatically and lets you switch between files in the torrent. |
+| **Web links** | Direct video URLs, plus YouTube and ~1800 other sites through the bundled [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [QuickJS-NG](https://github.com/quickjs-ng/quickjs), the JavaScript runtime YouTube needs. Settings → Playback → **Update YouTube support** updates yt-dlp when a site changes. |
+| **MEGA** | `mega.nz` file links (new and legacy formats) are fetched from MEGA and decrypted on the fly, so seeking works. Folder links aren't supported yet. MEGA's free transfer quota applies. |
 | **Screenshots** | **S**: uncompressed PNG (compression 0) at native resolution, 16-bit for 10-bit/HDR sources. **Shift+S** includes subtitles. |
 | **Frame stepping** | **.** goes forward one frame, **,** goes back one frame |
-| **Deinterlacing** | Automatic, only for content flagged as interlaced. Uses the GPU deinterlacer with hardware decoding, otherwise bwdif. **D** cycles Auto / On / Off. |
+| **Deinterlacing** | Automatic, only when the video's frames are flagged as interlaced. **BWDIF** (motion-adaptive) by default, or **Bob** (line doubling) in Settings or the video menu. Both output one frame per field (50i becomes 50p). **D** cycles Auto / On / Off. |
 | **Hardware decoding** | D3D11VA zero-copy on Windows (VA-API/Vulkan on Linux) for smooth 4K. **I** shows live stats. |
 
 ### Shortcuts
@@ -82,7 +84,7 @@ The manifest builds the Rust and .NET parts with `--share=network` so cargo and 
 | A / J | Cycle audio / subtitle track | V | Hide subtitles |
 | Z / X | Subtitle delay −/+ 0.1 s | H | HDR tonemap ↔ passthrough |
 | D | Deinterlace Auto/On/Off | Shift+D | Downmix to stereo |
-| Ctrl+O / Ctrl+U / Ctrl+V | Open file / magnet / clipboard | Ctrl+S | Stop |
+| Ctrl+O / Ctrl+U / Ctrl+V | Open file / link / clipboard | Ctrl+S | Stop |
 
 ## Architecture
 
@@ -91,7 +93,8 @@ Paramaja.App   (C# / Avalonia 11)  UI: welcome screen, overlay controls, dialogs
    │  P/Invoke
    ├── Paramaja.Core  (C#)        libmpv bindings, PlayerService, settings, shortcuts
    │     └── libmpv-2.dll           playback, gpu-next HDR, hwdec, subtitles, screenshots
-   └── paramaja_torrent.dll (Rust)      librqbit session + localhost HTTP Range server + C ABI
+   ├── paramaja_torrent.dll (Rust)      librqbit session, MEGA decryption, localhost HTTP Range server, C ABI
+   └── yt-dlp.exe + qjs.exe         YouTube & other sites, called by mpv's ytdl hook
 ```
 
 mpv renders into a native child window (`--wid`), so the full gpu-next/D3D11 pipeline is kept. The controls are transparent overlay windows floated above the video.
@@ -130,6 +133,8 @@ Test media is generated by `tests/fixtures/make-fixtures.sh`, so no copyrighted 
 
 ## Credits
 
-Built on [mpv](https://mpv.io) (libmpv, LGPL/GPL), [FFmpeg](https://ffmpeg.org), [libplacebo](https://code.videolan.org/videolan/libplacebo), [librqbit](https://github.com/ikatson/rqbit) (Apache-2.0), [Avalonia](https://avaloniaui.net) (MIT) and [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) (MIT). Icons are from [Material Design Icons](https://pictogrammers.com) (Apache-2.0). Windows libmpv builds come from [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake).
+`native/paramaja-torrent/vendor/librqbit` is librqbit 9.0.1 with one small patch that makes the stream lookahead configurable (`vendor/PARAMAJA-librqbit.patch`).
+
+Built on [mpv](https://mpv.io) (libmpv, LGPL/GPL), [FFmpeg](https://ffmpeg.org), [libplacebo](https://code.videolan.org/videolan/libplacebo), [librqbit](https://github.com/ikatson/rqbit) (Apache-2.0), [Avalonia](https://avaloniaui.net) (MIT) and [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) (MIT), [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) and [QuickJS-NG](https://github.com/quickjs-ng/quickjs) (MIT). Icons are from [Material Design Icons](https://pictogrammers.com) (Apache-2.0). Windows libmpv builds come from [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake).
 
 Both builds bundle a GPL libmpv, so the project is licensed GPL-3.0-or-later (see `LICENSE`).

@@ -113,3 +113,15 @@ paramaja/
 - [x] Packaging tests (manifest/desktop/metainfo/version consistency)
 - [x] Verified in the sandbox: HDR10 HEVC playback, 4K HEVC Vulkan hwdec, Sintel magnet streaming with 5.1 audio
 - [ ] Flathub: run packaging/flatpak/generate-sources.sh and drop --share=network from the build
+
+### Phase 8 — Fixes & additions from testers (Windows build only for now)
+- [x] Deinterlacing: BWDIF by default, Bob as an option; the app inserts the filter itself (never the GPU's), per-file interlace detection
+- [x] Controls reappear when the cursor moves, via the OS pointer position as well as mpv's mouse events
+- [x] Subtitle size slider shows the font size
+- [x] Logarithmic volume (equal dB steps; 50% = −30 dB)
+- [x] Magnet streaming: 256 MB in-order lookahead (patched librqbit), 1 MiB HTTP chunks, wait for 5 s of buffer before starting/resuming
+- [x] Original audio by default; downmix and AV-receiver passthrough are opt-in and mutually exclusive
+- [x] Web URLs, YouTube & other sites (bundled yt-dlp + QuickJS, update button), MEGA file links (decrypted on the fly)
+- [x] Buffering quips ("Big fast, many speed", "Bruney", …) in the top bar, on the video and on the welcome screen
+- [ ] Live YouTube check on Windows (couldn't run the downloaded yt-dlp here)
+- [ ] Linux Flatpak rebuild with these changes (yt-dlp + QuickJS modules) once testers are happy

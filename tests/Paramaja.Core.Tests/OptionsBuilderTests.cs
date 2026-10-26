@@ -61,11 +61,72 @@ public class OptionsBuilderTests
         Assert.Equal(curve, Build(new PlayerSettings { ToneMapping = curve })["tone-mapping"]);
 
     [Theory]
-    [InlineData(DeinterlaceMode.Auto, "auto")]
-    [InlineData(DeinterlaceMode.On, "yes")]
-    [InlineData(DeinterlaceMode.Off, "no")]
-    public void Deinterlace_modes(DeinterlaceMode mode, string expected) =>
-        Assert.Equal(expected, Build(new PlayerSettings { Deinterlace = mode })["deinterlace"]);
+    [InlineData(DeinterlaceMode.Auto)]
+    [InlineData(DeinterlaceMode.On)]
+    [InlineData(DeinterlaceMode.Off)]
+    public void Mpvs_own_deinterlacer_is_never_used(DeinterlaceMode mode) =>
+        // The app inserts BWDIF/Bob itself; mpv's option would pick the GPU deinterlacer.
+        Assert.Equal("no", Build(new PlayerSettings { Deinterlace = mode })["deinterlace"]);
+
+    [Fact]
+    public void Deinterlace_filters_are_bwdif_by_default_or_bob()
+    {
+        Assert.Equal(DeinterlaceAlgorithm.Bwdif, new PlayerSettings().DeinterlaceAlgorithm);
+        Assert.Equal("@paramaja-deint:bwdif=mode=send_field", MpvOptionsBuilder.DeinterlaceFilter(DeinterlaceAlgorithm.Bwdif));
+        Assert.Contains("separatefields", MpvOptionsBuilder.DeinterlaceFilter(DeinterlaceAlgorithm.Bob));
+        Assert.StartsWith(MpvOptionsBuilder.DeinterlaceLabel, MpvOptionsBuilder.DeinterlaceFilter(DeinterlaceAlgorithm.Bob));
+    }
+
+    [Fact]
+    public void Volume_option_uses_the_logarithmic_curve()
+    {
+        Assert.Equal("100", Build(new PlayerSettings())["volume"]);
+        Assert.Equal("31.623", Build(new PlayerSettings { Volume = 50 })["volume"]);
+        Assert.Equal("150", Build(new PlayerSettings { Volume = 150 })["volume"]);
+    }
+
+    [Fact]
+    public void Passthrough_is_off_by_default_and_overrides_downmix()
+    {
+        var o = Build(new PlayerSettings());
+        Assert.Equal("", o["audio-spdif"]);
+        var pt = Build(new PlayerSettings { AudioPassthrough = true, DownmixToStereo = true });
+        Assert.Equal("ac3,eac3,dts,dts-hd,truehd", pt["audio-spdif"]);
+        Assert.Equal("auto", pt["audio-channels"]);
+    }
+
+    [Fact]
+    public void Ytdl_uses_the_bundled_yt_dlp_and_quickjs()
+    {
+        var dir = TestEnvironment.TempDir();
+        var exe = OperatingSystem.IsWindows() ? ".exe" : "";
+        Dictionary<string, string> Opts() =>
+            MpvOptionsBuilder.Ytdl(new YtDlp(dir)).ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        Assert.Equal(new Dictionary<string, string> { ["ytdl"] = "yes" }, Opts());
+
+        File.WriteAllText(Path.Combine(dir, "yt-dlp" + exe), "");
+        File.WriteAllText(Path.Combine(dir, "qjs" + exe), "");
+        var o = Opts();
+        var ytdlp = Path.Combine(dir, "yt-dlp" + exe);
+        Assert.Equal($"ytdl_hook-ytdl_path=%{System.Text.Encoding.UTF8.GetByteCount(ytdlp)}%{ytdlp}", o["script-opts"]);
+        Assert.EndsWith($"quickjs:{Path.Combine(dir, "qjs" + exe)}", o["ytdl-raw-options"]);
+    }
+
+    [Theory]
+    [InlineData("C:\\Films, old\\yt-dlp.exe", "%24%C:\\Films, old\\yt-dlp.exe")]
+    [InlineData("/home/ä/yt-dlp", "%15%/home/ä/yt-dlp")]
+    public void Paths_are_length_quoted_in_utf8_bytes(string path, string expected) =>
+        Assert.Equal(expected, MpvOptionsBuilder.Quote(path));
+
+    [Fact]
+    public void Streams_buffer_in_bigger_chunks()
+    {
+        var opts = MpvOptionsBuilder.StreamingFileOptions.Split(',').Select(p => p.Split('=')).ToDictionary(p => p[0], p => p[1]);
+        Assert.Equal("yes", opts["cache-pause-initial"]);
+        Assert.Equal("5", opts["cache-pause-wait"]);
+        Assert.Equal("1024MiB", opts["demuxer-max-bytes"]);
+    }
 
     [Fact]
     public void Hardware_decoding_toggle()
@@ -91,7 +152,7 @@ public class OptionsBuilderTests
         var o = Build(new PlayerSettings());
         Assert.Equal(Paths.MpvConfig, o["config-dir"]);
         Assert.StartsWith(Paths.Root, o["config-dir"]);
-        Assert.Equal("no", o["ytdl"]);
+        Assert.Equal("yes", o["ytdl"]);
         foreach (var key in new[] { "gpu-shader-cache-dir", "icc-cache-dir", "demuxer-cache-dir", "watch-later-dir", "screenshot-directory" })
             Assert.StartsWith(Paths.Root, o[key]);
     }

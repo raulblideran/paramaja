@@ -36,7 +36,8 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
 
     private void Log(string call) => Calls.Add(call);
 
-    public void Open(string pathOrUrl, string? displayTitle = null) => Log($"Open {pathOrUrl} {displayTitle}".TrimEnd());
+    public void Open(string pathOrUrl, string? displayTitle = null, bool streaming = false) =>
+        Log($"Open {pathOrUrl} {displayTitle}".TrimEnd() + (streaming ? " [stream]" : ""));
     public void Stop() => Log("Stop");
     public void TogglePause() => Log("TogglePause");
     public void SetPaused(bool paused) => Log($"SetPaused {paused}");
@@ -53,6 +54,7 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public void SetDownmix(bool stereo) => Log($"SetDownmix {stereo}");
     public void SetHdrMode(HdrMode mode) => Log($"SetHdrMode {mode}");
     public void SetDeinterlace(DeinterlaceMode mode) => Log($"SetDeinterlace {mode}");
+    public void SetDeinterlaceAlgorithm(DeinterlaceAlgorithm algorithm) => Log($"SetDeinterlaceAlgorithm {algorithm}");
     public void ApplyHdr() => Log("ApplyHdr");
     public void ApplyHardwareDecoding() => Log("ApplyHardwareDecoding");
     public void ApplySubtitles() => Log("ApplySubtitles");
@@ -92,6 +94,14 @@ public sealed class FakeTorrents : ITorrentService
         return Task.FromResult(OnAdd(magnet));
     }
 
+    public Func<string, MegaInfo> OnMega { get; set; } = _ => new MegaInfo(0, "Clip.mkv", 1000, "http://127.0.0.1:9/mega/0");
+
+    public Task<MegaInfo> AddMegaAsync(string link, TimeSpan timeout, CancellationToken ct = default)
+    {
+        Calls.Add($"Mega {link}");
+        return Task.FromResult(OnMega(link));
+    }
+
     public string SelectFile(int torrentId, int fileIndex)
     {
         Calls.Add($"Select {torrentId} {fileIndex}");
@@ -107,14 +117,14 @@ public sealed class FakeDialogs : IDialogService
 {
     public string? NextFile { get; set; }
     public string? NextSubtitle { get; set; }
-    public string? NextMagnet { get; set; }
+    public string? NextLink { get; set; }
     public string? Clipboard { get; set; }
     public List<string> OpenedFolders { get; } = [];
     public int SettingsShown { get; private set; }
 
     public Task<string?> PickMediaFileAsync() => Task.FromResult(NextFile);
     public Task<string?> PickSubtitleFileAsync() => Task.FromResult(NextSubtitle);
-    public Task<string?> AskMagnetAsync() => Task.FromResult(NextMagnet);
+    public Task<string?> AskLinkAsync() => Task.FromResult(NextLink);
     public Task<string?> ReadClipboardTextAsync() => Task.FromResult(Clipboard);
     public Task ShowSettingsAsync() { SettingsShown++; return Task.CompletedTask; }
     public void OpenFolder(string path) => OpenedFolders.Add(path);

@@ -1,19 +1,19 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Paramaja.App.ViewModels"
-        x:Class="Paramaja.App.Views.MagnetDialog"
-        x:DataType="vm:MagnetDialogViewModel"
-        Title="Open magnet link" Icon="/Assets/paramaja.ico"
+        x:Class="Paramaja.App.Views.OpenLinkDialog"
+        x:DataType="vm:OpenLinkDialogViewModel"
+        Title="Open link" Icon="/Assets/paramaja.ico"
         Width="620" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterOwner" Background="#15111A">
   <StackPanel Margin="24" Spacing="12">
     <StackPanel Orientation="Horizontal" Spacing="10">
       <PathIcon Data="{StaticResource IconMagnet}" Width="22" Height="22" Foreground="{StaticResource ParamajaAccentBright}" />
-      <TextBlock Text="Stream a torrent" FontSize="20" FontWeight="SemiBold" />
+      <TextBlock Text="Open a link" FontSize="20" FontWeight="SemiBold" />
     </StackPanel>
     <TextBlock Classes="muted" TextWrapping="Wrap"
-               Text="Paste a magnet link or info hash. Playback starts as soon as the first pieces arrive; the largest video file is picked automatically." />
-    <TextBox x:Name="Input" Text="{Binding Text}" Watermark="magnet:?xt=urn:btih:…" AcceptsReturn="False"
+               Text="Paste a magnet link, a MEGA file link, a YouTube (or other site) link, or a direct video URL. Streams start once a few seconds are buffered." />
+    <TextBox x:Name="Input" Text="{Binding Text}" Watermark="magnet:?…  ·  https://mega.nz/file/…  ·  https://youtube.com/watch?v=…" AcceptsReturn="False"
              TextWrapping="Wrap" MaxHeight="120" />
     <TextBlock Text="{Binding Hint}" FontSize="12" Foreground="{StaticResource ParamajaAccentBright}" />
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">

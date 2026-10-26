@@ -21,6 +21,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private string? _pendingOpen;
     private TorrentInfo? _torrent;
     private DateTime _lastActivity = DateTime.UtcNow;
+    private DateTime _lastQuip = DateTime.MinValue;
+    private (int X, int Y)? _lastPointer;
+    private readonly YtDlp _ytdlp;
 
     public PlayerSettings Settings { get; }
     public IDialogService? Dialogs { get; set; }
@@ -30,8 +33,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public event Action<bool?>? FullscreenRequested;
 
     public MainViewModel(PlayerSettings settings, SettingsStore store, PortablePaths paths,
-        Func<long?, IPlayer> playerFactory, ITorrentService torrents, IUiDispatcher ui)
+        Func<long?, IPlayer> playerFactory, ITorrentService torrents, IUiDispatcher ui, YtDlp? ytdlp = null)
     {
+        _ytdlp = ytdlp ?? new YtDlp(AppContext.BaseDirectory);
         Settings = settings;
         _store = store;
         _paths = paths;
@@ -61,7 +65,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _resolutionBadge = "";
     [ObservableProperty] private string _audioBadge = "";
     [ObservableProperty] private bool _isTorrent;
-    [ObservableProperty] private bool _isResolvingMagnet;
+    [ObservableProperty] private bool _isResolving;
+    [ObservableProperty] private string _bufferingText = "";
+    [ObservableProperty] private string _deinterlaceBadge = "";
+    [ObservableProperty] private string _ytDlpStatus = "";
     [ObservableProperty] private string _torrentStatus = "";
     [ObservableProperty] private TorrentFileItem? _selectedTorrentFile;
 
@@ -69,6 +76,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public string DurationText => TimeFormat.Format(Duration);
     public string WindowTitle => string.IsNullOrEmpty(MediaTitle) ? "Paramaja" : $"{MediaTitle} — Paramaja";
     public bool HasTorrentFiles => TorrentFiles.Count > 1;
+    public string VolumeText => $"{Volume:0}%";
+    /// <summary>The slider is logarithmic; the tooltip says what it means in decibels.</summary>
+    public string VolumeDecibels => VolumeCurve.Describe(Volume);
+    public bool HasYtDlp => _ytdlp.BundledPath is not null;
 
     public ObservableCollection<TrackItem> AudioTracks { get; } = [];
     public ObservableCollection<TrackItem> SubtitleTracks { get; } = [];
@@ -118,6 +129,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case "pause": IsPaused = s.IsPaused; if (IsPaused) NotifyActivity(); break;
             case "mute": IsMuted = s.IsMuted; break;
             case "volume": Volume = s.Volume; break;
+            case "deinterlace-active": DeinterlaceBadge = s.DeinterlaceActive ? s.DeinterlaceFilter ?? "" : ""; break;
             case "paused-for-cache": IsBuffering = s.IsBuffering; break;
             case "idle-active": IsIdle = s.IsIdle; break;
             case "media-title": MediaTitle = s.Title ?? ""; break;
@@ -190,34 +202,28 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _pendingOpen = value;
             return;
         }
-        if (kind == InputKind.Magnet)
+        switch (kind)
         {
-            await OpenMagnetAsync(value);
-            return;
+            case InputKind.Magnet:
+                await OpenMagnetAsync(value);
+                return;
+            case InputKind.Mega:
+                await OpenMegaAsync(value);
+                return;
         }
         CloseTorrent();
-        _player.Open(value);
+        _player.Open(value, streaming: InputClassifier.IsStreaming(kind));
         Remember(value);
     }
 
     private async Task OpenMagnetAsync(string magnet)
     {
-        if (IsResolvingMagnet) return;
+        if (IsResolving) return;
         try
         {
-            IsResolvingMagnet = true;
+            IsResolving = true;
             ShowStatus("Finding peers and fetching torrent info…", sticky: true);
-            if (!_torrents.IsStarted)
-            {
-                // Leftovers from a crash or a killed process would otherwise pile up.
-                if (Settings.ClearTorrentCacheOnExit) ClearTorrentCache();
-                _torrents.Start(new TorrentEngineConfig
-                {
-                    CacheDir = _paths.TorrentCache,
-                    ListenPort = Settings.TorrentListenPort,
-                    EnableUpnp = Settings.TorrentUpnp,
-                });
-            }
+            EnsureEngine();
             var info = await _torrents.AddAsync(magnet, TimeSpan.FromSeconds(Settings.TorrentMetadataTimeoutSeconds));
             if (_torrent is { } previous && previous.Id != info.Id) CloseTorrent();
             _torrent = info;
@@ -238,7 +244,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 return;
             }
             var file = info.Files.First(f => f.Index == fileIdx);
-            _player!.Open(info.StreamUrl, file.FileName);
+            _player!.Open(info.StreamUrl, file.FileName, streaming: true);
             Remember(magnet);
             ShowStatus($"Streaming {file.FileName}");
         }
@@ -248,7 +254,45 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            IsResolvingMagnet = false;
+            IsResolving = false;
+        }
+    }
+
+    /// <summary>The engine serves both torrents and MEGA; it starts on first use.</summary>
+    private void EnsureEngine()
+    {
+        if (_torrents.IsStarted) return;
+        // Leftovers from a crash or a killed process would otherwise pile up.
+        if (Settings.ClearTorrentCacheOnExit) ClearTorrentCache();
+        _torrents.Start(new TorrentEngineConfig
+        {
+            CacheDir = _paths.TorrentCache,
+            ListenPort = Settings.TorrentListenPort,
+            EnableUpnp = Settings.TorrentUpnp,
+        });
+    }
+
+    private async Task OpenMegaAsync(string link)
+    {
+        if (IsResolving) return;
+        try
+        {
+            IsResolving = true;
+            ShowStatus("Fetching the file from MEGA…", sticky: true);
+            EnsureEngine();
+            var info = await _torrents.AddMegaAsync(link, TimeSpan.FromSeconds(30));
+            CloseTorrent();
+            _player!.Open(info.StreamUrl, info.Name, streaming: true);
+            Remember(link);
+            ShowStatus($"Streaming {info.Name} from MEGA");
+        }
+        catch (TorrentException e)
+        {
+            ShowStatus($"MEGA: {e.Message}");
+        }
+        finally
+        {
+            IsResolving = false;
         }
     }
 
@@ -260,7 +304,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             var url = _torrents.SelectFile(_torrent.Id, value.Index);
-            _player.Open(url, value.Name);
+            _player.Open(url, value.Name, streaming: true);
         }
         catch (TorrentException e)
         {
@@ -339,10 +383,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task OpenMagnet()
+    private async Task OpenLink()
     {
         if (Dialogs is null) return;
-        if (await Dialogs.AskMagnetAsync() is { } m) await OpenInputAsync(m);
+        if (await Dialogs.AskLinkAsync() is { } m) await OpenInputAsync(m);
     }
 
     [RelayCommand]
@@ -384,11 +428,26 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     [RelayCommand] private void OpenCacheFolder() => Dialogs?.OpenFolder(_paths.TorrentCache);
 
+    /// <summary>Sites (YouTube especially) change often; a yt-dlp update fixes most failures.</summary>
+    [RelayCommand]
+    private async Task UpdateYtDlp()
+    {
+        if (!HasYtDlp) { YtDlpStatus = "yt-dlp isn't bundled with this build."; return; }
+        YtDlpStatus = "Updating yt-dlp…";
+        try { YtDlpStatus = await _ytdlp.UpdateAsync(); }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        {
+            YtDlpStatus = $"Update failed: {e.Message}";
+        }
+    }
+
     /// <summary>Seek bar: jump to an absolute time.</summary>
     public void SeekTo(double seconds) => _player?.SeekAbsolute(seconds);
 
     partial void OnVolumeChanged(double value)
     {
+        OnPropertyChanged(nameof(VolumeText));
+        OnPropertyChanged(nameof(VolumeDecibels));
         if (_player is not null && Math.Abs(_player.State.Volume - value) > 0.01) _player.SetVolume(value);
     }
 
@@ -438,7 +497,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case PlayerAction.SubtitleDelayUp: p?.AdjustSubtitleDelay(0.1); break;
             case PlayerAction.SubtitleDelayDown: p?.AdjustSubtitleDelay(-0.1); break;
             case PlayerAction.OpenFile: _ = OpenFile(); break;
-            case PlayerAction.OpenMagnet: _ = OpenMagnet(); break;
+            case PlayerAction.OpenLink: _ = OpenLink(); break;
             case PlayerAction.PasteAndPlay: _ = PasteAndPlay(); break;
             case PlayerAction.Stop: CloseTorrent(); p?.Stop(); break;
         }
@@ -470,9 +529,38 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Called periodically by the view; hides controls after inactivity during playback.</summary>
     public void TickAutoHide(DateTime utcNow)
     {
-        var keepVisible = IsIdle || IsPaused || IsPointerOverControls || IsResolvingMagnet;
+        UpdateBufferingText(utcNow);
+        var keepVisible = IsIdle || IsPaused || IsPointerOverControls || IsResolving || IsBuffering;
         if (keepVisible) { ControlsVisible = true; return; }
         if (utcNow - _lastActivity > ControlsHideDelay) ControlsVisible = false;
+    }
+
+    /// <summary>
+    /// The pointer's screen position, polled by the view. mpv's video window swallows mouse
+    /// events on some systems, so movement is detected here as well as from mpv.
+    /// </summary>
+    public void ReportPointer(int x, int y, bool insideWindow)
+    {
+        var moved = _lastPointer is { } last && last != (x, y);
+        _lastPointer = (x, y);
+        if (moved && insideWindow) NotifyActivity();
+    }
+
+    public static readonly TimeSpan QuipInterval = TimeSpan.FromSeconds(3);
+
+    private void UpdateBufferingText(DateTime utcNow)
+    {
+        if (!IsBuffering && !IsResolving)
+        {
+            BufferingText = "";
+            _lastQuip = DateTime.MinValue;
+            return;
+        }
+        if (utcNow - _lastQuip < QuipInterval) return;
+        _lastQuip = utcNow;
+        BufferingText = BufferingQuips.Next(BufferingText);
+        // On top of the video too, where people are looking while it stalls.
+        if (IsBuffering && !IsIdle) _player?.ShowText(BufferingText, (int)QuipInterval.TotalMilliseconds + 300);
     }
 
     // ---- Status line ----------------------------------------------------------------------

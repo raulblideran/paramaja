@@ -66,6 +66,15 @@ pub unsafe extern "C" fn nt_add(magnet: *const c_char, timeout_ms: u64) -> *mut 
     })
 }
 
+/// Resolves a MEGA file link. Returns `{"id","name","size","stream_url"}`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nt_mega_add(link: *const c_char, timeout_ms: u64) -> *mut c_char {
+    respond(|| {
+        let link = unsafe { str_arg(link)? };
+        with_engine(|e| e.add_mega(link, Duration::from_millis(timeout_ms)))
+    })
+}
+
 /// Switches which file is downloaded/streamed. Returns the stream URL.
 #[unsafe(no_mangle)]
 pub extern "C" fn nt_select(id: usize, file: usize) -> *mut c_char {

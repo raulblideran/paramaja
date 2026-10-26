@@ -32,6 +32,12 @@ public sealed record TorrentStats(
     [property: JsonPropertyName("peers_connecting")] int PeersConnecting,
     [property: JsonPropertyName("peers_seen")] int PeersSeen);
 
+public sealed record MegaInfo(
+    [property: JsonPropertyName("id")] int Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("size")] long Size,
+    [property: JsonPropertyName("stream_url")] string StreamUrl);
+
 public sealed record TorrentEngineInfo(
     [property: JsonPropertyName("http_addr")] string HttpAddress,
     [property: JsonPropertyName("listen_addr")] string? ListenAddress);
@@ -44,6 +50,8 @@ public sealed class TorrentEngineConfig
     [JsonPropertyName("enable_dht")] public bool EnableDht { get; init; } = true;
     [JsonPropertyName("enable_trackers")] public bool EnableTrackers { get; init; } = true;
     [JsonPropertyName("enable_upnp")] public bool EnableUpnp { get; init; } = true;
+    /// <summary>How far ahead of the playhead torrent pieces are fetched, in order.</summary>
+    [JsonPropertyName("stream_readahead_mb")] public int StreamReadaheadMb { get; init; } = 256;
 }
 
 public sealed class TorrentException(string message) : Exception(message);

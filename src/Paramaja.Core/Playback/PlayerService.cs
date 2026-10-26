@@ -38,6 +38,7 @@ public sealed class PlayerService : IPlayer
         _paths = paths;
         _paths.EnsureCreated();
         _mpv = new MpvClient();
+        _hwdec = settings.HardwareDecoding ? "auto-safe" : "no";
         foreach (var (k, v) in MpvOptionsBuilder.Build(settings, paths, windowId)) _mpv.SetOption(k, v);
         foreach (var (k, v) in extraOptions ?? []) _mpv.SetOption(k, v);
         Wire();
@@ -54,6 +55,13 @@ public sealed class PlayerService : IPlayer
             RefreshTracks();
             FileLoaded?.Invoke();
         };
+        _mpv.StartFile += () =>
+        {
+            // Every file is judged on its own frames: drop the previous file's verdict.
+            _sourceInterlaced = false;
+            State.SourceInterlaced = false;
+            if (Settings.Deinterlace == DeinterlaceMode.Auto) ApplyDeinterlace();
+        };
         _mpv.EndFile += (reason, err) =>
             EndFile?.Invoke(reason, reason == EndFileReason.Error ? MpvClient.ErrorString(err) : null);
         _mpv.ClientMessage += args =>
@@ -69,7 +77,7 @@ public sealed class PlayerService : IPlayer
         foreach (var p in new[] { "time-pos", "duration", "volume", "cache-buffering-state", "demuxer-cache-time",
                      "container-fps", "estimated-vf-fps" })
             _mpv.ObserveDouble(p);
-        foreach (var p in new[] { "pause", "mute", "paused-for-cache", "eof-reached", "idle-active", "seeking", "deinterlace-active" })
+        foreach (var p in new[] { "pause", "mute", "paused-for-cache", "eof-reached", "idle-active", "seeking", "video-frame-info/interlaced" })
             _mpv.ObserveFlag(p);
         foreach (var p in new[] { "audio-params/channel-count", "audio-out-params/channel-count", "video-params/w",
                      "video-params/h", "track-list/count" })
@@ -97,7 +105,7 @@ public sealed class PlayerService : IPlayer
         {
             case "time-pos": s.Position = value as double? ?? 0; break;
             case "duration": s.Duration = value as double? ?? 0; break;
-            case "volume": s.Volume = value as double? ?? s.Volume; break;
+            case "volume": s.Volume = value is double v ? VolumeCurve.FromMpv(v) : s.Volume; break;
             case "cache-buffering-state": s.BufferingPercent = value as double?; break;
             case "demuxer-cache-time": s.CacheTime = value as double?; break;
             case "container-fps": s.ContainerFps = value as double?; break;
@@ -108,7 +116,16 @@ public sealed class PlayerService : IPlayer
             case "eof-reached": s.EofReached = value as bool? ?? false; break;
             case "idle-active": s.IsIdle = value as bool? ?? true; break;
             case "seeking": s.IsSeeking = value as bool? ?? false; break;
-            case "deinterlace-active": s.DeinterlaceActive = value as bool? ?? false; break;
+            case "video-frame-info/interlaced":
+                // Latched per file: once the deinterlacer runs, the frames it outputs are
+                // progressive, and un-latching would switch it straight off again.
+                if (value as bool? == true && !_sourceInterlaced)
+                {
+                    _sourceInterlaced = true;
+                    s.SourceInterlaced = true;
+                    if (Settings.Deinterlace == DeinterlaceMode.Auto) ApplyDeinterlace();
+                }
+                break;
             case "audio-params/channel-count": s.SourceChannels = ToInt(value); break;
             case "audio-out-params/channel-count": s.OutputChannels = ToInt(value); break;
             case "video-params/w": s.VideoWidth = ToInt(value); break;
@@ -133,11 +150,13 @@ public sealed class PlayerService : IPlayer
 
     // ---- Commands -------------------------------------------------------------------------
 
-    public void Open(string pathOrUrl, string? displayTitle = null)
+    /// <param name="streaming">Torrent, MEGA or web stream: buffer in bigger chunks before playing.</param>
+    public void Open(string pathOrUrl, string? displayTitle = null, bool streaming = false)
     {
         if (displayTitle is not null) _mpv.SetProperty("force-media-title", displayTitle);
         else _mpv.SetProperty("force-media-title", "");
-        _mpv.Command("loadfile", pathOrUrl, "replace");
+        if (streaming) _mpv.Command("loadfile", pathOrUrl, "replace", "-1", MpvOptionsBuilder.StreamingFileOptions);
+        else _mpv.Command("loadfile", pathOrUrl, "replace");
         _mpv.SetProperty("pause", false);
     }
 
@@ -160,13 +179,14 @@ public sealed class PlayerService : IPlayer
     /// <summary>Goes back exactly one frame (pauses playback).</summary>
     public void FrameBackStep() => _mpv.TryCommand("frame-back-step");
 
-    public void SetVolume(double volume)
+    /// <param name="level">Slider position 0-150, logarithmic (see <see cref="VolumeCurve"/>).</param>
+    public void SetVolume(double level)
     {
-        Settings.Volume = Math.Clamp(volume, 0, 150);
-        _mpv.SetProperty("volume", Settings.Volume);
+        Settings.Volume = Math.Clamp(level, 0, VolumeCurve.Max);
+        _mpv.SetProperty("volume", VolumeCurve.ToMpv(Settings.Volume));
     }
 
-    public void ChangeVolume(double delta) => SetVolume((_mpv.GetDouble("volume") ?? Settings.Volume) + delta);
+    public void ChangeVolume(double delta) => SetVolume(Settings.Volume + delta);
 
     public void ToggleMute()
     {
@@ -205,11 +225,61 @@ public sealed class PlayerService : IPlayer
 
     public void ApplyHdr() => ApplyGroup(MpvOptionsBuilder.Hdr(Settings));
     public void ApplyAudio() => ApplyGroup(MpvOptionsBuilder.Audio(Settings));
-    public void ApplyDeinterlace() => ApplyGroup(MpvOptionsBuilder.Deinterlace(Settings));
+    private readonly object _deinterlaceLock = new();
+    private bool _sourceInterlaced;
+    private string? _deinterlaceFilter;
+    private string? _hwdec;
+
+    /// <summary>
+    /// Inserts or removes our deinterlacing filter. Auto follows the frames' own interlaced
+    /// flag; the filter is BWDIF or Bob as chosen, never the GPU's own deinterlacer.
+    /// </summary>
+    public void ApplyDeinterlace()
+    {
+        lock (_deinterlaceLock)
+        {
+            var wanted = Settings.Deinterlace switch
+            {
+                DeinterlaceMode.On => true,
+                DeinterlaceMode.Off => false,
+                _ => _sourceInterlaced,
+            };
+            var filter = wanted ? MpvOptionsBuilder.DeinterlaceFilter(Settings.DeinterlaceAlgorithm) : null;
+            if (filter == _deinterlaceFilter) return;
+
+            if (_deinterlaceFilter is not null) _mpv.TryCommand("vf", "remove", MpvOptionsBuilder.DeinterlaceLabel);
+            // Software filters need decoded frames in system memory, so hardware decoding
+            // switches to its copy-back mode while one is active (interlaced video is at most
+            // 1080i, so the copy is cheap).
+            SetHwdec(filter is not null);
+            if (filter is not null && !_mpv.TryCommand("vf", "add", filter)) filter = null;
+
+            _deinterlaceFilter = filter;
+            State.DeinterlaceActive = filter is not null;
+            State.DeinterlaceFilter = filter is null ? null : Settings.DeinterlaceAlgorithm == DeinterlaceAlgorithm.Bob ? "Bob" : "BWDIF";
+        }
+        StateChanged?.Invoke("deinterlace-active");
+    }
+
+    private void SetHwdec(bool copyBack)
+    {
+        var mode = !Settings.HardwareDecoding ? "no" : copyBack ? "auto-copy-safe" : "auto-safe";
+        if (mode == _hwdec) return;
+        try { _mpv.SetProperty("hwdec", mode); _hwdec = mode; }
+        catch (MpvException) { }
+    }
+
+    public void SetDeinterlaceAlgorithm(DeinterlaceAlgorithm algorithm)
+    {
+        Settings.DeinterlaceAlgorithm = algorithm;
+        ApplyDeinterlace();
+    }
     public void ApplySubtitles() => ApplyGroup(MpvOptionsBuilder.Subtitles(Settings));
 
-    public void ApplyHardwareDecoding() =>
-        _mpv.SetProperty("hwdec", Settings.HardwareDecoding ? "auto-safe" : "no");
+    public void ApplyHardwareDecoding()
+    {
+        lock (_deinterlaceLock) SetHwdec(_deinterlaceFilter is not null);
+    }
 
     private void ApplyGroup(IEnumerable<KeyValuePair<string, string>> options)
     {

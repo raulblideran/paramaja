@@ -14,6 +14,7 @@ public class PlayerIntegrationTests
         {
             new PlayerSettings(),
             new PlayerSettings { HdrMode = HdrMode.Passthrough, DownmixToStereo = true, Deinterlace = DeinterlaceMode.On },
+            new PlayerSettings { AudioPassthrough = true, DeinterlaceAlgorithm = DeinterlaceAlgorithm.Bob, Volume = 37 },
             new PlayerSettings { HardwareDecoding = false, Deinterlace = DeinterlaceMode.Off, PreferredAudioLanguages = "jpn",
                                  PreferredSubtitleLanguages = "eng", HdrDynamicPeak = false },
         };
@@ -21,10 +22,22 @@ public class PlayerIntegrationTests
             variants = [.. variants, new PlayerSettings { ToneMapping = curve }];
 
         var paths = new PortablePaths(TestEnvironment.TempDir());
+        // A fake bundled yt-dlp + QuickJS, so the ytdl options are exercised too.
+        var app = TestEnvironment.TempDir();
+        var exe = OperatingSystem.IsWindows() ? ".exe" : "";
+        File.WriteAllText(Path.Combine(app, "yt-dlp" + exe), "");
+        File.WriteAllText(Path.Combine(app, "qjs" + exe), "");
         foreach (var s in variants)
         {
             using var mpv = new MpvClient();
-            foreach (var (k, v) in MpvOptionsBuilder.Build(s, paths, 1)) mpv.SetOption(k, v); // throws on any bad name/value
+            foreach (var (k, v) in MpvOptionsBuilder.Build(s, paths, 1, new YtDlp(app))) mpv.SetOption(k, v); // throws on any bad name/value
+        }
+        // Mid-playback commands with the same filter strings must parse too.
+        using var player = new PlayerHarness();
+        foreach (var alg in Enum.GetValues<DeinterlaceAlgorithm>())
+        {
+            player.Player.Mpv.Command("vf", "add", MpvOptionsBuilder.DeinterlaceFilter(alg));
+            player.Player.Mpv.Command("vf", "remove", MpvOptionsBuilder.DeinterlaceLabel);
         }
     }
 
@@ -165,23 +178,77 @@ public class PlayerIntegrationTests
     }
 
     [MpvFact]
-    public void Deinterlacing_is_automatic_for_interlaced_content_only()
+    public void Bwdif_kicks_in_automatically_for_interlaced_content_only()
     {
         using (var h = new PlayerHarness())
         {
             h.OpenAndWait(TestEnvironment.Media("interlaced_1080i.ts"));
             PlayerHarness.WaitUntil(() => h.Player.State.DeinterlaceActive, "deinterlacer on 1080i");
+            Assert.True(h.Player.State.SourceInterlaced);
+            Assert.Equal("BWDIF", h.Player.State.DeinterlaceFilter);
+            Assert.Contains("bwdif", h.Player.Mpv.GetString("vf"));
+            // One output frame per field: the frame rate doubles.
+            PlayerHarness.WaitUntil(() => h.Player.Mpv.GetString("video-out-params/h") == "1080", "output size");
+
             h.Player.SetDeinterlace(DeinterlaceMode.Off);
             PlayerHarness.WaitUntil(() => !h.Player.State.DeinterlaceActive, "deinterlacer off when disabled");
+            Assert.DoesNotContain("bwdif", h.Player.Mpv.GetString("vf") ?? "");
         }
         using (var h = new PlayerHarness())
         {
             h.OpenAndWait(TestEnvironment.Media("sdr_h264.mp4"));
             Thread.Sleep(300);
-            Assert.False(h.Player.Mpv.GetFlag("deinterlace-active"));
+            Assert.False(h.Player.State.DeinterlaceActive, "progressive video is left alone");
+            Assert.False(h.Player.State.SourceInterlaced);
             h.Player.SetDeinterlace(DeinterlaceMode.On);
-            PlayerHarness.WaitUntil(() => h.Player.Mpv.GetFlag("deinterlace-active") == true, "forced deinterlace");
+            PlayerHarness.WaitUntil(() => h.Player.State.DeinterlaceActive, "forced deinterlace");
+            Assert.Contains("bwdif", h.Player.Mpv.GetString("vf"));
         }
+    }
+
+    [MpvFact]
+    public void Bob_can_replace_bwdif_live()
+    {
+        using var h = new PlayerHarness();
+        h.OpenAndWait(TestEnvironment.Media("interlaced_1080i.ts"));
+        PlayerHarness.WaitUntil(() => h.Player.State.DeinterlaceActive, "deinterlacer on 1080i");
+        h.Player.SetDeinterlaceAlgorithm(DeinterlaceAlgorithm.Bob);
+        PlayerHarness.WaitUntil(() => h.Player.State.DeinterlaceFilter == "Bob", "bob filter");
+        var vf = h.Player.Mpv.GetString("vf") ?? "";
+        Assert.Contains("separatefields", vf);
+        Assert.DoesNotContain("bwdif", vf);
+        PlayerHarness.WaitUntil(() => h.Player.Mpv.GetString("video-out-params/h") == "1080", "bob keeps full height");
+    }
+
+    [MpvFact]
+    public void Next_file_is_judged_on_its_own_frames()
+    {
+        using var h = new PlayerHarness();
+        h.OpenAndWait(TestEnvironment.Media("interlaced_1080i.ts"));
+        PlayerHarness.WaitUntil(() => h.Player.State.DeinterlaceActive, "deinterlacer on 1080i");
+        h.OpenAndWait(TestEnvironment.Media("sdr_h264.mp4"));
+        PlayerHarness.WaitUntil(() => !h.Player.State.DeinterlaceActive, "deinterlacer removed for progressive file");
+        Assert.DoesNotContain("bwdif", h.Player.Mpv.GetString("vf") ?? "");
+    }
+
+    [MpvFact]
+    public void Streams_open_with_chunked_buffering()
+    {
+        using var h = new PlayerHarness();
+        h.Player.Open(TestEnvironment.Media("sdr_h264.mp4"), streaming: true);
+        PlayerHarness.WaitUntil(() => h.Player.State.VideoFormat is not null, "stream opened");
+        Assert.Equal(5, h.Player.Mpv.GetDouble("cache-pause-wait"));
+        Assert.Equal(true, h.Player.Mpv.GetFlag("cache-pause-initial"));
+    }
+
+    [MpvFact]
+    public void Passthrough_and_ytdl_options_are_accepted_live()
+    {
+        using var h = new PlayerHarness();
+        h.Player.Settings.AudioPassthrough = true;
+        h.Player.ApplyAudio();
+        Assert.Equal("ac3,eac3,dts,dts-hd,truehd", h.Player.Mpv.GetString("audio-spdif"));
+        Assert.Equal(true, h.Player.Mpv.GetFlag("ytdl"));
     }
 
     [MpvFact]
@@ -243,7 +310,8 @@ public class PlayerIntegrationTests
         PlayerHarness.WaitUntil(() => !h.Player.State.IsPaused, "unpause");
 
         h.Player.SetVolume(42);
-        PlayerHarness.WaitUntil(() => h.Player.State.Volume == 42, "volume");
+        PlayerHarness.WaitUntil(() => Math.Abs(h.Player.State.Volume - 42) < 0.01, "volume");
+        Assert.Equal(VolumeCurve.ToMpv(42), h.Player.Mpv.GetDouble("volume")!.Value, 3);
         h.Player.SetVolume(1000);
         Assert.Equal(150, h.Player.Mpv.GetDouble("volume"));
         h.Player.ToggleMute();

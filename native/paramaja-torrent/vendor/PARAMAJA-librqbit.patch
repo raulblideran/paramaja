@@ -1,0 +1,53 @@
+--- /tmp/claude-1000/-var-home-raul-Desktop-Dev-projects-negs-player/6f3d9d1b-d8ce-4ce9-a9aa-b1e3a3b882ef/scratchpad/streaming.rs.orig	2026-10-26 02:09:12.280460178 +0000
++++ vendor/librqbit/src/torrent_state/streaming.rs	2026-10-26 02:09:12.295080730 +0000
+@@ -28,6 +28,21 @@
+ // 32 mb lookahead by default.
+ const PER_STREAM_BUF_DEFAULT: u64 = 32 * 1024 * 1024;
+ 
++// PARAMAJA PATCH: the lookahead is configurable, because 32 MB is about three
++// seconds of a 4K remux. Pieces inside the window are still queued strictly in
++// order, so a bigger window reads further ahead without delaying the next piece.
++static PER_STREAM_BUF: std::sync::atomic::AtomicU64 =
++    std::sync::atomic::AtomicU64::new(PER_STREAM_BUF_DEFAULT);
++
++/// Sets how far ahead of its read position every stream prioritises pieces.
++pub fn set_stream_readahead(bytes: u64) {
++    PER_STREAM_BUF.store(bytes.max(PER_STREAM_BUF_DEFAULT), std::sync::atomic::Ordering::Relaxed);
++}
++
++pub fn stream_readahead() -> u64 {
++    PER_STREAM_BUF.load(std::sync::atomic::Ordering::Relaxed)
++}
++
+ struct StreamState {
+     file_id: usize,
+     file_len: u64,
+@@ -43,7 +58,7 @@
+ 
+     fn queue<'a>(&self, lengths: &'a Lengths) -> impl Iterator<Item = ValidPieceIndex> + use<'a> {
+         let start = self.file_abs_offset + self.position;
+-        let end = (start + PER_STREAM_BUF_DEFAULT).min(self.file_abs_offset + self.file_len);
++        let end = (start + stream_readahead()).min(self.file_abs_offset + self.file_len);
+         let dpl = lengths.default_piece_length();
+         let start_id = (start / dpl as u64).try_into().unwrap();
+         let end_id = end.div_ceil(dpl as u64).try_into().unwrap();
+--- /home/raul/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/librqbit-9.0.1/src/torrent_state/mod.rs	2006-07-24 02:21:28.000000000 +0100
++++ src/torrent_state/mod.rs	2026-10-26 02:09:12.296031376 +0000
+@@ -54,6 +54,7 @@
+ use self::paused::TorrentStatePaused;
+ pub use self::stats::{TorrentStats, TorrentStatsState};
+ pub use self::streaming::FileStream;
++pub use self::streaming::{set_stream_readahead, stream_readahead}; // PARAMAJA PATCH
+ 
+ // State machine transitions.
+ //
+--- /home/raul/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/librqbit-9.0.1/src/lib.rs	2006-07-24 02:21:28.000000000 +0100
++++ src/lib.rs	2026-10-26 02:09:12.296464549 +0000
+@@ -97,6 +97,7 @@
+ };
+ pub use stream_connect::ConnectionOptions;
+ pub use torrent_state::{
++    set_stream_readahead, stream_readahead, // PARAMAJA PATCH
+     ManagedTorrent, ManagedTorrentShared, ManagedTorrentState, TorrentMetadata, TorrentStats,
+     TorrentStatsState,
+ };

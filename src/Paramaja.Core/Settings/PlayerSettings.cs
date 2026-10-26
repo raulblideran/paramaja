@@ -20,6 +20,15 @@ public enum DeinterlaceMode
     Off,
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter<DeinterlaceAlgorithm>))]
+public enum DeinterlaceAlgorithm
+{
+    /// <summary>Motion-adaptive, field-rate output (50i → 50p). The best quality.</summary>
+    Bwdif,
+    /// <summary>Each field line-doubled on its own: no motion artefacts, slightly softer.</summary>
+    Bob,
+}
+
 public sealed class PlayerSettings
 {
     public static readonly string[] ToneMappingCurves =
@@ -35,9 +44,13 @@ public sealed class PlayerSettings
     public double HdrContrastRecovery { get; set; } = 0.3;
     public string GamutMapping { get; set; } = "perceptual";
     public DeinterlaceMode Deinterlace { get; set; } = DeinterlaceMode.Auto;
+    public DeinterlaceAlgorithm DeinterlaceAlgorithm { get; set; } = DeinterlaceAlgorithm.Bwdif;
 
     // Audio — never normalised; downmix is strictly opt-in.
     public bool DownmixToStereo { get; set; }
+    /// <summary>Send Dolby/DTS bitstreams untouched to an AV receiver (WASAPI exclusive on Windows).</summary>
+    public bool AudioPassthrough { get; set; }
+    /// <summary>Slider position, 0-150. Logarithmic: see <see cref="Playback.VolumeCurve"/>.</summary>
     public double Volume { get; set; } = 100;
     public bool Muted { get; set; }
     public string PreferredAudioLanguages { get; set; } = "";
@@ -74,6 +87,7 @@ public sealed class PlayerSettings
         if (!ToneMappingCurves.Contains(ToneMapping)) ToneMapping = "spline";
         HdrContrastRecovery = Math.Clamp(HdrContrastRecovery, 0, 2);
         Volume = Math.Clamp(Volume, 0, 150);
+        if (AudioPassthrough) DownmixToStereo = false;
         SubtitleScale = Math.Clamp(SubtitleScale, 0.25, 4);
         SeekSeconds = Math.Clamp(SeekSeconds, 1, 600);
         LongSeekSeconds = Math.Clamp(LongSeekSeconds, 1, 3600);

@@ -4,11 +4,11 @@ using Paramaja.App.ViewModels;
 
 namespace Paramaja.App.Views;
 
-public partial class MagnetDialog : Window
+public partial class OpenLinkDialog : Window
 {
-    public MagnetDialog() : this(new MagnetDialogViewModel()) { }
+    public OpenLinkDialog() : this(new OpenLinkDialogViewModel()) { }
 
-    public MagnetDialog(MagnetDialogViewModel vm)
+    public OpenLinkDialog(OpenLinkDialogViewModel vm)
     {
         InitializeComponent();
         DataContext = vm;
@@ -17,7 +17,7 @@ public partial class MagnetDialog : Window
 
     private void OnPlay(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is MagnetDialogViewModel { IsValid: true } vm) Close(vm.Normalized);
+        if (DataContext is OpenLinkDialogViewModel { IsValid: true } vm) Close(vm.Normalized);
     }
 
     private void OnCancel(object? sender, RoutedEventArgs e) => Close(null);

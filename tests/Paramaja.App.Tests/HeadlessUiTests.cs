@@ -10,6 +10,7 @@ using Paramaja.App.Services;
 using Paramaja.App.ViewModels;
 using Paramaja.App.Views;
 using Paramaja.Core.Input;
+using Paramaja.Core.Settings;
 
 namespace Paramaja.App.Tests;
 
@@ -89,8 +90,8 @@ public class HeadlessUiTests
     [AvaloniaFact]
     public void Magnet_dialog_enables_play_only_for_magnets()
     {
-        var vm = new MagnetDialogViewModel();
-        var dlg = new MagnetDialog(vm);
+        var vm = new OpenLinkDialogViewModel();
+        var dlg = new OpenLinkDialog(vm);
         dlg.Show();
         var play = dlg.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Play");
         Assert.False(play.IsEnabled);
@@ -98,6 +99,26 @@ public class HeadlessUiTests
         Dispatch();
         Assert.True(play.IsEnabled);
         dlg.Close();
+    }
+
+    [AvaloniaFact]
+    public void Settings_window_offers_bob_and_passthrough()
+    {
+        using var r = new Rig();
+        var w = new SettingsWindow { DataContext = r.Vm };
+        w.Show();
+        Dispatch();
+        var algorithm = w.GetVisualDescendants().OfType<ComboBox>()
+            .Single(c => c.Items.OfType<ComboBoxItem>().Any(i => (i.Content as string)?.StartsWith("Bob") == true));
+        algorithm.SelectedIndex = 1;
+        Assert.Equal(DeinterlaceAlgorithm.Bob, r.Settings.DeinterlaceAlgorithm);
+
+        w.GetLogicalDescendants().OfType<TabControl>().Single().SelectedIndex = 1;
+        Dispatch();
+        var passthrough = w.GetVisualDescendants().OfType<ToggleSwitch>().First(t => (t.OnContent as string)?.Contains("Passthrough") == true);
+        passthrough.IsChecked = true;
+        Assert.True(r.Settings.AudioPassthrough);
+        w.Close();
     }
 
     [AvaloniaFact]

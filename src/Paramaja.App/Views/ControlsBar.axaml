@@ -36,8 +36,10 @@
             </Panel>
           </Button>
           <Slider Width="110" Minimum="0" Maximum="150" Value="{Binding Volume}" VerticalAlignment="Center"
-                  ToolTip.Tip="Volume (↑/↓, wheel) — never normalised" Focusable="False" />
-          <TextBlock Classes="time muted" Text="{Binding Volume, StringFormat={}{0:0}%}" Margin="6,0,0,0" FontSize="12" />
+                  SmallChange="5" LargeChange="10" Focusable="False"
+                  ToolTip.Tip="{Binding VolumeDecibels, StringFormat='Volume {0} (logarithmic, never normalised)'}" />
+          <TextBlock Classes="time muted" Text="{Binding VolumeText}" Margin="6,0,0,0" FontSize="12"
+                     ToolTip.Tip="{Binding VolumeDecibels}" />
         </StackPanel>
 
         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -52,6 +54,10 @@
           </Border>
           <Border Classes="badge" IsVisible="{Binding AudioBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
             <TextBlock Text="{Binding AudioBadge}" />
+          </Border>
+          <Border Classes="badge" IsVisible="{Binding DeinterlaceBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                  ToolTip.Tip="Deinterlacing">
+            <TextBlock Text="{Binding DeinterlaceBadge}" />
           </Border>
         </StackPanel>
 
@@ -72,8 +78,9 @@
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
                   <Button Content="Load subtitle file…" Command="{Binding LoadSubtitleCommand}" Margin="0,6,0,0" />
-                  <TextBlock Classes="section" Text="Size" />
-                  <Slider Minimum="0.5" Maximum="2.5" Value="{Binding SubtitleScale}" />
+                  <TextBlock Classes="section" Text="{Binding SubtitleSizeText}" />
+                  <Slider Minimum="0.5" Maximum="2.5" Value="{Binding SubtitleScale}" SmallChange="0.05" LargeChange="0.25"
+                          ToolTip.Tip="{Binding SubtitleSizeText}" />
                   <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
                              Text="J cycles tracks · V hides · Z / X shift timing by 0.1 s" />
                 </StackPanel>
@@ -98,9 +105,11 @@
                   </ItemsControl>
                   <TextBlock Classes="section" Text="Surround (5.1 / 7.1)" />
                   <ToggleSwitch IsChecked="{Binding DownmixToStereo}" OnContent="Downmix to stereo"
-                                OffContent="Keep original channels" />
+                                OffContent="Original channels (default)" />
+                  <ToggleSwitch IsChecked="{Binding AudioPassthrough}" OnContent="Passthrough to AV receiver"
+                                OffContent="Decode here (default)" />
                   <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                             Text="Shift+D toggles. Volume is never normalised — what's on the disc is what you hear." />
+                             Text="The original audio stream plays as-is unless you choose a downmix. Passthrough sends Dolby/DTS untouched to a receiver. Volume is never normalised." />
                 </StackPanel>
               </Flyout>
             </Button.Flyout>
@@ -126,6 +135,10 @@
                     <ComboBoxItem Content="Always on" />
                     <ComboBoxItem Content="Off" />
                   </ComboBox>
+                  <ComboBox SelectedIndex="{Binding DeinterlaceAlgorithmIndex}" HorizontalAlignment="Stretch">
+                    <ComboBoxItem Content="BWDIF — motion adaptive (default)" />
+                    <ComboBoxItem Content="Bob — line doubling" />
+                  </ComboBox>
                   <TextBlock Classes="section" Text="Decoding" />
                   <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration" OffContent="Software decoding" />
                   <Button Content="Show playback statistics (I)" Command="{Binding ToggleStatsCommand}" Margin="0,4,0,0" />
@@ -144,7 +157,7 @@
             <Button.Flyout>
               <MenuFlyout Placement="TopEdgeAlignedRight">
                 <MenuItem Header="Open file…" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
-                <MenuItem Header="Open magnet link…" InputGesture="Ctrl+U" Command="{Binding OpenMagnetCommand}" />
+                <MenuItem Header="Open link (magnet, YouTube, MEGA, URL)…" InputGesture="Ctrl+U" Command="{Binding OpenLinkCommand}" />
                 <MenuItem Header="Play from clipboard" InputGesture="Ctrl+V" Command="{Binding PasteAndPlayCommand}" />
                 <Separator />
                 <MenuItem Header="Screenshots folder" Command="{Binding OpenScreenshotsFolderCommand}" />

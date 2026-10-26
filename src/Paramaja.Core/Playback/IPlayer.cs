@@ -17,7 +17,7 @@ public interface IPlayer : IDisposable
     event Action? FileLoaded;
     event Action<EndFileReason, string?>? EndFile;
 
-    void Open(string pathOrUrl, string? displayTitle = null);
+    void Open(string pathOrUrl, string? displayTitle = null, bool streaming = false);
     void Stop();
     void TogglePause();
     void SetPaused(bool paused);
@@ -34,6 +34,7 @@ public interface IPlayer : IDisposable
     void SetDownmix(bool stereo);
     void SetHdrMode(HdrMode mode);
     void SetDeinterlace(DeinterlaceMode mode);
+    void SetDeinterlaceAlgorithm(DeinterlaceAlgorithm algorithm);
     void ApplyHdr();
     void ApplyHardwareDecoding();
     void ApplySubtitles();

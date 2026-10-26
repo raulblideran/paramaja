@@ -1,3 +1,4 @@
+using Paramaja.Core.Playback;
 using Paramaja.Core.Settings;
 
 namespace Paramaja.App.ViewModels;
@@ -20,8 +21,31 @@ public sealed partial class MainViewModel
         {
             if (Settings.DownmixToStereo == value) return;
             Settings.DownmixToStereo = value;
+            if (value && Settings.AudioPassthrough)
+            {
+                Settings.AudioPassthrough = false; // a bitstream can't be downmixed
+                OnPropertyChanged(nameof(AudioPassthrough));
+            }
             OnPropertyChanged();
             Changed(() => _player?.SetDownmix(value));
+        }
+    }
+
+    /// <summary>Dolby/DTS bitstreams to an AV receiver, untouched. Off by default.</summary>
+    public bool AudioPassthrough
+    {
+        get => Settings.AudioPassthrough;
+        set
+        {
+            if (Settings.AudioPassthrough == value) return;
+            Settings.AudioPassthrough = value;
+            if (value && Settings.DownmixToStereo)
+            {
+                Settings.DownmixToStereo = false;
+                OnPropertyChanged(nameof(DownmixToStereo));
+            }
+            OnPropertyChanged();
+            Changed(() => _player?.ApplyAudio(), value ? "Audio passthrough: on" : "Audio passthrough: off");
         }
     }
 
@@ -95,6 +119,20 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>0 = BWDIF (default), 1 = Bob.</summary>
+    public int DeinterlaceAlgorithmIndex
+    {
+        get => (int)Settings.DeinterlaceAlgorithm;
+        set
+        {
+            var alg = (DeinterlaceAlgorithm)Math.Clamp(value, 0, 1);
+            if (Settings.DeinterlaceAlgorithm == alg) return;
+            Settings.DeinterlaceAlgorithm = alg;
+            OnPropertyChanged();
+            Changed(() => _player?.SetDeinterlaceAlgorithm(alg), $"Deinterlacer: {(alg == DeinterlaceAlgorithm.Bob ? "Bob" : "BWDIF")}");
+        }
+    }
+
     /// <summary>ComboBox-friendly view of <see cref="Deinterlace"/> (Auto / On / Off).</summary>
     public int DeinterlaceIndex
     {
@@ -135,9 +173,14 @@ public sealed partial class MainViewModel
             if (Math.Abs(Settings.SubtitleScale - value) < 0.001) return;
             Settings.SubtitleScale = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(SubtitleSizeText));
             Changed(() => _player?.ApplySubtitles());
         }
     }
+
+    /// <summary>What the subtitle slider is set to, in font size (scaled from mpv's base size).</summary>
+    public string SubtitleSizeText =>
+        $"Font size {Math.Round(MpvOptionsBuilder.SubtitleFontSize * SubtitleScale):0}  ({SubtitleScale:0.00}×)";
 
     public string PreferredAudioLanguages
     {

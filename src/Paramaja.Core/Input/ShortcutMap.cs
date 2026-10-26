@@ -40,7 +40,7 @@ public static class ShortcutMap
         ["z"] = PlayerAction.SubtitleDelayDown,
         ["x"] = PlayerAction.SubtitleDelayUp,
         ["Ctrl+o"] = PlayerAction.OpenFile,
-        ["Ctrl+u"] = PlayerAction.OpenMagnet,
+        ["Ctrl+u"] = PlayerAction.OpenLink,
         ["Ctrl+v"] = PlayerAction.PasteAndPlay,
         ["Ctrl+s"] = PlayerAction.Stop,
     });

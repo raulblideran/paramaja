@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
 use crate::{
-    http, magnet,
+    http, magnet, mega,
     selection::{self, FileEntry},
 };
 
@@ -36,6 +36,11 @@ pub struct EngineConfig {
     pub enable_dht: bool,
     pub enable_trackers: bool,
     pub enable_upnp: bool,
+    /// How far ahead of the playhead pieces are fetched, in order. 4K remuxes run at
+    /// 60-100 Mbit/s, so librqbit's 32 MB default is only about three seconds of film.
+    pub stream_readahead_mb: u64,
+    /// MEGA API endpoint (overridden by tests).
+    pub mega_api: String,
 }
 
 impl Default for EngineConfig {
@@ -47,6 +52,8 @@ impl Default for EngineConfig {
             enable_dht: true,
             enable_trackers: true,
             enable_upnp: true,
+            stream_readahead_mb: 256,
+            mega_api: mega::DEFAULT_API.to_owned(),
         }
     }
 }
@@ -81,6 +88,7 @@ pub struct Engine {
     session: Arc<Session>,
     http_addr: SocketAddr,
     cache_dir: PathBuf,
+    mega: Arc<mega::MegaRegistry>,
 }
 
 impl Engine {
@@ -92,7 +100,9 @@ impl Engine {
         std::fs::create_dir_all(&config.cache_dir)
             .with_context(|| format!("cannot create cache dir {:?}", config.cache_dir))?;
         let cache_dir = config.cache_dir.canonicalize()?;
+        librqbit::set_stream_readahead(config.stream_readahead_mb * 1024 * 1024);
 
+        let mega = Arc::new(mega::MegaRegistry::new(config.mega_api.clone()));
         let (session, http_addr) = rt.block_on(async {
             let session = Session::new_with_opts(
                 cache_dir.clone(),
@@ -114,11 +124,12 @@ impl Engine {
             )
             .await
             .context("failed to start torrent session")?;
-            let http_addr = http::serve(session.clone(), config.http_port).await?;
+            let state = http::AppState { session: session.clone(), mega: mega.clone() };
+            let http_addr = http::serve(state, config.http_port).await?;
             anyhow::Ok((session, http_addr))
         })?;
 
-        Ok(Self { rt: Some(rt), session, http_addr, cache_dir })
+        Ok(Self { rt: Some(rt), session, http_addr, cache_dir, mega })
     }
 
     pub fn http_addr(&self) -> SocketAddr {
@@ -173,6 +184,21 @@ impl Engine {
             files,
             selected_file: selected,
             stream_url: selected.map(|f| self.stream_url(handle.id(), f)),
+        })
+    }
+
+    /// Resolves a MEGA file link and returns a local URL that streams it decrypted.
+    pub fn add_mega(&self, link: &str, timeout: Duration) -> anyhow::Result<mega::MegaInfo> {
+        let (id, file) = self.rt().block_on(async {
+            tokio::time::timeout(timeout, self.mega.add(link))
+                .await
+                .context("timed out contacting MEGA")?
+        })?;
+        Ok(mega::MegaInfo {
+            id,
+            name: file.name,
+            size: file.size,
+            stream_url: format!("http://{}/mega/{id}", self.http_addr),
         })
     }
 

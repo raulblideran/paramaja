@@ -4,6 +4,7 @@ pub mod engine;
 pub mod ffi;
 mod http;
 pub mod magnet;
+pub mod mega;
 pub mod range;
 pub mod selection;
 

@@ -12,7 +12,8 @@
         <StackPanel Orientation="Horizontal" Spacing="12">
           <TextBlock Text="{Binding TorrentStatus}" FontSize="12" Foreground="{StaticResource ParamajaLeaf}"
                      IsVisible="{Binding IsTorrent}" />
-          <TextBlock Text="Buffering…" FontSize="12" Classes="muted" IsVisible="{Binding IsBuffering}" />
+          <TextBlock Text="{Binding BufferingText}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource ParamajaAccentBright}"
+                     IsVisible="{Binding IsBuffering}" />
           <TextBlock Text="{Binding StatusMessage}" FontSize="12" Classes="muted" />
         </StackPanel>
       </StackPanel>

@@ -8,6 +8,8 @@ public interface ITorrentService : IDisposable
     bool IsStarted { get; }
     TorrentEngineInfo Start(TorrentEngineConfig config);
     Task<TorrentInfo> AddAsync(string magnet, TimeSpan timeout, CancellationToken ct = default);
+    /// <summary>Resolves a MEGA file link to a local URL that streams it decrypted.</summary>
+    Task<MegaInfo> AddMegaAsync(string link, TimeSpan timeout, CancellationToken ct = default);
     string SelectFile(int torrentId, int fileIndex);
     TorrentStats GetStats(int torrentId);
     void Remove(int torrentId, bool deleteFiles);
@@ -45,6 +47,13 @@ public sealed class TorrentService : ITorrentService
         // Metadata resolution blocks inside Rust; keep it off the UI thread.
         return Task.Run(() => Unwrap<TorrentInfo>(
             TorrentNative.Take(TorrentNative.nt_add(magnet, (ulong)timeout.TotalMilliseconds))), ct);
+    }
+
+    public Task<MegaInfo> AddMegaAsync(string link, TimeSpan timeout, CancellationToken ct = default)
+    {
+        EnsureStarted();
+        return Task.Run(() => Unwrap<MegaInfo>(
+            TorrentNative.Take(TorrentNative.nt_mega_add(link, (ulong)timeout.TotalMilliseconds))), ct);
     }
 
     public string SelectFile(int torrentId, int fileIndex)
