@@ -118,6 +118,9 @@ public partial class MainWindow : Window
         _tick.Stop();
         _bottom?.Close();
         _top?.Close();
+        // A resize or move already queued would otherwise try to show the closed bars again.
+        _bottom = null;
+        _top = null;
         base.OnClosing(e);
     }
 
