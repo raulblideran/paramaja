@@ -6,7 +6,8 @@ export PATH="$HOME/.dotnet:$HOME/.cargo/bin:$PATH" DOTNET_ROOT="${DOTNET_ROOT:-$
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 
 "$ROOT/tests/fixtures/make-fixtures.sh" >/dev/null
-(cd "$ROOT/native/paramaja-torrent" && cargo build --examples && cargo test)
+# --lib builds libparamaja_torrent.so itself, which the .NET tests load; tests and examples alone don't.
+(cd "$ROOT/native/paramaja-torrent" && cargo build --lib --examples && cargo test)
 if [[ "${1:-}" == "--net" ]]; then
   (cd "$ROOT/native/paramaja-torrent" && cargo test --test net_public -- --ignored --nocapture)
 fi

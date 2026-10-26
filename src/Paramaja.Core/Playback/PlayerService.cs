@@ -176,7 +176,7 @@ public sealed class PlayerService : IPlayer
         _stalls = 0;
         if (displayTitle is not null) _mpv.SetProperty("force-media-title", displayTitle);
         else _mpv.SetProperty("force-media-title", "");
-        if (streaming) _mpv.Command("loadfile", pathOrUrl, "replace", "-1", MpvOptionsBuilder.StreamingFileOptions);
+        if (streaming) LoadWithOptions(pathOrUrl, MpvOptionsBuilder.StreamingFileOptions);
         else _mpv.Command("loadfile", pathOrUrl, "replace");
         _mpv.SetProperty("pause", false);
     }
@@ -193,6 +193,19 @@ public sealed class PlayerService : IPlayer
         _mpv.SetProperty("force-media-title", Path.GetFileName(root));
         _mpv.Command("loadfile", bluray ? "bd://" : "dvd://", "replace");
         _mpv.SetProperty("pause", false);
+    }
+
+    /// <summary>
+    /// mpv 0.38 put a playlist index before loadfile's per-file options; 0.37 and older take
+    /// the options third, and reject the index as an invalid parameter.
+    /// </summary>
+    private void LoadWithOptions(string pathOrUrl, string options)
+    {
+        try { _mpv.Command("loadfile", pathOrUrl, "replace", "-1", options); }
+        catch (MpvException e) when (e.Code == MpvException.InvalidParameter)
+        {
+            _mpv.Command("loadfile", pathOrUrl, "replace", options);
+        }
     }
 
     public void Stop() => _mpv.TryCommand("stop");

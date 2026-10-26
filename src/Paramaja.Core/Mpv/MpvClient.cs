@@ -9,6 +9,9 @@ public sealed class MpvException(string message, int code = 0) : Exception(messa
     /// <summary>MPV_ERROR_OPTION_NOT_FOUND: this libmpv doesn't have the option at all.</summary>
     public const int OptionNotFound = -5;
 
+    /// <summary>MPV_ERROR_INVALID_PARAMETER: e.g. a command argument this libmpv doesn't take.</summary>
+    public const int InvalidParameter = -4;
+
     public int Code { get; } = code;
 }
 
