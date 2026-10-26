@@ -37,9 +37,10 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 p7zip-full cmake nasm
       - run: rustup target add x86_64-pc-windows-gnu
       - run: ./build/publish-win.sh
+      # Named after the file inside, so a download from the run page says what it is.
       - uses: actions/upload-artifact@v4
         with:
-          name: windows
+          name: Paramaja-${{ needs.check.outputs.version }}-portable-win-x64
           path: dist/Paramaja-${{ needs.check.outputs.version }}-portable-win-x64.zip
           if-no-files-found: error
 
@@ -58,7 +59,7 @@ jobs:
           manifest-path: packaging/io.github.raulblideran.Paramaja.yaml
           bundle: paramaja-${{ needs.check.outputs.version }}.flatpak
           cache-key: flatpak-builder-${{ hashFiles('packaging/io.github.raulblideran.Paramaja.yaml') }}
-          artifact-name: flatpak
+          artifact-name: paramaja-${{ needs.check.outputs.version }}-flatpak
 
   # Publishes with the Windows zip only; doesn't wait for the Flatpak.
   release:
@@ -69,7 +70,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { name: windows, path: assets }
+        with: { name: "Paramaja-${{ needs.check.outputs.version }}-portable-win-x64", path: assets }
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -91,7 +92,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         if: ${{ needs.flatpak.result == 'success' }}
-        with: { pattern: "flatpak*", path: assets, merge-multiple: true }
+        with: { pattern: "paramaja-${{ needs.check.outputs.version }}-flatpak*", path: assets, merge-multiple: true }
       - name: Attach the Flatpak
         env:
           GH_TOKEN: ${{ github.token }}
