@@ -1,0 +1,4 @@
+# Windows builds made with Microsoft's toolchain link the C runtime into the DLL, so the
+# portable app runs on PCs without the Visual C++ redistributable installed.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

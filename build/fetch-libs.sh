@@ -37,14 +37,23 @@ cd "$ROOT/native/paramaja-torrent"
 
 case "$RID" in
   win-x64)
-    cargo build --release --target x86_64-pc-windows-gnu
-    cp target/x86_64-pc-windows-gnu/release/paramaja_torrent.dll "$OUT/"
+    if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
+      # On Windows (Git Bash, e.g. GitHub's Windows runners): the native MSVC toolchain.
+      # .cargo/config.toml links the C runtime statically, so no VC++ redistributable is needed.
+      cargo build --release
+      cp target/release/paramaja_torrent.dll "$OUT/"
+    else
+      # On Linux: cross-compiled with MinGW.
+      cargo build --release --target x86_64-pc-windows-gnu
+      cp target/x86_64-pc-windows-gnu/release/paramaja_torrent.dll "$OUT/"
+    fi
     if [ ! -f "$OUT/libmpv-2.dll" ]; then
       DL="$(mktemp -d)"
       echo "Downloading libmpv ($MPV_ASSET)…"
       curl -fL --retry 3 -o "$DL/mpv-dev.7z" \
         "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/$MPV_TAG/$MPV_ASSET"
-      7z e -y -o"$DL/x" "$DL/mpv-dev.7z" libmpv-2.dll >/dev/null
+      # Relative paths: Git Bash on Windows doesn't translate a path glued to -o.
+      (cd "$DL" && 7z e -y -ox mpv-dev.7z libmpv-2.dll >/dev/null)
       cp "$DL/x/libmpv-2.dll" "$OUT/"
       rm -rf "$DL"
     fi
@@ -56,7 +65,7 @@ case "$RID" in
       DL="$(mktemp -d)"
       fetch_checked "https://github.com/GyanD/codexffmpeg/releases/download/$FFMPEG_VERSION/ffmpeg-$FFMPEG_VERSION-essentials_build.7z" \
         "$FFMPEG_SHA256" "$DL/ffmpeg.7z"
-      7z e -y -o"$DL/x" "$DL/ffmpeg.7z" "ffmpeg-$FFMPEG_VERSION-essentials_build/bin/ffmpeg.exe" >/dev/null
+      (cd "$DL" && 7z e -y -ox ffmpeg.7z "ffmpeg-$FFMPEG_VERSION-essentials_build/bin/ffmpeg.exe" >/dev/null)
       cp "$DL/x/ffmpeg.exe" "$OUT/"
       rm -rf "$DL"
     fi

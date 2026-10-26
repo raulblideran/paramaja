@@ -35,8 +35,13 @@ jobs:
         with: { dotnet-version: "8.0.x" }
       - uses: dtolnay/rust-toolchain@stable
       # Only what the tests use: ffmpeg makes the fixtures, libmpv2 plays them. Skipping
-      # recommends and the man-db index rebuild keeps the install quick.
-      - run: sudo rm -f /var/lib/man-db/auto-update && sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg libmpv2
+      # recommends and the man-db index rebuild keeps the install quick. The mirror has
+      # stalled mid-download before: a 30 s stall aborts that download and retries it.
+      - run: |
+          sudo rm -f /var/lib/man-db/auto-update
+          APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30"
+          sudo apt-get $APT update
+          sudo apt-get $APT install -y --no-install-recommends ffmpeg libmpv2
       - run: ./build/test.sh
 
   windows-portable:

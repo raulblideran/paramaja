@@ -29,15 +29,16 @@ jobs:
 
   windows:
     needs: check
-    runs-on: ubuntu-24.04
+    # Built on Windows: Rust, 7-Zip, CMake and NASM are preinstalled there, so nothing has to
+    # come from Ubuntu's package mirror (which stalled for 40+ minutes on two releases).
+    runs-on: windows-latest
     timeout-minutes: 30
+    defaults:
+      run: { shell: bash }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "8.0.x" }
-      # The torrent engine is cross-compiled with MinGW, as on a Linux dev machine.
-      - run: sudo rm -f /var/lib/man-db/auto-update && sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 p7zip-full cmake nasm
-      - run: rustup target add x86_64-pc-windows-gnu
       - run: ./build/publish-win.sh
       # Named after the file inside, so a download from the run page says what it is.
       - uses: actions/upload-artifact@v4
