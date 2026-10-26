@@ -15,3 +15,6 @@ libs/
 build-dir/
 repo/
 *.flatpak
+
+# Local notes and prompts; not part of the project.
+prompts/
