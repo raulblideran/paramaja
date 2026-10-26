@@ -29,7 +29,7 @@ jobs:
           cp native/paramaja-torrent/target/release/paramaja_torrent.dll libs/win-x64/
           curl -fL -o mpv.7z https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261021/mpv-dev-x86_64-20261021-git-e471496c56.7z
           7z e -y -olibs/win-x64 mpv.7z libmpv-2.dll
-      - run: dotnet test tests/Paramaja.App.Tests
+      - run: dotnet test tests/Paramaja.App.Tests --logger GitHubActions
       - run: dotnet publish src/Paramaja.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=none -o dist/Paramaja
       - uses: actions/upload-artifact@v4
         with: { name: Paramaja-portable-win-x64, path: dist/Paramaja }

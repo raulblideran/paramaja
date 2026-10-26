@@ -10,4 +10,7 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 if [[ "${1:-}" == "--net" ]]; then
   (cd "$ROOT/native/paramaja-torrent" && cargo test --test net_public -- --ignored --nocapture)
 fi
-dotnet test "$ROOT/Paramaja.sln"
+# On GitHub Actions each failing test also becomes an annotation on the run.
+LOGGER=()
+if [[ -n "${GITHUB_ACTIONS:-}" ]]; then LOGGER=(--logger GitHubActions); fi
+dotnet test "$ROOT/Paramaja.sln" "${LOGGER[@]}"
