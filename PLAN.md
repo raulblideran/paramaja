@@ -1,7 +1,7 @@
-# Negs Player — Build Plan
+# Paramaja — Build Plan
 
 ## Context
-You want a modern, portable Windows video player. It should play what VLC plays (HEVC especially), tonemap HDR to SDR as nicely as PotPlayer, stream from magnet links (the top priority), and leave your audio alone. The project folder `negs-player/` is empty, so this is a greenfield build. Once approved, this plan gets copied to `negs-player/PLAN.md` and we tick the boxes as we go.
+You want a modern, portable Windows video player. It should play what VLC plays (HEVC especially), tonemap HDR to SDR as nicely as PotPlayer, stream from magnet links (the top priority), and leave your audio alone. The project folder `paramaja/` is empty, so this is a greenfield build. Once approved, this plan gets copied to `paramaja/PLAN.md` and we tick the boxes as we go.
 
 ## Architecture decision: Avalonia + Rust + libmpv (a combination)
 
@@ -9,7 +9,7 @@ You want a modern, portable Windows video player. It should play what VLC plays 
 |---|---|---|
 | UI shell | **Avalonia 11 / .NET 8 (C#)** | Modern, styleable, fluent-looking UI. Mature desktop tooling. Single-file portable publish for `win-x64`. |
 | Playback engine | **libmpv** (`libmpv-2.dll`, ffmpeg-based) | Same codec coverage as VLC (both use ffmpeg). `vo=gpu-next` (libplacebo) gives the best on-the-fly HDR→SDR tonemapping available, Dolby Vision P5/P8 included. Also gives d3d11va hardware decode, libass subtitles, frame-back-step, PNG screenshots and bwdif deinterlacing. |
-| Torrent streaming | **Rust `cdylib` wrapping `librqbit`** (`negs_torrent.dll`) | librqbit is a fast, modern BitTorrent engine with streaming support: it prioritises pieces sequentially around the playhead. It is exposed to C# through a small C ABI and serves the file over a localhost HTTP range server that mpv plays directly. |
+| Torrent streaming | **Rust `cdylib` wrapping `librqbit`** (`paramaja_torrent.dll`) | librqbit is a fast, modern BitTorrent engine with streaming support: it prioritises pieces sequentially around the playhead. It is exposed to C# through a small C ABI and serves the file over a localhost HTTP range server that mpv plays directly. |
 
 Video embedding: mpv renders into a native child HWND (`--wid`) through Avalonia's `NativeControlHost`. This keeps full `gpu-next` + D3D11 (the libmpv render API doesn't support gpu-next HDR well). Controls sit in a transparent, owned overlay window above the video. This avoids the "airspace" problem, and the controls auto-hide.
 
@@ -17,13 +17,13 @@ Dev loop: everything also runs on Linux (Avalonia and libmpv are cross-platform)
 
 ## Project layout
 ```
-negs-player/
+paramaja/
   PLAN.md
-  src/NegsPlayer.App/          Avalonia UI (Views, ViewModels, Styles, Assets/icon)
-  src/NegsPlayer.Core/         Mpv wrapper (P/Invoke), PlayerService, Settings, Torrent interop
-  native/negs-torrent/         Rust cdylib (librqbit + C ABI + HTTP stream)
-  tests/NegsPlayer.Core.Tests/ xUnit unit + headless-mpv integration tests
-  tests/NegsPlayer.App.Tests/  Avalonia.Headless UI tests
+  src/Paramaja.App/          Avalonia UI (Views, ViewModels, Styles, Assets/icon)
+  src/Paramaja.Core/         Mpv wrapper (P/Invoke), PlayerService, Settings, Torrent interop
+  native/paramaja-torrent/         Rust cdylib (librqbit + C ABI + HTTP stream)
+  tests/Paramaja.Core.Tests/ xUnit unit + headless-mpv integration tests
+  tests/Paramaja.App.Tests/  Avalonia.Headless UI tests
   tests/fixtures/              script to generate test media with ffmpeg
   build/                       publish scripts (portable zip), icon pipeline
 ```
@@ -42,7 +42,7 @@ negs-player/
 11. **Deinterlacing**: `deinterlace=auto` (only interlaced content), using bwdif in software and d3d11vpp with hwdec. There is a manual override toggle (D key).
 12. **Hardware acceleration for 4K**: d3d11va zero-copy plus gpu-next. The OSD/stats overlay (key `I`) shows the active hwdec.
 13. **Aubergine icon**: SVG → multi-size `.ico` (16–256) for the exe and window.
-14. **Portable Windows build**: one folder/zip containing `NegsPlayer.exe`, `libmpv-2.dll` and `negs_torrent.dll`. `settings.json`, `portable_config/`, `cache/` and `Screenshots/` are all stored next to the exe. Nothing goes to AppData or the registry.
+14. **Portable Windows build**: one folder/zip containing `Paramaja.exe`, `libmpv-2.dll` and `paramaja_torrent.dll`. `settings.json`, `portable_config/`, `cache/` and `Screenshots/` are all stored next to the exe. Nothing goes to AppData or the registry.
 15. **Lots of tests**: see Testing below.
 
 > **About the test magnets:** I won't use the two magnet links in your notes (copyrighted films/TV). For the same coverage I'll use legal content: Blender open movies via public WebTorrent magnets (Sintel, Big Buck Bunny, Tears of Steel), legal HEVC/HDR10 and Dolby Vision demo samples, and a fully offline local seeder test. You can of course paste any magnet into the finished player yourself.
@@ -50,19 +50,19 @@ negs-player/
 ## Checklist
 
 ### Phase 0 — Scaffolding
-- [x] Copy this plan to `negs-player/PLAN.md`, `git init`, `.gitignore`
+- [x] Copy this plan to `paramaja/PLAN.md`, `git init`, `.gitignore`
 - [x] Create .NET solution (App, Core, two test projects) and Rust crate
 - [x] Script to fetch `libmpv` (Linux: system pkg; Windows: shinchiro `libmpv-2.dll`)
 - [x] `tests/fixtures/make-fixtures.sh`: ffmpeg-generated clips. HEVC 10-bit HDR10 (PQ/BT.2020), H.264 SDR, interlaced 1080i, 5.1 and 7.1 audio, `.srt`/`.ass` subs, and a 4K HEVC clip
 
-### Phase 1 — Playback core (`NegsPlayer.Core`)
+### Phase 1 — Playback core (`Paramaja.Core`)
 - [x] libmpv P/Invoke bindings (create/initialize/command/set/get property/observe/event loop)
 - [x] `PlayerService`: open, play/pause, seek, frame-step ±, volume, tracks, events → observable state
 - [x] `MpvOptionsBuilder`: maps `Settings` → mpv options (hwdec, gpu-next, tonemap, deinterlace, downmix, screenshots, no-normalise)
 - [x] `Settings` load/save to `settings.json` beside the exe (`AppContext.BaseDirectory`), with mpv `portable_config`
 - [x] Unit tests for options mapping and settings round-trip
 
-### Phase 2 — UI (`NegsPlayer.App`)
+### Phase 2 — UI (`Paramaja.App`)
 - [x] Main window with `NativeControlHost` hosting the mpv HWND (X11 window id on Linux)
 - [x] Overlay controls window: play/pause, seek bar with hover preview time, volume, time, fullscreen, auto-hide on idle
 - [x] Menus: audio track, subtitle track (+ load external), HDR mode, downmix toggle, deinterlace, screenshot
@@ -71,7 +71,7 @@ negs-player/
 - [x] Settings panel; dark fluent theme; aubergine accent colour
 - [x] Aubergine icon SVG → `.ico`, wired to exe and window
 
-### Phase 3 — Torrent streaming (`native/negs-torrent`) ⭐
+### Phase 3 — Torrent streaming (`native/paramaja-torrent`) ⭐
 - [x] Rust crate on `librqbit`: session in `./cache`, add magnet, metadata resolve, file list
 - [x] Choose largest video file by default; API to choose another
 - [x] Localhost HTTP server with Range support; streaming reader that blocks/prioritises pieces at the read position
@@ -95,7 +95,7 @@ negs-player/
 - [x] `cargo test` + `dotnet test` scripts; CI workflow (GitHub Actions, windows-latest + ubuntu) — optional
 
 ### Phase 6 — Windows portable release
-- [x] `build/publish-win.sh`: `dotnet publish -r win-x64 --self-contained -p:PublishSingleFile=true`, `cargo build --release --target x86_64-pc-windows-gnu` (MinGW; only system DLL imports), bundle DLLs, zip → `NegsPlayer-portable-win-x64.zip`
+- [x] `build/publish-win.sh`: `dotnet publish -r win-x64 --self-contained -p:PublishSingleFile=true`, `cargo build --release --target x86_64-pc-windows-gnu` (MinGW; only system DLL imports), bundle DLLs, zip → `Paramaja-portable-win-x64.zip`
 - [x] Verify there are no writes outside the app folder
 - [ ] Smoke test on a Windows machine (or VM): 4K HDR HEVC sample, magnet stream, screenshots, downmix
 
@@ -108,7 +108,7 @@ negs-player/
 
 ### Phase 7 — Linux Flatpak
 - [x] Manifest on freedesktop 25.08 (+ rust-stable, dotnet8): builds libmpv with its own ffmpeg (all decoders), libplacebo, libass, LuaJIT, libXpresent
-- [x] Desktop entry (incl. `magnet:` handler), metainfo, icon; Flatpak-aware data paths (XDG dirs, ~/Pictures/Negs Player)
+- [x] Desktop entry (incl. `magnet:` handler), metainfo, icon; Flatpak-aware data paths (XDG dirs, ~/Pictures/Paramaja)
 - [x] Native library probing: app dir → system loader → dev fallbacks (stops the sandbox loading the host's Homebrew libmpv)
 - [x] Packaging tests (manifest/desktop/metainfo/version consistency)
 - [x] Verified in the sandbox: HDR10 HEVC playback, 4K HEVC Vulkan hwdec, Sintel magnet streaming with 5.1 audio

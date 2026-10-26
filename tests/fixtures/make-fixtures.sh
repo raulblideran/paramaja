@@ -35,7 +35,7 @@ ff() { ffmpeg -hide_banner -loglevel error -y "$@"; }
 cat > "$OUT/subs.srt" <<'EOF'
 1
 00:00:00,000 --> 00:00:02,500
-Hello from Negs Player
+Hello from Paramaja
 EOF
 cat > "$OUT/subs.ass" <<'EOF'
 [Script Info]

@@ -6,8 +6,8 @@ export PATH="$HOME/.dotnet:$HOME/.cargo/bin:$PATH" DOTNET_ROOT="${DOTNET_ROOT:-$
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 
 "$ROOT/tests/fixtures/make-fixtures.sh" >/dev/null
-(cd "$ROOT/native/negs-torrent" && cargo build --examples && cargo test)
+(cd "$ROOT/native/paramaja-torrent" && cargo build --examples && cargo test)
 if [[ "${1:-}" == "--net" ]]; then
-  (cd "$ROOT/native/negs-torrent" && cargo test --test net_public -- --ignored --nocapture)
+  (cd "$ROOT/native/paramaja-torrent" && cargo test --test net_public -- --ignored --nocapture)
 fi
-dotnet test "$ROOT/NegsPlayer.sln"
+dotnet test "$ROOT/Paramaja.sln"

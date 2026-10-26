@@ -1,0 +1,100 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <SolidColorBrush x:Key="ParamajaAccent" Color="#A259B5" />
+    <SolidColorBrush x:Key="ParamajaAccentBright" Color="#C98BDB" />
+    <SolidColorBrush x:Key="ParamajaLeaf" Color="#7CC24E" />
+    <SolidColorBrush x:Key="ParamajaSurface" Color="#E6140F19" />
+    <SolidColorBrush x:Key="ParamajaMuted" Color="#A79CB0" />
+    <LinearGradientBrush x:Key="ParamajaBottomScrim" StartPoint="0%,0%" EndPoint="0%,100%">
+      <GradientStop Offset="0" Color="#000B0910" />
+      <GradientStop Offset="0.35" Color="#B30B0910" />
+      <GradientStop Offset="1" Color="#F20B0910" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="ParamajaTopScrim" StartPoint="0%,0%" EndPoint="0%,100%">
+      <GradientStop Offset="0" Color="#E60B0910" />
+      <GradientStop Offset="1" Color="#000B0910" />
+    </LinearGradientBrush>
+  </Styles.Resources>
+
+  <!-- Round, borderless icon buttons for the transport bar -->
+  <Style Selector="Button.icon">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="8" />
+    <Setter Property="CornerRadius" Value="20" />
+    <Setter Property="Foreground" Value="#EDE6F2" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.icon:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#33FFFFFF" />
+  </Style>
+  <Style Selector="Button.icon:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="#55A259B5" />
+  </Style>
+  <Style Selector="Button.icon PathIcon">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+  </Style>
+  <Style Selector="Button.big PathIcon">
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="28" />
+  </Style>
+
+  <Style Selector="Button.accent">
+    <Setter Property="Background" Value="{StaticResource ParamajaAccent}" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="18,10" />
+  </Style>
+  <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#B76FCA" />
+  </Style>
+  <Style Selector="Button.ghost">
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="18,10" />
+  </Style>
+
+  <!-- Small pill badges: HDR / HW / 4K / 5.1 -->
+  <Style Selector="Border.badge">
+    <Setter Property="Background" Value="#2EFFFFFF" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="6,2" />
+    <Setter Property="Margin" Value="3,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.badge.hdr">
+    <Setter Property="Background" Value="#66A259B5" />
+  </Style>
+  <Style Selector="Border.badge TextBlock">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="#F2EAF6" />
+  </Style>
+
+  <Style Selector="TextBlock.time">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="#E6DDEB" />
+    <Setter Property="FontFeatures" Value="+tnum" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="TextBlock.h1">
+    <Setter Property="FontSize" Value="30" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{StaticResource ParamajaMuted}" />
+  </Style>
+  <Style Selector="TextBlock.section">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource ParamajaAccentBright}" />
+    <Setter Property="Margin" Value="0,14,0,4" />
+  </Style>
+
+  <Style Selector="MenuFlyoutPresenter">
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="#F2181320" />
+  </Style>
+</Styles>

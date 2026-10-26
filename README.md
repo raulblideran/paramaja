@@ -1,11 +1,11 @@
-# Negs Player 🍆
+# Paramaja 🍆
 
 A modern, portable video player. It plays everything mpv/VLC plays (HEVC/H.265 included), tonemaps HDR to SDR on the fly, and streams straight from **magnet links**.
 
 ## Using it (Windows, portable)
 
-1. Unzip `NegsPlayer-portable-win-x64.zip` anywhere, such as a USB stick or Downloads.
-2. Run `NegsPlayer.exe`. Nothing is installed, and nothing is written to AppData or the registry.
+1. Unzip `Paramaja-portable-win-x64.zip` anywhere, such as a USB stick or Downloads.
+2. Run `Paramaja.exe`. Nothing is installed, and nothing is written to AppData or the registry.
 3. Drop a video on the window, press **Ctrl+V** to play a copied magnet link or URL, or use **Open file** / **Magnet link**.
 
 The app keeps all of its data next to the exe:
@@ -20,25 +20,25 @@ The app keeps all of its data next to the exe:
 ## Using it (Linux, as a Flatpak)
 
 ```sh
-flatpak install --user negs-player-1.0.0.flatpak
-flatpak run io.github.raulblideran.NegsPlayer      # or launch it from the app menu
+flatpak install --user paramaja-1.0.0.flatpak
+flatpak run io.github.raulblideran.Paramaja      # or launch it from the app menu
 ```
 
-The bundle carries its own libmpv, built with an ffmpeg that has every decoder. The runtime's ffmpeg leaves out HEVC, H.264, AAC and AC-3. The app also registers itself as the handler for `magnet:` links, so clicking one in a browser opens it in Negs Player.
+The bundle carries its own libmpv, built with an ffmpeg that has every decoder. The runtime's ffmpeg leaves out HEVC, H.264, AAC and AC-3. The app also registers itself as the handler for `magnet:` links, so clicking one in a browser opens it in Paramaja.
 
 A Flatpak can't write next to its own executable, so on Linux the data lives in the standard places:
 
 | Path | What |
 |---|---|
-| `~/.var/app/io.github.raulblideran.NegsPlayer/config/settings.json` | Settings |
-| `~/.var/app/io.github.raulblideran.NegsPlayer/config/portable_config/` | Optional `mpv.conf` / `input.conf` / shaders |
-| `~/.var/app/io.github.raulblideran.NegsPlayer/cache/torrents/` | Torrent data (deleted on exit by default) |
-| `~/Pictures/Negs Player/` | Screenshots |
+| `~/.var/app/io.github.raulblideran.Paramaja/config/settings.json` | Settings |
+| `~/.var/app/io.github.raulblideran.Paramaja/config/portable_config/` | Optional `mpv.conf` / `input.conf` / shaders |
+| `~/.var/app/io.github.raulblideran.Paramaja/cache/torrents/` | Torrent data (deleted on exit by default) |
+| `~/Pictures/Paramaja/` | Screenshots |
 
 It can read every file on the system (`--filesystem=host:ro`), because the file chooser portal only hands out one file at a time, and subtitles next to a video are auto-loaded by name. Drives under `/var/mnt` on Bazzite and other Atomic desktops aren't covered by `host`. Add them with:
 
 ```sh
-flatpak override --user --filesystem=/var/mnt:ro io.github.raulblideran.NegsPlayer
+flatpak override --user --filesystem=/var/mnt:ro io.github.raulblideran.Paramaja
 ```
 
 ### Building the Flatpak yourself
@@ -47,7 +47,7 @@ flatpak override --user --filesystem=/var/mnt:ro io.github.raulblideran.NegsPlay
 flatpak install --user flathub org.flatpak.Builder org.freedesktop.Sdk//25.08 \
     org.freedesktop.Sdk.Extension.rust-stable//25.08 org.freedesktop.Sdk.Extension.dotnet8//25.08
 
-./build/publish-flatpak.sh     # builds, installs for your user, writes dist/negs-player-<version>.flatpak
+./build/publish-flatpak.sh     # builds, installs for your user, writes dist/paramaja-<version>.flatpak
 ```
 
 The first build compiles FFmpeg, libplacebo, libass, LuaJIT and mpv. Later rebuilds only redo the app.
@@ -87,11 +87,11 @@ The manifest builds the Rust and .NET parts with `--share=network` so cargo and 
 ## Architecture
 
 ```
-NegsPlayer.App   (C# / Avalonia 11)  UI: welcome screen, overlay controls, dialogs, settings
+Paramaja.App   (C# / Avalonia 11)  UI: welcome screen, overlay controls, dialogs, settings
    │  P/Invoke
-   ├── NegsPlayer.Core  (C#)        libmpv bindings, PlayerService, settings, shortcuts
+   ├── Paramaja.Core  (C#)        libmpv bindings, PlayerService, settings, shortcuts
    │     └── libmpv-2.dll           playback, gpu-next HDR, hwdec, subtitles, screenshots
-   └── negs_torrent.dll (Rust)      librqbit session + localhost HTTP Range server + C ABI
+   └── paramaja_torrent.dll (Rust)      librqbit session + localhost HTTP Range server + C ABI
 ```
 
 mpv renders into a native child window (`--wid`), so the full gpu-next/D3D11 pipeline is kept. The controls are transparent overlay windows floated above the video.
@@ -104,18 +104,18 @@ Requirements: .NET 8 SDK, Rust (with the `x86_64-pc-windows-gnu` target and MinG
 
 ```bash
 ./build/test.sh              # fixtures + Rust + .NET tests (add --net for the real-swarm test)
-./build/publish-win.sh       # → dist/NegsPlayer-portable-win-x64.zip
-./build/publish-flatpak.sh   # → dist/negs-player-<version>.flatpak (see above)
-./build/fetch-libs.sh linux-x64 && dotnet run --project src/NegsPlayer.App   # run on Linux
-./build/make-icon.sh         # re-render the aubergine icon from Assets/negs.svg
+./build/publish-win.sh       # → dist/Paramaja-portable-win-x64.zip
+./build/publish-flatpak.sh   # → dist/paramaja-<version>.flatpak (see above)
+./build/fetch-libs.sh linux-x64 && dotnet run --project src/Paramaja.App   # run on Linux
+./build/make-icon.sh         # re-render the aubergine icon from Assets/paramaja.svg
 ```
 
-Set `NEGS_DEBUG=1` to write a verbose mpv log to `logs/mpv.log`.
+Set `PARAMAJA_DEBUG=1` to write a verbose mpv log to `logs/mpv.log`.
 
 ### Tests
 
-* **Rust** (`native/negs-torrent`): unit tests for magnet parsing, file selection and HTTP ranges. There's an offline end-to-end test (a local seeder → magnet with `x.pe` → HTTP range streaming → mpv playback) and an opt-in real-swarm test using Blender's *Sintel* (CC-BY).
-* **Core** (`tests/NegsPlayer.Core.Tests`): every generated mpv option is checked against real libmpv. Headless playback of generated fixtures checks:
+* **Rust** (`native/paramaja-torrent`): unit tests for magnet parsing, file selection and HTTP ranges. There's an offline end-to-end test (a local seeder → magnet with `x.pe` → HTTP range streaming → mpv playback) and an opt-in real-swarm test using Blender's *Sintel* (CC-BY).
+* **Core** (`tests/Paramaja.Core.Tests`): every generated mpv option is checked against real libmpv. Headless playback of generated fixtures checks:
   * HEVC Main10 HDR10 detection and 4K HEVC playback
   * 5.1/7.1 passthrough vs downmix, and no normalisation
   * exact frame step and back-step
@@ -124,7 +124,7 @@ Set `NEGS_DEBUG=1` to write a verbose mpv log to `logs/mpv.log`.
   * embedded/external subtitles and key forwarding
 
   The full C# → Rust → mpv path is also tested through a local seeder.
-* **App** (`tests/NegsPlayer.App.Tests`): view-model tests (shortcuts, magnet flow, settings persistence, auto-hide, badges) and Avalonia headless UI tests (controls bar, seek bar, settings, magnet dialog, welcome screen).
+* **App** (`tests/Paramaja.App.Tests`): view-model tests (shortcuts, magnet flow, settings persistence, auto-hide, badges) and Avalonia headless UI tests (controls bar, seek bar, settings, magnet dialog, welcome screen).
 
 Test media is generated by `tests/fixtures/make-fixtures.sh`, so no copyrighted content is needed.
 

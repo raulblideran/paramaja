@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{B4D78360-4275-4CA8-9818-64CB2798EA87}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Paramaja.Core", "src\Paramaja.Core\Paramaja.Core.csproj", "{C5BC8D00-9B63-4E0F-99BB-38CDE3BEC42C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{8F9F6574-C149-49CC-96C3-94B149316ACA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Paramaja.Core.Tests", "tests\Paramaja.Core.Tests\Paramaja.Core.Tests.csproj", "{EA32CD37-6B32-444B-821E-AC1F318DA385}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Paramaja.App", "src\Paramaja.App\Paramaja.App.csproj", "{B9CD9EA2-0912-48F4-8D80-3B659B410BFC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Paramaja.App.Tests", "tests\Paramaja.App.Tests\Paramaja.App.Tests.csproj", "{24817860-A3F7-45EB-91B8-BC1B46A2C5C4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C5BC8D00-9B63-4E0F-99BB-38CDE3BEC42C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C5BC8D00-9B63-4E0F-99BB-38CDE3BEC42C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C5BC8D00-9B63-4E0F-99BB-38CDE3BEC42C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C5BC8D00-9B63-4E0F-99BB-38CDE3BEC42C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EA32CD37-6B32-444B-821E-AC1F318DA385}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EA32CD37-6B32-444B-821E-AC1F318DA385}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EA32CD37-6B32-444B-821E-AC1F318DA385}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EA32CD37-6B32-444B-821E-AC1F318DA385}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B9CD9EA2-0912-48F4-8D80-3B659B410BFC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B9CD9EA2-0912-48F4-8D80-3B659B410BFC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B9CD9EA2-0912-48F4-8D80-3B659B410BFC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B9CD9EA2-0912-48F4-8D80-3B659B410BFC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{24817860-A3F7-45EB-91B8-BC1B46A2C5C4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{24817860-A3F7-45EB-91B8-BC1B46A2C5C4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{24817860-A3F7-45EB-91B8-BC1B46A2C5C4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{24817860-A3F7-45EB-91B8-BC1B46A2C5C4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{C5BC8D00-9B63-4E0F-99BB-38CDE3BEC42C} = {B4D78360-4275-4CA8-9818-64CB2798EA87}
+		{EA32CD37-6B32-444B-821E-AC1F318DA385} = {8F9F6574-C149-49CC-96C3-94B149316ACA}
+		{B9CD9EA2-0912-48F4-8D80-3B659B410BFC} = {B4D78360-4275-4CA8-9818-64CB2798EA87}
+		{24817860-A3F7-45EB-91B8-BC1B46A2C5C4} = {8F9F6574-C149-49CC-96C3-94B149316ACA}
+	EndGlobalSection
+EndGlobal

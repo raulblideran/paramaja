@@ -1,0 +1,96 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Paramaja.App.ViewModels"
+        x:Class="Paramaja.App.Views.SettingsWindow"
+        x:DataType="vm:MainViewModel"
+        Title="Settings — Paramaja" Icon="/Assets/paramaja.ico"
+        Width="720" Height="600" MinWidth="560" MinHeight="420"
+        WindowStartupLocation="CenterOwner" Background="#15111A">
+  <TabControl Margin="12" TabStripPlacement="Left">
+    <TabItem Header="Video">
+      <ScrollViewer>
+        <StackPanel Margin="16,0" Spacing="8">
+          <TextBlock Classes="section" Text="HDR" />
+          <RadioButton GroupName="hdr" IsChecked="{Binding HdrTonemap}" Content="Tonemap HDR to SDR on the fly (recommended for SDR monitors)" />
+          <RadioButton GroupName="hdr" IsChecked="{Binding HdrPassthrough}" Content="HDR passthrough (switch an HDR monitor into HDR mode)" />
+          <Grid ColumnDefinitions="*,Auto" IsEnabled="{Binding HdrTonemap}">
+            <TextBlock Text="Tonemapping curve" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" Width="160" ItemsSource="{Binding ToneMappingCurves}" SelectedItem="{Binding ToneMapping}" />
+          </Grid>
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="spline: balanced default · bt.2446a: brighter, closer to PotPlayer · bt.2390: the ITU reference curve · hable: filmic" />
+          <ToggleSwitch IsChecked="{Binding HdrDynamicPeak}" IsEnabled="{Binding HdrTonemap}"
+                        OnContent="Scene-adaptive brightness (measures each frame)" OffContent="Use the disc's static metadata" />
+          <StackPanel IsEnabled="{Binding HdrTonemap}">
+            <TextBlock Text="{Binding HdrContrastRecovery, StringFormat='Highlight detail recovery: {0:0.00}'}" />
+            <Slider Minimum="0" Maximum="1" Value="{Binding HdrContrastRecovery}" />
+          </StackPanel>
+
+          <TextBlock Classes="section" Text="Deinterlacing" />
+          <ComboBox SelectedIndex="{Binding DeinterlaceIndex}" Width="320">
+            <ComboBoxItem Content="Auto — only interlaced content" />
+            <ComboBoxItem Content="Always on" />
+            <ComboBoxItem Content="Off" />
+          </ComboBox>
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="Uses the GPU deinterlacer with hardware decoding, otherwise bwdif (motion-adaptive, high quality)." />
+
+          <TextBlock Classes="section" Text="Decoding" />
+          <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration (D3D11 / VA-API)" OffContent="Software decoding" />
+        </StackPanel>
+      </ScrollViewer>
+    </TabItem>
+
+    <TabItem Header="Audio">
+      <StackPanel Margin="16,0" Spacing="8">
+        <TextBlock Classes="section" Text="Surround" />
+        <ToggleSwitch IsChecked="{Binding DownmixToStereo}" OnContent="Downmix 5.1 / 7.1 to stereo" OffContent="Output original channels" />
+        <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                   Text="Off by default. Volume normalisation is always disabled — no ReplayGain, no loudness filters, no downmix normalisation." />
+        <TextBlock Classes="section" Text="Preferred audio languages" />
+        <TextBox Text="{Binding PreferredAudioLanguages}" Watermark="e.g. jpn,eng" Width="320" HorizontalAlignment="Left" />
+      </StackPanel>
+    </TabItem>
+
+    <TabItem Header="Subtitles">
+      <StackPanel Margin="16,0" Spacing="8">
+        <TextBlock Classes="section" Text="Loading" />
+        <ToggleSwitch IsChecked="{Binding AutoLoadExternalSubtitles}" OnContent="Auto-load matching subtitle files next to the video" OffContent="Only embedded subtitles" />
+        <TextBlock Classes="section" Text="Preferred subtitle languages" />
+        <TextBox Text="{Binding PreferredSubtitleLanguages}" Watermark="e.g. eng,spa" Width="320" HorizontalAlignment="Left" />
+        <TextBlock Classes="section" Text="{Binding SubtitleScale, StringFormat='Size: {0:0.00}×'}" />
+        <Slider Minimum="0.5" Maximum="2.5" Value="{Binding SubtitleScale}" Width="320" HorizontalAlignment="Left" />
+      </StackPanel>
+    </TabItem>
+
+    <TabItem Header="Torrents">
+      <StackPanel Margin="16,0" Spacing="8">
+        <TextBlock Classes="section" Text="Cache" />
+        <ToggleSwitch IsChecked="{Binding ClearTorrentCacheOnExit}" OnContent="Delete downloaded data when closing" OffContent="Keep downloaded data in the cache folder" />
+        <Button Content="Open cache folder" Command="{Binding OpenCacheFolderCommand}" />
+        <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                   Text="Only the file you're watching is downloaded, prioritised around the playhead so seeking works. Data lives in the 'cache' folder next to the app." />
+      </StackPanel>
+    </TabItem>
+
+    <TabItem Header="Playback">
+      <StackPanel Margin="16,0" Spacing="8">
+        <TextBlock Classes="section" Text="Seeking" />
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <TextBlock Text="Arrow key jump (seconds)" VerticalAlignment="Center" />
+          <NumericUpDown Value="{Binding SeekSeconds}" Minimum="1" Maximum="600" Increment="1" FormatString="0" Width="130" />
+        </StackPanel>
+        <TextBlock Classes="section" Text="Screenshots" />
+        <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                   Text="Lossless, uncompressed PNG at the video's native resolution (16-bit for HDR/10-bit sources), saved to the 'Screenshots' folder next to the app." />
+        <Button Content="Open screenshots folder" Command="{Binding OpenScreenshotsFolderCommand}" />
+      </StackPanel>
+    </TabItem>
+
+    <TabItem Header="Shortcuts">
+      <ScrollViewer>
+        <ItemsControl Margin="16,8" ItemsSource="{Binding Shortcuts}" x:Name="ShortcutList" />
+      </ScrollViewer>
+    </TabItem>
+  </TabControl>
+</Window>

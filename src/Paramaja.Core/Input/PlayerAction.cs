@@ -1,0 +1,32 @@
+namespace Paramaja.Core.Input;
+
+public enum PlayerAction
+{
+    TogglePause,
+    SeekForward,
+    SeekBackward,
+    SeekForwardLong,
+    SeekBackwardLong,
+    FrameStep,
+    FrameBackStep,
+    VolumeUp,
+    VolumeDown,
+    ToggleMute,
+    ToggleFullscreen,
+    ExitFullscreen,
+    Screenshot,
+    ScreenshotWithSubtitles,
+    ToggleDeinterlace,
+    ToggleStats,
+    ToggleHdrMode,
+    ToggleDownmix,
+    CycleAudioTrack,
+    CycleSubtitleTrack,
+    ToggleSubtitles,
+    SubtitleDelayUp,
+    SubtitleDelayDown,
+    OpenFile,
+    OpenMagnet,
+    PasteAndPlay,
+    Stop,
+}
