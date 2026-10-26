@@ -4,7 +4,7 @@ A modern, portable video player. It plays everything mpv/VLC plays (HEVC/H.265 i
 
 ## Using it (Windows, portable)
 
-1. Unzip `Paramaja-portable-win-x64.zip` anywhere, such as a USB stick or Downloads.
+1. Unzip `Paramaja-<version>-portable-win-x64.zip` anywhere, such as a USB stick or Downloads. To update, unzip a newer version over the old `Paramaja` folder: settings and screenshots are kept. The version is shown on the welcome screen and under Settings → About.
 2. Run `Paramaja.exe`. Nothing is installed, and nothing is written to AppData or the registry.
 3. Drop a video on the window, press **Ctrl+V** to play a copied link (magnet, YouTube, MEGA or any video URL), or use **Open file** / **Open link**.
 
@@ -107,7 +107,8 @@ Requirements: .NET 8 SDK, Rust (with the `x86_64-pc-windows-gnu` target and MinG
 
 ```bash
 ./build/test.sh              # fixtures + Rust + .NET tests (add --net for the real-swarm test)
-./build/publish-win.sh       # → dist/Paramaja-portable-win-x64.zip
+./build/bump-version.sh 1.2.0 "What changed"   # sets the version in the project, CHANGELOG.md and metainfo
+./build/publish-win.sh       # → dist/Paramaja-<version>-portable-win-x64.zip
 ./build/publish-flatpak.sh   # → dist/paramaja-<version>.flatpak (see above)
 ./build/fetch-libs.sh linux-x64 && dotnet run --project src/Paramaja.App   # run on Linux
 ./build/make-icon.sh         # re-render the aubergine icon from Assets/paramaja.svg
