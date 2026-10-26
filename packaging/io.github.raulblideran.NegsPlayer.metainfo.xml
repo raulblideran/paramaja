@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.raulblideran.NegsPlayer</id>
+
+  <name>Negs Player</name>
+  <summary>Play any video, with HDR tonemapping and magnet streaming</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <developer id="io.github.raulblideran">
+    <name>Raul Blideran</name>
+  </developer>
+
+  <description>
+    <p>
+      Negs Player plays what mpv and VLC play, HEVC and 10-bit included, and
+      keeps out of the way: one window, controls that hide when you are
+      watching, and a welcome screen that takes a dropped file or a pasted
+      magnet link.
+    </p>
+    <p>
+      HDR films are tonemapped to SDR on the fly, scene by scene, so they look
+      right on an ordinary monitor. On an HDR display, one key switches to
+      passthrough instead.
+    </p>
+    <p>
+      Paste a magnet link and it starts playing in seconds. Only the file you
+      are watching is downloaded, prioritised around the playhead, so seeking
+      works as it would on a local file.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>HDR10, HLG and Dolby Vision tonemapped to SDR, or passed through to an HDR display</li>
+      <li>Magnet link streaming, with a choice of file when a torrent has several</li>
+      <li>Volume is never normalised; 5.1 and 7.1 are kept unless you ask for a stereo downmix</li>
+      <li>Embedded and external subtitles, auto-loaded by file name</li>
+      <li>Lossless, uncompressed PNG screenshots at the video's own resolution</li>
+      <li>Frame-by-frame stepping, forwards and backwards</li>
+      <li>Automatic deinterlacing, only for interlaced content</li>
+      <li>Hardware-accelerated decoding for smooth 4K</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.raulblideran.NegsPlayer.desktop</launchable>
+
+  <url type="homepage">https://github.com/raulblideran/negs-player</url>
+  <url type="bugtracker">https://github.com/raulblideran/negs-player/issues</url>
+  <url type="vcs-browser">https://github.com/raulblideran/negs-player</url>
+
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+    <category>Player</category>
+  </categories>
+
+  <keywords>
+    <keyword>video</keyword>
+    <keyword>player</keyword>
+    <keyword>hdr</keyword>
+    <keyword>torrent</keyword>
+    <keyword>magnet</keyword>
+  </keywords>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <requires>
+    <display_length compare="ge">720</display_length>
+  </requires>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="1.0.0" date="2026-10-26">
+      <description>
+        <p>First release.</p>
+        <ul>
+          <li>HDR to SDR tonemapping with scene-adaptive brightness, and HDR passthrough</li>
+          <li>Magnet link streaming that downloads only the file being watched</li>
+          <li>Optional 5.1/7.1 stereo downmix, with volume never normalised</li>
+          <li>Uncompressed PNG screenshots, frame stepping and automatic deinterlacing</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+</component>

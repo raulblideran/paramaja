@@ -85,7 +85,7 @@ negs-player/
 - [x] Downmix: verify 5.1/7.1 → 2ch only when enabled; original channels otherwise
 - [x] Screenshots: PNG, compression 0, correct resolution, 10-bit where possible
 - [x] Deinterlace auto on 1080i fixture, off on progressive
-- [ ] Hwdec confirmed (`hwdec-current` ≠ `no`) on 4K HEVC — needs Windows (dev box's Homebrew mpv decodes in software even standalone); badge shows it live
+- [x] Hwdec confirmed on 4K HEVC 10-bit in the Flatpak (Vulkan decoding); Windows d3d11va still to confirm on real hardware
 
 ### Phase 5 — Testing (the "lot of testing" part)
 - [x] **Core integration tests (headless mpv, `vo=null`/`ao=null` or `vo=image`)**: each fixture opens; codec/colour params are correct; tracks enumerate; frame-back-step changes `estimated-frame-number` by −1; screenshot writes a valid PNG (check the IHDR header and zlib level 0); `audio-params/channel-count` is 6/8 without downmix and 2 with it; `af` stays empty (no normalisation)
@@ -105,3 +105,11 @@ negs-player/
 3. Paste the Sintel magnet. Playback should start within seconds, with peers/speed shown, and seeking should work.
 4. Toggle downmix on a 5.1 clip and check that the stats show 2ch; toggle it off and they show 6ch.
 5. Build the Windows zip, unzip it anywhere on Windows, and run it. `settings.json` should appear next to the exe, and a 4K HEVC clip should play with d3d11va.
+
+### Phase 7 — Linux Flatpak
+- [x] Manifest on freedesktop 25.08 (+ rust-stable, dotnet8): builds libmpv with its own ffmpeg (all decoders), libplacebo, libass, LuaJIT, libXpresent
+- [x] Desktop entry (incl. `magnet:` handler), metainfo, icon; Flatpak-aware data paths (XDG dirs, ~/Pictures/Negs Player)
+- [x] Native library probing: app dir → system loader → dev fallbacks (stops the sandbox loading the host's Homebrew libmpv)
+- [x] Packaging tests (manifest/desktop/metainfo/version consistency)
+- [x] Verified in the sandbox: HDR10 HEVC playback, 4K HEVC Vulkan hwdec, Sintel magnet streaming with 5.1 audio
+- [ ] Flathub: run packaging/flatpak/generate-sources.sh and drop --share=network from the build

@@ -105,4 +105,16 @@ public class SettingsTests
         Assert.True(Directory.Exists(p.Screenshots));
         Assert.True(Directory.Exists(p.TorrentCache));
     }
+
+    [Fact]
+    public void Flatpak_paths_use_the_sandbox_dirs_and_the_pictures_folder()
+    {
+        var home = TestEnvironment.TempDir();
+        var p = PortablePaths.ForFlatpak(Path.Combine(home, "config"), Path.Combine(home, "cache"), Path.Combine(home, "Pictures"));
+        Assert.Equal(Path.Combine(home, "config", "settings.json"), p.SettingsFile);
+        Assert.Equal(Path.Combine(home, "config", "portable_config"), p.MpvConfig);
+        Assert.Equal(Path.Combine(home, "cache", "torrents"), p.TorrentCache);
+        Assert.Equal(Path.Combine(home, "Pictures", "Negs Player"), p.Screenshots);
+        Assert.StartsWith(Path.Combine(home, "cache"), p.Logs);
+    }
 }

@@ -13,7 +13,7 @@ public sealed class DialogService(Window owner, Func<MainViewModel> vm) : IDialo
     {
         Patterns = ["*.mkv", "*.mp4", "*.m4v", "*.avi", "*.mov", "*.wmv", "*.ts", "*.m2ts", "*.mts", "*.webm", "*.flv",
                     "*.mpg", "*.mpeg", "*.vob", "*.ogv", "*.3gp", "*.hevc", "*.h265", "*.rmvb", "*.iso", "*.mka",
-                    "*.flac", "*.mp3", "*.m4a", "*.opus", "*.ogg", "*.wav", "*.ac3", "*.dts", "*.thd", "*.torrent"],
+                    "*.flac", "*.mp3", "*.m4a", "*.opus", "*.ogg", "*.wav", "*.ac3", "*.dts", "*.thd"],
     };
 
     private static readonly FilePickerFileType Subs = new("Subtitles")

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <radialGradient id="skin" cx="38%" cy="40%" r="75%">
+      <stop offset="0" stop-color="#B05BB8"/>
+      <stop offset="0.45" stop-color="#6E2A7A"/>
+      <stop offset="1" stop-color="#2E0D38"/>
+    </radialGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8BD45A"/>
+      <stop offset="1" stop-color="#3E8A2E"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- body: a plump aubergine leaning right -->
+  <path d="M150 62 C 196 70 222 112 214 160 C 206 210 160 240 112 236 C 62 232 30 196 40 156 C 48 124 78 112 96 96 C 112 82 120 58 150 62 Z" fill="url(#skin)"/>
+  <!-- highlight -->
+  <path d="M84 132 C 92 112 112 104 124 96 C 116 116 102 130 92 156 C 86 170 76 160 84 132 Z" fill="url(#shine)"/>
+  <!-- calyx -->
+  <path d="M120 70 C 132 46 168 40 192 54 C 178 58 172 66 170 78 C 160 68 150 70 146 84 C 140 74 130 72 120 70 Z" fill="url(#leaf)"/>
+  <path d="M148 66 C 134 58 116 60 104 72 C 118 72 128 78 132 88 C 136 78 142 72 148 66 Z" fill="url(#leaf)"/>
+  <!-- stem -->
+  <path d="M162 56 C 166 40 176 26 192 18 C 196 16 200 22 196 26 C 184 34 176 44 172 58 Z" fill="#3E8A2E"/>
+  <!-- play glyph -->
+  <path d="M110 140 L 110 196 L 158 168 Z" fill="#FFFFFF" fill-opacity="0.92"/>
+</svg>

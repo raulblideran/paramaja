@@ -9,3 +9,9 @@ dist/
 cache/
 Screenshots/
 libs/
+# flatpak-builder writes these beside the manifest; the build trees hold extracted
+# ffmpeg/mpv/libplacebo sources and reach gigabytes.
+.flatpak-builder/
+build-dir/
+repo/
+*.flatpak

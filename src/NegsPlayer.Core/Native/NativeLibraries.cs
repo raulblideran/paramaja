@@ -34,32 +34,54 @@ public static class NativeLibraries
         _ => [library],
     };
 
-    private static IEnumerable<string> CandidateDirectories()
+    /// <summary>Directories that belong to this app: always searched first.</summary>
+    private static IEnumerable<string> AppDirectories()
     {
         yield return AppContext.BaseDirectory;
         foreach (var d in SearchDirectories) yield return d;
         var env = Environment.GetEnvironmentVariable("NEGS_NATIVE_DIR");
         if (!string.IsNullOrEmpty(env)) yield return env;
-        if (!OperatingSystem.IsWindows())
-        {
-            yield return "/home/linuxbrew/.linuxbrew/lib";
-            yield return "/usr/local/lib";
-            yield return "/usr/lib64";
-            yield return "/usr/lib";
-        }
+    }
+
+    /// <summary>
+    /// Last-resort locations for a development checkout. They come after the system loader:
+    /// inside the Flatpak the host's /home is visible, and a Homebrew libmpv found there would be
+    /// loaded against the sandbox's libraries instead of the one built into /app/lib.
+    /// </summary>
+    private static IEnumerable<string> FallbackDirectories()
+    {
+        if (OperatingSystem.IsWindows()) yield break;
+        yield return "/home/linuxbrew/.linuxbrew/lib";
+        yield return "/usr/local/lib";
+    }
+
+    /// <summary>The order every load attempt follows, as "dir:&lt;path&gt;" or "system:&lt;name&gt;".</summary>
+    internal static IEnumerable<string> ProbeOrder(string library)
+    {
+        foreach (var name in CandidateNames(library))
+            foreach (var dir in AppDirectories())
+                yield return "dir:" + Path.Combine(dir, name);
+        foreach (var name in CandidateNames(library))
+            yield return "system:" + name;
+        foreach (var name in CandidateNames(library))
+            foreach (var dir in FallbackDirectories())
+                yield return "dir:" + Path.Combine(dir, name);
     }
 
     private static IntPtr Resolve(string library, Assembly assembly, DllImportSearchPath? searchPath)
     {
         if (library is not (Mpv or Torrent)) return IntPtr.Zero;
-        foreach (var name in CandidateNames(library))
+        foreach (var probe in ProbeOrder(library))
         {
-            foreach (var dir in CandidateDirectories())
+            if (probe.StartsWith("dir:"))
             {
-                var path = Path.Combine(dir, name);
+                var path = probe[4..];
                 if (File.Exists(path) && NativeLibrary.TryLoad(path, out var h)) return h;
             }
-            if (NativeLibrary.TryLoad(name, assembly, searchPath, out var handle)) return handle;
+            else if (NativeLibrary.TryLoad(probe[7..], assembly, searchPath, out var handle))
+            {
+                return handle;
+            }
         }
         return IntPtr.Zero;
     }
