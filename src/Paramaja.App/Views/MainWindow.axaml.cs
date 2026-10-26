@@ -169,9 +169,13 @@ public partial class MainWindow : Window
         if (_top.Topmost != topmost) _top.Topmost = topmost;
         if (_bottom.Topmost != topmost) _bottom.Topmost = topmost;
 
+        var area = visible
+            ? OverlayPlacement.PlayerArea(Video.PointToScreen(new Point(0, 0)), Video.Bounds.Size, RenderScaling,
+                Screens.ScreenFromWindow(this)?.Bounds, fullscreen)
+            : default;
         if (visible)
         {
-            _top.Width = _bottom.Width = Video.Bounds.Width;
+            _top.Width = _bottom.Width = area.Width / RenderScaling;
             _top.Height = TopBar.BarHeight;
             _bottom.Height = ControlsBar.BarHeight;
         }
@@ -181,9 +185,7 @@ public partial class MainWindow : Window
             if (_bottom.IsVisible) _bottom.Hide();
             return;
         }
-        var (top, bottom) = OverlayPlacement.Place(
-            visible ? Video.PointToScreen(new Point(0, 0)) : default,
-            Video.Bounds.Height, ControlsBar.BarHeight, RenderScaling, visible);
+        var (top, bottom) = OverlayPlacement.Place(area, ControlsBar.BarHeight, RenderScaling, visible);
         if (_top.Position != top) _top.Position = top;
         if (_bottom.Position != bottom) _bottom.Position = bottom;
         if (!_top.IsVisible) _top.Show(this);

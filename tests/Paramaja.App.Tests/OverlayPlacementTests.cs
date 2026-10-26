@@ -8,15 +8,28 @@ public class OverlayPlacementTests
     [Fact]
     public void Visible_bars_sit_at_the_top_and_bottom_of_the_video()
     {
-        var (top, bottom) = OverlayPlacement.Place(new PixelPoint(100, 50), videoHeight: 720, bottomBarHeight: 118, scale: 1.5, visible: true);
+        var area = OverlayPlacement.PlayerArea(new PixelPoint(100, 50), new Size(1280, 720), 1.5, null, fullscreen: false);
+        var (top, bottom) = OverlayPlacement.Place(area, bottomBarHeight: 118, scale: 1.5, visible: true);
         Assert.Equal(new PixelPoint(100, 50), top);
-        Assert.Equal(new PixelPoint(100, 50 + (int)Math.Round((720 - 118) * 1.5)), bottom);
+        Assert.Equal(new PixelPoint(100, 50 + (int)Math.Round(720 * 1.5) - (int)Math.Round(118 * 1.5)), bottom);
+    }
+
+    [Fact]
+    public void In_fullscreen_the_bottom_bar_sits_on_the_monitors_bottom_edge()
+    {
+        var monitor = new PixelRect(2560, 0, 2560, 1440);
+        // The video control still reports a size short of the monitor (stale after the switch).
+        var area = OverlayPlacement.PlayerArea(new PixelPoint(2560, 0), new Size(2048, 1116), 1.25, monitor, fullscreen: true);
+        Assert.Equal(monitor, area);
+        var (top, bottom) = OverlayPlacement.Place(area, bottomBarHeight: 118, scale: 1.25, visible: true);
+        Assert.Equal(new PixelPoint(2560, 0), top);
+        Assert.Equal(new PixelPoint(2560, 1440 - 148), bottom);
     }
 
     [Fact]
     public void Hidden_bars_are_parked_off_screen_not_hidden()
     {
-        var (top, bottom) = OverlayPlacement.Place(new PixelPoint(0, 0), 1080, 118, 1, visible: false);
+        var (top, bottom) = OverlayPlacement.Place(new PixelRect(0, 0, 1920, 1080), 118, 1, visible: false);
         Assert.Equal(OverlayPlacement.Parked, top);
         Assert.Equal(OverlayPlacement.Parked, bottom);
         Assert.True(OverlayPlacement.Parked.X < -10000 && OverlayPlacement.Parked.Y < -10000);

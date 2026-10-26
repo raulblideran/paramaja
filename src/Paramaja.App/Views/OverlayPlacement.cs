@@ -21,12 +21,19 @@ public static class OverlayPlacement
     /// </summary>
     public static bool ParkInsteadOfHiding => OperatingSystem.IsWindows();
 
-    public static (PixelPoint Top, PixelPoint Bottom) Place(
-        PixelPoint videoOrigin, double videoHeight, double bottomBarHeight, double scale, bool visible)
+    /// <summary>
+    /// The area the bars span, in physical pixels. In fullscreen that is the whole monitor:
+    /// the video control's own bounds can lag behind the switch to fullscreen and leave the
+    /// bottom bar floating above the bottom edge.
+    /// </summary>
+    public static PixelRect PlayerArea(PixelPoint videoOrigin, Size videoSize, double scale, PixelRect? screen, bool fullscreen) =>
+        fullscreen && screen is { } s ? s : new PixelRect(videoOrigin, PixelSize.FromSize(videoSize, scale));
+
+    public static (PixelPoint Top, PixelPoint Bottom) Place(PixelRect area, double bottomBarHeight, double scale, bool visible)
     {
         if (!visible) return (Parked, Parked);
-        var bottomY = videoOrigin.Y + (int)Math.Round((videoHeight - bottomBarHeight) * scale);
-        return (videoOrigin, new PixelPoint(videoOrigin.X, bottomY));
+        var bottomY = area.Bottom - (int)Math.Round(bottomBarHeight * scale);
+        return (area.TopLeft, new PixelPoint(area.X, bottomY));
     }
 
     public static PixelRect WindowRect(PixelPoint position, Size clientSize, double scale) =>

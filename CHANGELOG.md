@@ -3,6 +3,10 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.3.1 — 2026-10-26
+
+- In fullscreen the controls bar sits on the bottom edge of the screen again, with no strip of video below it
+
 ## 1.3.0 — 2026-10-26
 
 - One **Open** menu: Open file, Open folder (Ctrl+Shift+O) and Open link. Folders and
