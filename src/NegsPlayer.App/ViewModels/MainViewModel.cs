@@ -209,6 +209,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             ShowStatus("Finding peers and fetching torrent info…", sticky: true);
             if (!_torrents.IsStarted)
             {
+                // Leftovers from a crash or a killed process would otherwise pile up.
+                if (Settings.ClearTorrentCacheOnExit) ClearTorrentCache();
                 _torrents.Start(new TorrentEngineConfig
                 {
                     CacheDir = _paths.TorrentCache,

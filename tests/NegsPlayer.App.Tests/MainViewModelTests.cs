@@ -342,6 +342,15 @@ public class TorrentTests
     }
 
     [Fact]
+    public async Task Leftover_cache_from_a_crash_is_cleared_when_the_engine_starts()
+    {
+        using var r = new Rig();
+        Directory.CreateDirectory(Path.Combine(r.Paths.TorrentCache, "old-torrent"));
+        await r.Vm.OpenInputAsync(Magnet);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(r.Paths.TorrentCache));
+    }
+
+    [Fact]
     public void Dispose_keeps_cache_when_asked()
     {
         using var r = new Rig(new PlayerSettings { ClearTorrentCacheOnExit = false });
