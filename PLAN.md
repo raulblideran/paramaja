@@ -63,25 +63,25 @@ negs-player/
 - [x] Unit tests for options mapping and settings round-trip
 
 ### Phase 2 — UI (`NegsPlayer.App`)
-- [ ] Main window with `NativeControlHost` hosting the mpv HWND (X11 window id on Linux)
-- [ ] Overlay controls window: play/pause, seek bar with hover preview time, volume, time, fullscreen, auto-hide on idle
-- [ ] Menus: audio track, subtitle track (+ load external), HDR mode, downmix toggle, deinterlace, screenshot
-- [ ] Open file / drag-drop / command-line arg / recent files
-- [ ] Keyboard shortcuts (Space, ←/→, `,`/`.`, F, S, Shift+S, D, I, Ctrl+V for magnet)
-- [ ] Settings panel; dark fluent theme; aubergine accent colour
-- [ ] Aubergine icon SVG → `.ico`, wired to exe and window
+- [x] Main window with `NativeControlHost` hosting the mpv HWND (X11 window id on Linux)
+- [x] Overlay controls window: play/pause, seek bar with hover preview time, volume, time, fullscreen, auto-hide on idle
+- [x] Menus: audio track, subtitle track (+ load external), HDR mode, downmix toggle, deinterlace, screenshot
+- [x] Open file / drag-drop / command-line arg / recent files
+- [x] Keyboard shortcuts (Space, ←/→, `,`/`.`, F, S, Shift+S, D, I, Ctrl+V for magnet)
+- [x] Settings panel; dark fluent theme; aubergine accent colour
+- [x] Aubergine icon SVG → `.ico`, wired to exe and window
 
 ### Phase 3 — Torrent streaming (`native/negs-torrent`) ⭐
 - [x] Rust crate on `librqbit`: session in `./cache`, add magnet, metadata resolve, file list
 - [x] Choose largest video file by default; API to choose another
 - [x] Localhost HTTP server with Range support; streaming reader that blocks/prioritises pieces at the read position
 - [x] C ABI (JSON in/out): `nt_init`, `nt_add`, `nt_select`, `nt_stats`, `nt_remove`, `nt_shutdown`, `nt_free_string`; magnets also honour `x.pe` peer hints
-- [ ] C# interop + `TorrentService`; magnet dialog in UI; buffering/peers/speed panel
-- [ ] Cache cleanup options (on exit / keep)
+- [x] C# interop + `TorrentService`; magnet dialog in UI; buffering/peers/speed panel
+- [x] Cache cleanup options (on exit / keep)
 - [x] Rust unit tests (magnet parsing, file selection, range handling)
 
 ### Phase 4 — Feature polish
-- [ ] HDR: verify tonemap on HDR10 fixture; DV profile 5/8 samples; passthrough toggle
+- [x] HDR: verify tonemap on HDR10 fixture; DV profile 5/8 samples; passthrough toggle
 - [x] Downmix: verify 5.1/7.1 → 2ch only when enabled; original channels otherwise
 - [x] Screenshots: PNG, compression 0, correct resolution, 10-bit where possible
 - [x] Deinterlace auto on 1080i fixture, off on progressive
@@ -91,7 +91,7 @@ negs-player/
 - [x] **Core integration tests (headless mpv, `vo=null`/`ao=null` or `vo=image`)**: each fixture opens; codec/colour params are correct; tracks enumerate; frame-back-step changes `estimated-frame-number` by −1; screenshot writes a valid PNG (check the IHDR header and zlib level 0); `audio-params/channel-count` is 6/8 without downmix and 2 with it; `af` stays empty (no normalisation)
 - [x] **Torrent integration (offline, deterministic)**: create a `.torrent` from a fixture, seed it with a second librqbit session on localhost, add by magnet, stream via HTTP, check that bytes match and mpv plays it, and that a seek mid-file works
 - [x] **Torrent integration (network, opt-in `[Trait("net")]`)**: Sintel/Big Buck Bunny public magnets. Check that metadata resolves, the first frame plays within a timeout, and a seek works
-- [ ] **UI tests (Avalonia.Headless)**: view-model commands, shortcut bindings, settings panel persists, magnet dialog validation
+- [x] **UI tests (Avalonia.Headless)**: view-model commands, shortcut bindings, settings panel persists, magnet dialog validation
 - [ ] `cargo test` + `dotnet test` scripts; CI workflow (GitHub Actions, windows-latest + ubuntu) — optional
 
 ### Phase 6 — Windows portable release

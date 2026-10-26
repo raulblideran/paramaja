@@ -1,0 +1,168 @@
+<v:OverlayWindow xmlns="https://github.com/avaloniaui"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:v="using:NegsPlayer.App.Views"
+                 xmlns:vm="using:NegsPlayer.App.ViewModels"
+                 xmlns:c="using:NegsPlayer.App.Controls"
+                 x:Class="NegsPlayer.App.Views.ControlsBar"
+                 x:DataType="vm:MainViewModel"
+                 Title="Negs Player controls" Height="118">
+  <Border Background="{StaticResource NegsBottomScrim}" Padding="14,18,14,10">
+    <Grid RowDefinitions="Auto,Auto">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <TextBlock Classes="time" Text="{Binding PositionText}" Margin="0,10,0,0" />
+        <c:SeekBar x:Name="Seek" Grid.Column="1" Margin="6,0" Value="{Binding Position}"
+                   Maximum="{Binding Duration}" Buffered="{Binding BufferedUntil}" />
+        <TextBlock Grid.Column="2" Classes="time" Text="{Binding DurationText}" Margin="0,10,0,0" />
+      </Grid>
+
+      <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,2,0,0">
+        <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+          <Button Classes="icon" Command="{Binding FrameBackStepCommand}" ToolTip.Tip="Previous frame ( , )">
+            <PathIcon Data="{StaticResource IconFramePrev}" />
+          </Button>
+          <Button Classes="icon big" Command="{Binding TogglePauseCommand}" ToolTip.Tip="Play / Pause (Space)">
+            <Panel>
+              <PathIcon Data="{StaticResource IconPlay}" IsVisible="{Binding IsPaused}" />
+              <PathIcon Data="{StaticResource IconPause}" IsVisible="{Binding !IsPaused}" />
+            </Panel>
+          </Button>
+          <Button Classes="icon" Command="{Binding FrameStepCommand}" ToolTip.Tip="Next frame ( . )">
+            <PathIcon Data="{StaticResource IconFrameNext}" />
+          </Button>
+          <Button Classes="icon" Command="{Binding ToggleMuteCommand}" ToolTip.Tip="Mute (M)" Margin="8,0,0,0">
+            <Panel>
+              <PathIcon Data="{StaticResource IconVolume}" IsVisible="{Binding !IsMuted}" />
+              <PathIcon Data="{StaticResource IconMute}" IsVisible="{Binding IsMuted}" />
+            </Panel>
+          </Button>
+          <Slider Width="110" Minimum="0" Maximum="150" Value="{Binding Volume}" VerticalAlignment="Center"
+                  ToolTip.Tip="Volume (↑/↓, wheel) — never normalised" Focusable="False" />
+          <TextBlock Classes="time muted" Text="{Binding Volume, StringFormat={}{0:0}%}" Margin="6,0,0,0" FontSize="12" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <Border Classes="badge hdr" IsVisible="{Binding HdrBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding HdrBadge}" />
+          </Border>
+          <Border Classes="badge" IsVisible="{Binding ResolutionBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding ResolutionBadge}" />
+          </Border>
+          <Border Classes="badge" IsVisible="{Binding DecoderBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding DecoderBadge}" />
+          </Border>
+          <Border Classes="badge" IsVisible="{Binding AudioBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding AudioBadge}" />
+          </Border>
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+          <Button Classes="icon" ToolTip.Tip="Subtitles">
+            <PathIcon Data="{StaticResource IconSubtitles}" />
+            <Button.Flyout>
+              <Flyout Placement="TopEdgeAlignedRight">
+                <StackPanel Width="320" Spacing="4">
+                  <TextBlock Classes="section" Text="Subtitles" Margin="0,0,0,4" />
+                  <ItemsControl ItemsSource="{Binding SubtitleTracks}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:TrackItem">
+                        <RadioButton GroupName="subs" Content="{Binding Label}" IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                     Command="{Binding $parent[v:ControlsBar].((vm:MainViewModel)DataContext).SelectSubtitleCommand}"
+                                     CommandParameter="{Binding}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <Button Content="Load subtitle file…" Command="{Binding LoadSubtitleCommand}" Margin="0,6,0,0" />
+                  <TextBlock Classes="section" Text="Size" />
+                  <Slider Minimum="0.5" Maximum="2.5" Value="{Binding SubtitleScale}" />
+                  <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                             Text="J cycles tracks · V hides · Z / X shift timing by 0.1 s" />
+                </StackPanel>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+
+          <Button Classes="icon" ToolTip.Tip="Audio">
+            <PathIcon Data="{StaticResource IconAudio}" />
+            <Button.Flyout>
+              <Flyout Placement="TopEdgeAlignedRight">
+                <StackPanel Width="320" Spacing="4">
+                  <TextBlock Classes="section" Text="Audio track" Margin="0,0,0,4" />
+                  <ItemsControl ItemsSource="{Binding AudioTracks}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:TrackItem">
+                        <RadioButton GroupName="audio" Content="{Binding Label}" IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                     Command="{Binding $parent[v:ControlsBar].((vm:MainViewModel)DataContext).SelectAudioCommand}"
+                                     CommandParameter="{Binding}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock Classes="section" Text="Surround (5.1 / 7.1)" />
+                  <ToggleSwitch IsChecked="{Binding DownmixToStereo}" OnContent="Downmix to stereo"
+                                OffContent="Keep original channels" />
+                  <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                             Text="Shift+D toggles. Volume is never normalised — what's on the disc is what you hear." />
+                </StackPanel>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+
+          <Button Classes="icon" ToolTip.Tip="Video, HDR &amp; deinterlacing">
+            <PathIcon Data="{StaticResource IconVideo}" />
+            <Button.Flyout>
+              <Flyout Placement="TopEdgeAlignedRight">
+                <StackPanel Width="340" Spacing="6">
+                  <TextBlock Classes="section" Text="HDR" Margin="0,0,0,2" />
+                  <RadioButton GroupName="hdr" IsChecked="{Binding HdrTonemap}" Content="Tonemap to SDR (for normal displays)" />
+                  <RadioButton GroupName="hdr" IsChecked="{Binding HdrPassthrough}" Content="HDR passthrough (HDR display)" />
+                  <Grid ColumnDefinitions="*,Auto" IsEnabled="{Binding HdrTonemap}">
+                    <TextBlock Text="Tonemapping curve" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1" Width="140" ItemsSource="{Binding ToneMappingCurves}" SelectedItem="{Binding ToneMapping}" />
+                  </Grid>
+                  <ToggleSwitch IsChecked="{Binding HdrDynamicPeak}" IsEnabled="{Binding HdrTonemap}"
+                                OnContent="Scene-adaptive brightness" OffContent="Static brightness (metadata)" />
+                  <TextBlock Classes="section" Text="Deinterlacing" />
+                  <ComboBox SelectedIndex="{Binding DeinterlaceIndex}" HorizontalAlignment="Stretch">
+                    <ComboBoxItem Content="Auto — only interlaced content" />
+                    <ComboBoxItem Content="Always on" />
+                    <ComboBoxItem Content="Off" />
+                  </ComboBox>
+                  <TextBlock Classes="section" Text="Decoding" />
+                  <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration" OffContent="Software decoding" />
+                  <Button Content="Show playback statistics (I)" Command="{Binding ToggleStatsCommand}" Margin="0,4,0,0" />
+                </StackPanel>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+
+          <Button Classes="icon" Command="{Binding ScreenshotCommand}" CommandParameter="{x:False}"
+                  ToolTip.Tip="Lossless PNG screenshot (S, Shift+S with subtitles)">
+            <PathIcon Data="{StaticResource IconCamera}" />
+          </Button>
+
+          <Button Classes="icon" ToolTip.Tip="Open">
+            <PathIcon Data="{StaticResource IconFolder}" />
+            <Button.Flyout>
+              <MenuFlyout Placement="TopEdgeAlignedRight">
+                <MenuItem Header="Open file…" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
+                <MenuItem Header="Open magnet link…" InputGesture="Ctrl+U" Command="{Binding OpenMagnetCommand}" />
+                <MenuItem Header="Play from clipboard" InputGesture="Ctrl+V" Command="{Binding PasteAndPlayCommand}" />
+                <Separator />
+                <MenuItem Header="Screenshots folder" Command="{Binding OpenScreenshotsFolderCommand}" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
+
+          <Button Classes="icon" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings">
+            <PathIcon Data="{StaticResource IconSettings}" />
+          </Button>
+          <Button Classes="icon" Command="{Binding ToggleFullscreenCommand}" ToolTip.Tip="Fullscreen (F, double-click)">
+            <Panel>
+              <PathIcon Data="{StaticResource IconFullscreen}" IsVisible="{Binding !IsFullscreen}" />
+              <PathIcon Data="{StaticResource IconFullscreenExit}" IsVisible="{Binding IsFullscreen}" />
+            </Panel>
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Grid>
+  </Border>
+</v:OverlayWindow>

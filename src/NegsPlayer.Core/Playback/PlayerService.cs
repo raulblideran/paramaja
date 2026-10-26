@@ -9,7 +9,7 @@ namespace NegsPlayer.Core.Playback;
 /// Owns the mpv instance and exposes playback as simple commands + state.
 /// All events fire on mpv's event thread.
 /// </summary>
-public sealed class PlayerService : IDisposable
+public sealed class PlayerService : IPlayer
 {
     public const string KeyMessage = "negs-key";
     public const string MouseMessage = "negs-mouse";

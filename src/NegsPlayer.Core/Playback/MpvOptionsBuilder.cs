@@ -34,7 +34,13 @@ public static class MpvOptionsBuilder
         yield return P("config-dir", paths.MpvConfig);
         yield return P("load-scripts", "no");
         yield return P("ytdl", "no");
-        if (windowId is { } wid) yield return P("wid", wid.ToString(CultureInfo.InvariantCulture));
+        if (windowId is { } wid)
+        {
+            yield return P("wid", wid.ToString(CultureInfo.InvariantCulture));
+            // On Linux the host window is an X11 (XWayland) window; mpv would otherwise
+            // pick a Wayland surface of its own and ignore the embedding handle.
+            if (OperatingSystem.IsLinux()) yield return P("gpu-context", "x11vk");
+        }
         // Our own UI handles input & controls; mpv's built-in OSC and bindings are off.
         yield return P("osc", "no");
         yield return P("input-default-bindings", "no");
@@ -50,6 +56,8 @@ public static class MpvOptionsBuilder
         yield return P("hr-seek", "yes");
         yield return P("hr-seek-framedrop", "no");
         yield return P("terminal", "no");
+        // Drops are handled by the app (magnet text, subtitles), not by mpv's video window.
+        yield return P("drag-and-drop", "no");
     }
 
     public static IEnumerable<KeyValuePair<string, string>> Video(PlayerSettings s)
