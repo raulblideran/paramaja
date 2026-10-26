@@ -1,0 +1,84 @@
+# Publishes a GitHub Release when a version tag is pushed:
+#   ./build/bump-version.sh 1.3.3 "Summary"   # then fill in CHANGELOG.md and commit
+#   git tag v1.3.3 && git push origin main v1.3.3
+# Builds the portable Windows zip and the Flatpak bundle from that commit, the same way
+# build/publish-win.sh and build/publish-flatpak.sh do locally, and attaches both with the
+# version's CHANGELOG.md section as the release notes.
+name: release
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      # A tag that doesn't match the project version would publish a mislabelled build.
+      - id: v
+        run: |
+          VERSION=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' src/Paramaja.App/Paramaja.App.csproj)
+          [ "v$VERSION" = "$GITHUB_REF_NAME" ] || { echo "::error::tag $GITHUB_REF_NAME but the project is $VERSION"; exit 1; }
+          grep -q "^## $VERSION " CHANGELOG.md || { echo "::error::CHANGELOG.md has no $VERSION section"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      # The torrent engine is cross-compiled with MinGW, as on a Linux dev machine.
+      - run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 p7zip-full cmake nasm
+      - run: rustup target add x86_64-pc-windows-gnu
+      - run: ./build/publish-win.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/Paramaja-${{ needs.check.outputs.version }}-portable-win-x64.zip
+          if-no-files-found: error
+
+  flatpak:
+    needs: check
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      # Caches the built FFmpeg, libplacebo, mpv and friends; only the app is rebuilt
+      # until the manifest's other modules change.
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6.8
+        with:
+          manifest-path: packaging/io.github.raulblideran.Paramaja.yaml
+          bundle: paramaja-${{ needs.check.outputs.version }}.flatpak
+          cache-key: flatpak-builder-${{ hashFiles('packaging/io.github.raulblideran.Paramaja.yaml') }}
+          artifact-name: flatpak
+
+  release:
+    needs: [check, windows, flatpak]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: assets, merge-multiple: true }
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="${{ needs.check.outputs.version }}" '
+            /^## / { if (found) exit; if (index($0, "## " v " ") == 1) { found = 1; next } }
+            found' CHANGELOG.md > notes.md
+          printf '\nEarlier versions: [CHANGELOG.md](https://github.com/%s/blob/%s/CHANGELOG.md)\n' \
+            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" >> notes.md
+          cat notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la assets
+          gh release create "$GITHUB_REF_NAME" assets/*.zip assets/*.flatpak \
+            --title "Paramaja ${{ needs.check.outputs.version }}" --notes-file notes.md

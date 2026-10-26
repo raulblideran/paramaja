@@ -121,6 +121,18 @@ Requirements: .NET 8 SDK, Rust (with the `x86_64-pc-windows-gnu` target and MinG
 ./build/make-icon.sh         # re-render the aubergine icon from Assets/paramaja.svg
 ```
 
+### Releases
+
+Pushing a version tag publishes a GitHub Release: `.github/workflows/release.yml` builds the
+Windows zip and the Flatpak from that commit and attaches both, with the version's
+CHANGELOG.md section as the notes. The tag must match the project version.
+
+```bash
+./build/bump-version.sh 1.3.3 "What changed"   # then list the changes in CHANGELOG.md
+git commit -am "1.3.3: what changed"
+git tag v1.3.3 && git push origin main v1.3.3
+```
+
 Set `PARAMAJA_DEBUG=1` to write a verbose mpv log to `logs/mpv.log`.
 
 ### Tests
