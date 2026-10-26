@@ -24,6 +24,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private DateTime _lastQuip = DateTime.MinValue;
     private (int X, int Y)? _lastPointer;
     private readonly YtDlp _ytdlp;
+    private readonly PlaybackHealth _health = new();
+    private MediaSource _source = MediaSource.None;
+    [ObservableProperty] private string _renderProfileText = "";
 
     public PlayerSettings Settings { get; }
     public IDialogService? Dialogs { get; set; }
@@ -109,6 +112,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _player.TracksChanged += () => _ui.Post(SyncTracks);
         _player.KeyPressed += key => _ui.Post(() => HandleKey(key));
         _player.MouseMoved += () => _ui.Post(NotifyActivity);
+        _player.FileLoaded += () => _ui.Post(_health.Reset);
+        _player.RenderProfileChanged += p => _ui.Post(() => RenderProfileText = DescribeProfile(p));
+        RenderProfileText = DescribeProfile(_player.RenderProfile);
         _player.EndFile += (reason, error) => _ui.Post(() =>
         {
             if (reason == EndFileReason.Error) ShowStatus($"Can't play this: {error}");
@@ -214,6 +220,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 return;
         }
         CloseTorrent();
+        _source = kind == InputKind.File ? MediaSource.Local : MediaSource.Web;
         _player.Open(value, streaming: InputClassifier.IsStreaming(kind));
         Remember(value);
     }
@@ -246,6 +253,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 return;
             }
             var file = info.Files.First(f => f.Index == fileIdx);
+            _source = MediaSource.Torrent;
             _player!.Open(info.StreamUrl, file.FileName, streaming: true);
             Remember(magnet);
             ShowStatus($"Streaming {file.FileName}");
@@ -284,6 +292,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             EnsureEngine();
             var info = await _torrents.AddMegaAsync(link, TimeSpan.FromSeconds(30));
             CloseTorrent();
+            _source = MediaSource.Mega;
             _player!.Open(info.StreamUrl, info.Name, streaming: true);
             Remember(link);
             ShowStatus($"Streaming {info.Name} from MEGA");
@@ -430,6 +439,41 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     [RelayCommand] private void OpenCacheFolder() => Dialogs?.OpenFolder(_paths.TorrentCache);
 
+    internal string DescribeProfile(RenderProfile p) =>
+        Settings.RenderQuality == RenderQuality.Auto ? $"Auto is using {p}" : $"Using {p}";
+
+    /// <summary>
+    /// Fed about once a second by the view. With Auto rendering, sustained frame drops
+    /// switch to the Fast profile for the rest of the session.
+    /// </summary>
+    public void RefreshHealth()
+    {
+        if (_player is null || IsIdle) return;
+        _health.Add(_player.SampleHealth());
+        if (Settings.RenderQuality == RenderQuality.Auto && _player.RenderProfile != RenderProfile.Fast && _health.RenderingStruggling)
+        {
+            _player.FallBackToFastRendering();
+            _health.Reset(); // judge the new profile on its own frames
+            const string msg = "Frames were dropping, so Paramaja switched to Fast rendering (Settings → Video → Rendering)";
+            _player.ShowText(msg, 5000);
+            ShowStatus(msg);
+        }
+    }
+
+    public string BuildDiagnostics() => _player is null
+        ? $"{AppInfo.Name} {AppInfo.Display}\nNothing is playing."
+        : DiagnosticsReport.Build(_player.State, Settings, _player.RenderProfile, _health, _source, TorrentStatus);
+
+    /// <summary>Copies a report to paste to whoever is helping; play the problem video first.</summary>
+    [RelayCommand]
+    private async Task CopyDiagnostics()
+    {
+        if (Dialogs is null) return;
+        await Dialogs.CopyToClipboardAsync(BuildDiagnostics());
+        ShowStatus("Diagnostics copied: paste them to whoever is helping you.");
+        _player?.ShowText("Diagnostics copied to the clipboard");
+    }
+
     /// <summary>Sites (YouTube especially) change often; a yt-dlp update fixes most failures.</summary>
     [RelayCommand]
     private async Task UpdateYtDlp()
@@ -502,6 +546,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case PlayerAction.OpenLink: _ = OpenLink(); break;
             case PlayerAction.PasteAndPlay: _ = PasteAndPlay(); break;
             case PlayerAction.Stop: CloseTorrent(); p?.Stop(); break;
+            case PlayerAction.CopyDiagnostics: _ = CopyDiagnostics(); break;
         }
     }
 

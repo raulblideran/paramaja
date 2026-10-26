@@ -16,7 +16,8 @@ public static class MpvOptionsBuilder
         o.AddRange(Core(paths, windowId));
         o.AddRange(Ytdl(ytdlp ?? new YtDlp(AppContext.BaseDirectory)));
         o.AddRange(Video(s));
-        o.AddRange(Hdr(s));
+        o.AddRange(Scaling(InitialProfile(s.RenderQuality)));
+        o.AddRange(Hdr(s, InitialProfile(s.RenderQuality)));
         o.AddRange(Deinterlace(s));
         o.AddRange(Audio(s));
         o.AddRange(Subtitles(s));
@@ -87,15 +88,50 @@ public static class MpvOptionsBuilder
         // D3D11 on Windows gives zero-copy d3d11va decode for 4K HEVC/AV1.
         yield return P("gpu-api", OperatingSystem.IsWindows() ? "d3d11" : "auto");
         yield return P("hwdec", s.HardwareDecoding ? "auto-safe" : "no");
-        yield return P("video-sync", "display-resample");
         yield return P("interpolation", "no");
-        yield return P("scale", "ewa_lanczossharp");
-        yield return P("cscale", "ewa_lanczossharp");
-        yield return P("dscale", "mitchell");
         yield return P("deband", "no");
     }
 
-    public static IEnumerable<KeyValuePair<string, string>> Hdr(PlayerSettings s)
+    /// <summary>Videos at least this tall count as 4K for Auto rendering (covers 3840×1600 scope too).</summary>
+    public const int UhdHeight = 1500;
+
+    public static RenderProfile InitialProfile(RenderQuality q) => q switch
+    {
+        RenderQuality.Fast => RenderProfile.Fast,
+        RenderQuality.Balanced => RenderProfile.Balanced,
+        _ => RenderProfile.High,
+    };
+
+    /// <summary>What Auto uses for a video of this size before any frames have dropped.</summary>
+    public static RenderProfile AutoProfileFor(int? videoWidth, int? videoHeight) =>
+        videoHeight >= UhdHeight || videoWidth >= 3000 ? RenderProfile.Balanced : RenderProfile.High;
+
+    /// <summary>
+    /// The cost of each profile scales with the video's own resolution: chroma is upscaled
+    /// to it, so an EWA chroma scaler on a 4K video does 4× the work of 1080p. That is
+    /// why High is fine at 1080p and too much for many GPUs at 4K.
+    /// </summary>
+    public static IEnumerable<KeyValuePair<string, string>> Scaling(RenderProfile p)
+    {
+        var (scale, cscale, dscale) = p switch
+        {
+            RenderProfile.High => ("ewa_lanczossharp", "ewa_lanczossharp", "mitchell"),
+            RenderProfile.Balanced => ("lanczos", "bilinear", "hermite"),
+            _ => ("bilinear", "bilinear", "bilinear"),
+        };
+        yield return P("scale", scale);
+        yield return P("cscale", cscale);
+        yield return P("dscale", dscale);
+        yield return P("correct-downscaling", p == RenderProfile.High ? "yes" : "no");
+        yield return P("linear-downscaling", p == RenderProfile.High ? "yes" : "no");
+        yield return P("sigmoid-upscaling", p == RenderProfile.High ? "yes" : "no");
+        yield return P("dither-depth", p == RenderProfile.Fast ? "no" : "auto");
+        // display-resample retimes audio to the display's refresh; plain audio clocking
+        // is cheaper and immune to odd refresh-rate reporting.
+        yield return P("video-sync", p == RenderProfile.Fast ? "audio" : "display-resample");
+    }
+
+    public static IEnumerable<KeyValuePair<string, string>> Hdr(PlayerSettings s, RenderProfile profile = RenderProfile.High)
     {
         if (s.HdrMode == HdrMode.Passthrough)
         {
@@ -108,9 +144,11 @@ public static class MpvOptionsBuilder
         yield return P("target-trc", "auto");
         yield return P("target-prim", "auto");
         yield return P("tone-mapping", s.ToneMapping);
-        yield return P("hdr-compute-peak", s.HdrDynamicPeak ? "yes" : "no");
+        // Contrast recovery (a full-resolution blur) and scene-by-scene peak detection are the
+        // expensive parts of tonemapping. Balanced drops the first, Fast both.
+        yield return P("hdr-compute-peak", s.HdrDynamicPeak && profile != RenderProfile.Fast ? "yes" : "no");
         yield return P("hdr-peak-percentile", "99.995");
-        yield return P("hdr-contrast-recovery", F(s.HdrContrastRecovery));
+        yield return P("hdr-contrast-recovery", F(profile == RenderProfile.High ? s.HdrContrastRecovery : 0));
         yield return P("gamut-mapping-mode", s.GamutMapping);
     }
 
@@ -179,6 +217,17 @@ public static class MpvOptionsBuilder
     /// through a thin buffer, wait for a few seconds of video before starting or resuming,
     /// and read further ahead. 4K HDR remuxes need both.
     /// </summary>
+    public const double InitialStreamBufferSeconds = 5;
+    public const double MaxStreamBufferSeconds = 60;
+
+    /// <summary>
+    /// After each stall the stream waits for twice as much buffer before resuming (5, 10,
+    /// 20, 40, 60 s): a connection slower than the video then gives a few long pauses
+    /// instead of constant stutter.
+    /// </summary>
+    public static double StreamBufferAfterStalls(int stalls) =>
+        Math.Min(InitialStreamBufferSeconds * Math.Pow(2, Math.Max(0, stalls)), MaxStreamBufferSeconds);
+
     public const string StreamingFileOptions =
         "cache-pause-initial=yes,cache-pause-wait=5,demuxer-readahead-secs=90,demuxer-max-bytes=1024MiB";
 

@@ -39,6 +39,7 @@ public sealed class PlayerService : IPlayer
         _paths.EnsureCreated();
         _mpv = new MpvClient();
         _hwdec = settings.HardwareDecoding ? "auto-safe" : "no";
+        RenderProfile = MpvOptionsBuilder.InitialProfile(settings.RenderQuality);
         foreach (var (k, v) in MpvOptionsBuilder.Build(settings, paths, windowId)) _mpv.SetOption(k, v);
         foreach (var (k, v) in extraOptions ?? []) _mpv.SetOption(k, v);
         Wire();
@@ -112,7 +113,11 @@ public sealed class PlayerService : IPlayer
             case "estimated-vf-fps": s.OutputFps = value as double?; break;
             case "pause": s.IsPaused = value as bool? ?? false; break;
             case "mute": s.IsMuted = value as bool? ?? false; break;
-            case "paused-for-cache": s.IsBuffering = value as bool? ?? false; break;
+            case "paused-for-cache":
+                var buffering = value as bool? ?? false;
+                if (buffering && !s.IsBuffering && _streaming) GrowStreamBuffer();
+                s.IsBuffering = buffering;
+                break;
             case "eof-reached": s.EofReached = value as bool? ?? false; break;
             case "idle-active": s.IsIdle = value as bool? ?? true; break;
             case "seeking": s.IsSeeking = value as bool? ?? false; break;
@@ -129,7 +134,11 @@ public sealed class PlayerService : IPlayer
             case "audio-params/channel-count": s.SourceChannels = ToInt(value); break;
             case "audio-out-params/channel-count": s.OutputChannels = ToInt(value); break;
             case "video-params/w": s.VideoWidth = ToInt(value); break;
-            case "video-params/h": s.VideoHeight = ToInt(value); break;
+            case "video-params/h":
+                s.VideoHeight = ToInt(value);
+                // Auto picks the profile from the video's size: Balanced for 4K.
+                if (Settings.RenderQuality == RenderQuality.Auto) ApplyRenderQuality();
+                break;
             case "track-list/count": RefreshTracks(); break;
             case "media-title": s.Title = value as string; break;
             case "path": s.Path = value as string; break;
@@ -153,6 +162,8 @@ public sealed class PlayerService : IPlayer
     /// <param name="streaming">Torrent, MEGA or web stream: buffer in bigger chunks before playing.</param>
     public void Open(string pathOrUrl, string? displayTitle = null, bool streaming = false)
     {
+        _streaming = streaming;
+        _stalls = 0;
         if (displayTitle is not null) _mpv.SetProperty("force-media-title", displayTitle);
         else _mpv.SetProperty("force-media-title", "");
         if (streaming) _mpv.Command("loadfile", pathOrUrl, "replace", "-1", MpvOptionsBuilder.StreamingFileOptions);
@@ -223,8 +234,77 @@ public sealed class PlayerService : IPlayer
 
     // ---- Live settings --------------------------------------------------------------------
 
-    public void ApplyHdr() => ApplyGroup(MpvOptionsBuilder.Hdr(Settings));
+    public void ApplyHdr() => ApplyGroup(MpvOptionsBuilder.Hdr(Settings, RenderProfile));
     public void ApplyAudio() => ApplyGroup(MpvOptionsBuilder.Audio(Settings));
+    private bool _streaming;
+    private int _stalls;
+
+    /// <summary>Seconds of video a stream waits for before resuming after a stall.</summary>
+    public double StreamBufferSeconds { get; private set; } = MpvOptionsBuilder.InitialStreamBufferSeconds;
+
+    internal void GrowStreamBuffer()
+    {
+        _stalls++;
+        StreamBufferSeconds = MpvOptionsBuilder.StreamBufferAfterStalls(_stalls);
+        try { _mpv.SetProperty("cache-pause-wait", StreamBufferSeconds); }
+        catch (MpvException) { }
+    }
+
+    /// <summary>Reads the counters <see cref="PlaybackHealth"/> works from.</summary>
+    public HealthSample SampleHealth() => new(
+        DateTime.UtcNow,
+        Playing: !State.IsIdle && !State.IsPaused && !State.IsBuffering && !State.IsSeeking,
+        Buffering: State.IsBuffering,
+        FrameDrops: _mpv.GetLong("frame-drop-count"),
+        DecoderDrops: _mpv.GetLong("decoder-frame-drop-count"),
+        DelayedFrames: _mpv.GetLong("vo-delayed-frame-count"),
+        InputBytesPerSecond: _mpv.GetDouble("cache-speed"),
+        CachedSeconds: _mpv.GetDouble("demuxer-cache-duration"),
+        FileSize: _mpv.GetLong("file-size"),
+        Duration: State.Duration);
+
+    /// <summary>The rendering pipeline in use: chosen in settings, or picked by Auto.</summary>
+    public RenderProfile RenderProfile { get; private set; }
+
+    /// <summary>Set when Auto saw frames drop; from then on this session stays on Fast.</summary>
+    private bool _autoFellBack;
+
+    public event Action<RenderProfile>? RenderProfileChanged;
+    private readonly object _renderLock = new();
+
+    public void SetRenderProfile(RenderProfile profile)
+    {
+        lock (_renderLock)
+        {
+            if (profile == RenderProfile) return;
+            // Apply before publishing, so anyone who sees the new profile also sees its options.
+            ApplyGroup(MpvOptionsBuilder.Scaling(profile));
+            ApplyGroup(MpvOptionsBuilder.Hdr(Settings, profile));
+            RenderProfile = profile;
+        }
+        RenderProfileChanged?.Invoke(profile);
+    }
+
+    /// <summary>Auto: frames are dropping, so switch to Fast for the rest of the session.</summary>
+    public void FallBackToFastRendering()
+    {
+        _autoFellBack = true;
+        SetRenderProfile(RenderProfile.Fast);
+    }
+
+    /// <summary>Re-evaluates the profile after the setting or the video's size changed.</summary>
+    public void ApplyRenderQuality()
+    {
+        SetRenderProfile(Settings.RenderQuality switch
+        {
+            RenderQuality.High => RenderProfile.High,
+            RenderQuality.Balanced => RenderProfile.Balanced,
+            RenderQuality.Fast => RenderProfile.Fast,
+            _ when _autoFellBack => RenderProfile.Fast,
+            _ => MpvOptionsBuilder.AutoProfileFor(State.VideoWidth, State.VideoHeight),
+        });
+    }
+
     private readonly object _deinterlaceLock = new();
     private bool _sourceInterlaced;
     private string? _deinterlaceFilter;

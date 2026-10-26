@@ -29,4 +29,5 @@ public enum PlayerAction
     OpenLink,
     PasteAndPlay,
     Stop,
+    CopyDiagnostics,
 }

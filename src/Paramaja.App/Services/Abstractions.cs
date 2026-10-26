@@ -15,6 +15,7 @@ public interface IDialogService
     Task<string?> ReadClipboardTextAsync();
     Task ShowSettingsAsync();
     void OpenFolder(string path);
+    Task CopyToClipboardAsync(string text);
 }
 
 public sealed class AvaloniaDispatcher : IUiDispatcher

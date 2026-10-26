@@ -29,6 +29,27 @@ public enum DeinterlaceAlgorithm
     Bob,
 }
 
+/// <summary>The rendering pipeline actually in use.</summary>
+public enum RenderProfile
+{
+    /// <summary>mpv's best scalers (EWA) and full HDR analysis.</summary>
+    High,
+    /// <summary>Separable scalers and no contrast recovery: most of the quality at a fraction of the cost.</summary>
+    Balanced,
+    /// <summary>Bilinear and static HDR tonemapping: about what VLC's renderer costs.</summary>
+    Fast,
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<RenderQuality>))]
+public enum RenderQuality
+{
+    /// <summary>High below 4K, Balanced for 4K, and Fast if frames still drop.</summary>
+    Auto,
+    High,
+    Balanced,
+    Fast,
+}
+
 public sealed class PlayerSettings
 {
     public static readonly string[] ToneMappingCurves =
@@ -36,6 +57,7 @@ public sealed class PlayerSettings
 
     // Video
     public bool HardwareDecoding { get; set; } = true;
+    public RenderQuality RenderQuality { get; set; } = RenderQuality.Auto;
     public HdrMode HdrMode { get; set; } = HdrMode.TonemapToSdr;
     public string ToneMapping { get; set; } = "spline";
     /// <summary>Measure each frame's brightness so tonemapping adapts scene by scene.</summary>

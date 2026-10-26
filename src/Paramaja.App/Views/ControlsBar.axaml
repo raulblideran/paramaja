@@ -139,9 +139,20 @@
                     <ComboBoxItem Content="BWDIF — motion adaptive (default)" />
                     <ComboBoxItem Content="Bob — line doubling" />
                   </ComboBox>
+                  <TextBlock Classes="section" Text="Rendering" />
+                  <ComboBox SelectedIndex="{Binding RenderQualityIndex}" HorizontalAlignment="Stretch">
+            <ComboBoxItem Content="Auto — High below 4K, Balanced for 4K (default)" />
+            <ComboBoxItem Content="High — best scaling, needs a strong GPU for 4K" />
+            <ComboBoxItem Content="Balanced — nearly as sharp, far lighter" />
+            <ComboBoxItem Content="Fast — lightest, for laptops and older GPUs" />
+          </ComboBox>
+                  <TextBlock Text="{Binding RenderProfileText}" Classes="muted" FontSize="12" />
                   <TextBlock Classes="section" Text="Decoding" />
                   <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration" OffContent="Software decoding" />
-                  <Button Content="Show playback statistics (I)" Command="{Binding ToggleStatsCommand}" Margin="0,4,0,0" />
+                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                    <Button Content="Statistics (I)" Command="{Binding ToggleStatsCommand}" />
+                    <Button Content="Copy diagnostics" Command="{Binding CopyDiagnosticsCommand}" />
+                  </StackPanel>
                 </StackPanel>
               </Flyout>
             </Button.Flyout>

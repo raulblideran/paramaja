@@ -54,6 +54,11 @@ public sealed class DialogService(Window owner, Func<MainViewModel> vm) : IDialo
 
     public Task ShowSettingsAsync() => new SettingsWindow { DataContext = vm() }.ShowDialog(owner);
 
+    public async Task CopyToClipboardAsync(string text)
+    {
+        if (owner.Clipboard is { } c) await c.SetTextAsync(text);
+    }
+
     public void OpenFolder(string path)
     {
         Directory.CreateDirectory(path);

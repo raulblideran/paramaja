@@ -70,6 +70,7 @@ The manifest builds the Rust and .NET parts with `--share=network` so cargo and 
 | **Screenshots** | **S**: uncompressed PNG (compression 0) at native resolution, 16-bit for 10-bit/HDR sources. **Shift+S** includes subtitles. |
 | **Frame stepping** | **.** goes forward one frame, **,** goes back one frame |
 | **Deinterlacing** | Automatic, only when the video's frames are flagged as interlaced. **BWDIF** (motion-adaptive) by default, or **Bob** (line doubling) in Settings or the video menu. Both output one frame per field (50i becomes 50p). **D** cycles Auto / On / Off. |
+| **Rendering** | Auto (default) uses mpv's best scalers below 4K and a lighter Balanced profile for 4K. Scaling a 4K picture costs ~5× more than 1080p: measured 2.9 ms vs 0.6 ms per frame on a fast GPU, so a weaker one runs out of time only at 4K. If frames still drop, Auto switches to Fast (about VLC's cost). High, Balanced and Fast can also be chosen directly. |
 | **Hardware decoding** | D3D11VA zero-copy on Windows (VA-API/Vulkan on Linux) for smooth 4K. **I** shows live stats. |
 
 ### Shortcuts
@@ -85,6 +86,7 @@ The manifest builds the Rust and .NET parts with `--share=network` so cargo and 
 | Z / X | Subtitle delay −/+ 0.1 s | H | HDR tonemap ↔ passthrough |
 | D | Deinterlace Auto/On/Off | Shift+D | Downmix to stereo |
 | Ctrl+O / Ctrl+U / Ctrl+V | Open file / link / clipboard | Ctrl+S | Stop |
+| Ctrl+I | Copy diagnostics (while the problem video plays) | | |
 
 ## Architecture
 

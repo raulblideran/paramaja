@@ -53,7 +53,11 @@ public partial class MainWindow : Window
             // Cheap when nothing changed, and heals anything an event missed (e.g. a
             // fullscreen switch that moved the video after the last layout pass).
             UpdateOverlays();
-            if (++_ticks % 4 == 0 && Vm.IsTorrent) Vm.RefreshTorrentStats();
+            if (++_ticks % 4 == 0)
+            {
+                if (Vm.IsTorrent) Vm.RefreshTorrentStats();
+                Vm.RefreshHealth();
+            }
         };
     }
 

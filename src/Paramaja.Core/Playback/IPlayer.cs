@@ -35,6 +35,12 @@ public interface IPlayer : IDisposable
     void SetHdrMode(HdrMode mode);
     void SetDeinterlace(DeinterlaceMode mode);
     void SetDeinterlaceAlgorithm(DeinterlaceAlgorithm algorithm);
+    HealthSample SampleHealth();
+    RenderProfile RenderProfile { get; }
+    event Action<RenderProfile>? RenderProfileChanged;
+    void FallBackToFastRendering();
+    void ApplyRenderQuality();
+    double StreamBufferSeconds { get; }
     void ApplyHdr();
     void ApplyHardwareDecoding();
     void ApplySubtitles();

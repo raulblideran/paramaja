@@ -43,6 +43,7 @@ public static class ShortcutMap
         ["Ctrl+u"] = PlayerAction.OpenLink,
         ["Ctrl+v"] = PlayerAction.PasteAndPlay,
         ["Ctrl+s"] = PlayerAction.Stop,
+        ["Ctrl+i"] = PlayerAction.CopyDiagnostics,
     });
 
     /// <summary>

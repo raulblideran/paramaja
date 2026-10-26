@@ -15,6 +15,8 @@ public class PlayerIntegrationTests
             new PlayerSettings(),
             new PlayerSettings { HdrMode = HdrMode.Passthrough, DownmixToStereo = true, Deinterlace = DeinterlaceMode.On },
             new PlayerSettings { AudioPassthrough = true, DeinterlaceAlgorithm = DeinterlaceAlgorithm.Bob, Volume = 37 },
+            new PlayerSettings { RenderQuality = RenderQuality.Balanced },
+            new PlayerSettings { RenderQuality = RenderQuality.Fast, HdrMode = HdrMode.TonemapToSdr },
             new PlayerSettings { HardwareDecoding = false, Deinterlace = DeinterlaceMode.Off, PreferredAudioLanguages = "jpn",
                                  PreferredSubtitleLanguages = "eng", HdrDynamicPeak = false },
         };

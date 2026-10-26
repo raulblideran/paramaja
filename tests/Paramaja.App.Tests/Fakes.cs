@@ -55,6 +55,22 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public void SetHdrMode(HdrMode mode) => Log($"SetHdrMode {mode}");
     public void SetDeinterlace(DeinterlaceMode mode) => Log($"SetDeinterlace {mode}");
     public void SetDeinterlaceAlgorithm(DeinterlaceAlgorithm algorithm) => Log($"SetDeinterlaceAlgorithm {algorithm}");
+
+    /// <summary>Tests set this to simulate playback statistics.</summary>
+    public Func<HealthSample> NextSample { get; set; } = () => new(DateTime.UtcNow, true, false, 0, 0, 0, null, null, null, 0);
+    public HealthSample SampleHealth() => NextSample();
+    public RenderProfile RenderProfile { get; set; } = RenderProfile.High;
+    public event Action<RenderProfile>? RenderProfileChanged;
+    public double StreamBufferSeconds => 5;
+
+    public void FallBackToFastRendering()
+    {
+        Log("FallBackToFastRendering");
+        RenderProfile = RenderProfile.Fast;
+        RenderProfileChanged?.Invoke(RenderProfile);
+    }
+
+    public void ApplyRenderQuality() => Log($"ApplyRenderQuality {Settings.RenderQuality}");
     public void ApplyHdr() => Log("ApplyHdr");
     public void ApplyHardwareDecoding() => Log("ApplyHardwareDecoding");
     public void ApplySubtitles() => Log("ApplySubtitles");
@@ -128,4 +144,6 @@ public sealed class FakeDialogs : IDialogService
     public Task<string?> ReadClipboardTextAsync() => Task.FromResult(Clipboard);
     public Task ShowSettingsAsync() { SettingsShown++; return Task.CompletedTask; }
     public void OpenFolder(string path) => OpenedFolders.Add(path);
+    public string? Clipboard2 { get; private set; }
+    public Task CopyToClipboardAsync(string text) { Clipboard2 = text; return Task.CompletedTask; }
 }

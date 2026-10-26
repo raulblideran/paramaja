@@ -39,6 +39,17 @@
           <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
                      Text="BWDIF gives the sharpest picture; Bob never shows motion artefacts but is a little softer. Both output one frame per field (50i becomes 50p)." />
 
+          <TextBlock Classes="section" Text="Rendering" />
+          <ComboBox SelectedIndex="{Binding RenderQualityIndex}" Width="420" HorizontalAlignment="Left">
+            <ComboBoxItem Content="Auto — High below 4K, Balanced for 4K (default)" />
+            <ComboBoxItem Content="High — best scaling, needs a strong GPU for 4K" />
+            <ComboBoxItem Content="Balanced — nearly as sharp, far lighter" />
+            <ComboBoxItem Content="Fast — lightest, for laptops and older GPUs" />
+          </ComboBox>
+          <TextBlock Text="{Binding RenderProfileText}" Classes="muted" FontSize="12" />
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="Scaling a 4K picture costs about five times as much as 1080p. If 4K stutters while 1080p is fine, the GPU is running out of time: Balanced or Fast fixes it. Auto also switches to Fast by itself if frames keep dropping." />
+
           <TextBlock Classes="section" Text="Decoding" />
           <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration (D3D11 / VA-API)" OffContent="Software decoding" />
         </StackPanel>
@@ -108,7 +119,11 @@
             <TextBlock x:Name="VersionText" Text="{Binding AppVersion, StringFormat='Version {0}'}" Classes="muted" />
           </StackPanel>
         </StackPanel>
-        <Button Content="Copy version" Click="OnCopyVersion" HorizontalAlignment="Left" />
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Button Content="Copy version" Click="OnCopyVersion" />
+          <Button Content="Copy diagnostics (Ctrl+I)" Command="{Binding CopyDiagnosticsCommand}"
+                  ToolTip.Tip="While the problem video is playing: copies the machine, the video and why it's struggling" />
+        </StackPanel>
         <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
                    Text="When reporting a problem, include the version above: the part in brackets is the exact build." />
         <TextBlock Classes="section" Text="Licence" />

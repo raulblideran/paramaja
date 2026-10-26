@@ -119,6 +119,21 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>0 Auto (default), 1 High, 2 Balanced, 3 Fast.</summary>
+    public int RenderQualityIndex
+    {
+        get => (int)Settings.RenderQuality;
+        set
+        {
+            var q = (RenderQuality)Math.Clamp(value, 0, 3);
+            if (Settings.RenderQuality == q) return;
+            Settings.RenderQuality = q;
+            OnPropertyChanged();
+            Changed(() => _player?.ApplyRenderQuality());
+            if (_player is not null) RenderProfileText = DescribeProfile(_player.RenderProfile);
+        }
+    }
+
     /// <summary>0 = BWDIF (default), 1 = Bob.</summary>
     public int DeinterlaceAlgorithmIndex
     {
