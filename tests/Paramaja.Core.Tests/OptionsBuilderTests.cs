@@ -46,6 +46,13 @@ public class OptionsBuilderTests
     }
 
     [Fact]
+    public void Only_hevc_is_hardware_decoded()
+    {
+        Assert.Equal("hevc", Build(new PlayerSettings())["hwdec-codecs"]);
+        Assert.Equal("no", Build(new PlayerSettings { HardwareDecoding = false })["hwdec"]);
+    }
+
+    [Fact]
     public void Hdr_passthrough_hints_the_display()
     {
         var o = Build(new PlayerSettings { HdrMode = HdrMode.Passthrough });

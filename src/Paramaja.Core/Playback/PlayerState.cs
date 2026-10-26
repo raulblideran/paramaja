@@ -11,6 +11,8 @@ public sealed class PlayerState
     public bool IsBuffering { get; set; }
     public bool IsSeeking { get; set; }
     public bool DeinterlaceActive { get; set; }
+    /// <summary>The current chapter's index, when the video has chapters.</summary>
+    public int? Chapter { get; set; }
     /// <summary>"BWDIF" while deinterlacing, otherwise null.</summary>
     public string? DeinterlaceFilter { get; set; }
     /// <summary>The current file's frames are flagged interlaced.</summary>

@@ -235,4 +235,10 @@ public static class MpvClientExtensions
         try { mpv.SetOption(name, value); return true; }
         catch (MpvException) { return false; }
     }
+
+    public static bool TrySetProperty(this MpvClient mpv, string name, string value)
+    {
+        try { mpv.SetProperty(name, value); return true; }
+        catch (MpvException) { return false; }
+    }
 }

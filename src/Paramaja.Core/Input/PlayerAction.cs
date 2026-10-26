@@ -9,6 +9,8 @@ public enum PlayerAction
     SeekBackwardLong,
     FrameStep,
     FrameBackStep,
+    NextChapter,
+    PreviousChapter,
     VolumeUp,
     VolumeDown,
     ToggleMute,

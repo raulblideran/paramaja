@@ -97,6 +97,8 @@ public static class MpvOptionsBuilder
         // D3D11 on Windows gives zero-copy d3d11va decode for 4K HEVC/AV1.
         yield return P("gpu-api", OperatingSystem.IsWindows() ? "d3d11" : "auto");
         yield return P("hwdec", s.HardwareDecoding ? "auto-safe" : "no");
+        // Only HEVC is hardware-decoded; every other codec decodes in software.
+        yield return P("hwdec-codecs", "hevc");
         yield return P("interpolation", "no");
         yield return P("deband", "no");
     }

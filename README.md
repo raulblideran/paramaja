@@ -62,8 +62,8 @@ The manifest builds the Rust and .NET parts with `--share=network` so cargo and 
 | | |
 |---|---|
 | **Formats** | libmpv + FFmpeg: HEVC/H.265 (8/10-bit), H.264, AV1, VP9, VC-1, MPEG-2…; MKV/MP4/TS/M2TS/AVI (uncompressed too)/VOB…; TrueHD, DTS-HD, FLAC, AC3, Opus… |
-| **Folders & discs** | **Open → Open folder** (Ctrl+Shift+O) or drop a folder. A DVD folder (`VIDEO_TS`) or Blu-ray folder (`BDMV`) plays as a disc from its main title; any other folder plays its videos in order. Unencrypted discs only (no libdvdcss/libaacs). |
-| **HDR** | Automatic: on a monitor with HDR switched on in Windows, HDR video is passed through untouched; on an SDR monitor it is tonemapped with `gpu-next` (libplacebo): scene-adaptive peak detection, perceptual gamut mapping and highlight-detail recovery. HDR10, HLG and Dolby Vision (profiles 5/8). The curve (spline by default, bt.2446a, bt.2390, st2094-40, hable, mobius…) is under Advanced, which is hidden on HDR monitors. **H** switches by hand. On Linux the app is an X11 client, which can't output HDR, so it always tonemaps. |
+| **Folders & discs** | **Open → Open folder** (Ctrl+Shift+O) or drop a folder. A DVD folder (`VIDEO_TS`) or Blu-ray folder (`BDMV`) plays as a disc from its main title; any other folder plays its videos in order. The **Titles & chapters** menu switches between a disc's titles (film, extras) and jumps to any chapter; **Page Up / Page Down** step through chapters. The discs' own interactive menus aren't shown. Unencrypted discs only (no libdvdcss/libaacs). |
+| **HDR** | Automatic: on a monitor with HDR switched on in Windows, HDR video is passed through untouched; on an SDR monitor it is tonemapped with `gpu-next` (libplacebo): scene-adaptive peak detection, perceptual gamut mapping and highlight-detail recovery. HDR10, HLG and Dolby Vision (profiles 5/8). The curve (spline by default, bt.2446a, bt.2390, st2094-40, hable, mobius…) is under Advanced, which is hidden on HDR monitors. **H** switches by hand. The HDR options appear in the video menu only while an HDR video plays. On Linux the app is an X11 client, which can't output HDR, so it always tonemaps. |
 | **Audio** | The original audio stream plays as-is by default. It's never normalised (no ReplayGain, loudness filters or downmix normalisation). **Shift+D** downmixes 5.1/7.1 to stereo, and only when you ask. Optional passthrough sends Dolby/DTS bitstreams untouched to an AV receiver. The volume slider is logarithmic: it moves in equal steps of loudness, so 50% is −30 dB. |
 | **Subtitles** | Embedded (ASS/SSA with fonts, SRT, PGS, VobSub) and external files (auto-loaded by name, or drag & drop). The size slider shows the resulting font size. |
 | **Magnet streaming** | Rust engine ([librqbit](https://github.com/ikatson/rqbit)). It downloads only the file you watch, fetching pieces in order up to 256 MB ahead of the playhead (about 25 s of a 4K HDR remux; librqbit's default is 32 MB). Before starting or after a stall it waits for 5 s of video, instead of stuttering through a thin buffer. It picks the largest video automatically and lets you switch between files in the torrent. |
@@ -74,20 +74,21 @@ The manifest builds the Rust and .NET parts with `--share=network` so cargo and 
 | **Frame stepping** | **.** goes forward one frame, **,** goes back one frame |
 | **Deinterlacing** | Automatic, only when the video's frames are flagged as interlaced. **BWDIF** (motion-adaptive), one frame per field (50i becomes 50p). **D** cycles Auto / On / Off. |
 | **Rendering** | Under Advanced in Settings → Video. Auto (default) uses mpv's best scalers below 4K and a lighter Balanced profile for 4K. Scaling a 4K picture costs ~5× more than 1080p: measured 2.9 ms vs 0.6 ms per frame on a fast GPU, so a weaker one runs out of time only at 4K. If frames still drop, Auto switches to Fast (about VLC's cost). High, Balanced and Fast can also be chosen directly. |
-| **Hardware decoding** | D3D11VA zero-copy on Windows (VA-API/Vulkan on Linux) for smooth 4K. **I** shows live stats. |
+| **Hardware decoding** | HEVC (H.265) only: D3D11VA zero-copy on Windows (VA-API/Vulkan on Linux) for smooth 4K HEVC. Other codecs decode in software. The switch appears in the video menu while an HEVC video plays. **I** shows live stats. |
 
 ### Shortcuts
 
 | Key | Action | Key | Action |
 |---|---|---|---|
 | Space | Play / pause | . / , | Next / previous frame |
+| Page Down / Page Up | Next / previous chapter | | |
 | ← / → | Seek ±5 s | Ctrl+← / → | Seek ±60 s |
 | ↑ / ↓, wheel | Volume | M | Mute |
 | F, Enter, double-click | Fullscreen | Esc | Leave fullscreen |
 | S / Shift+S | Screenshot / with subtitles | I | Statistics |
 | A / J | Cycle audio / subtitle track | V | Hide subtitles |
 | Z / X | Subtitle delay −/+ 0.1 s | H | HDR tonemap ↔ passthrough (overrides Auto) |
-| D | Deinterlace Auto/On/Off | Shift+D | Downmix to stereo |
+| D | Deinterlace Auto/On/Off | Shift+D | Downmix to stereo (5.1 / 7.1) |
 | Ctrl+O / Ctrl+Shift+O | Open file / folder | Ctrl+U / Ctrl+V | Open link / clipboard |
 | Ctrl+S | Stop | | |
 | Ctrl+I | Copy diagnostics (while the problem video plays) | | |
@@ -124,8 +125,10 @@ Requirements: .NET 8 SDK, Rust (with the `x86_64-pc-windows-gnu` target and MinG
 ### Releases
 
 Pushing a version tag publishes a GitHub Release: `.github/workflows/release.yml` builds the
-Windows zip and the Flatpak from that commit and attaches both, with the version's
-CHANGELOG.md section as the notes. The tag must match the project version.
+Windows zip and the Flatpak from that commit, with the version's CHANGELOG.md section as the
+notes (`build/release-notes.sh`). The release goes up as soon as the Windows zip is ready, a
+few minutes in, and the Flatpak is attached when its longer build finishes. The tag must
+match the project version.
 
 ```bash
 ./build/bump-version.sh 1.3.3 "What changed"   # then list the changes in CHANGELOG.md

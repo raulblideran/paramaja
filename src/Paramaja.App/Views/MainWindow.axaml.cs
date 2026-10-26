@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private readonly ICursorProbe _cursor = CursorProbe.Create();
     private readonly IDisplayHdrProbe _hdr = DisplayHdr.Create();
     private PixelRect? _hdrScreen;
+    private IDisposable? _clicks;
 
     private MainViewModel Vm => (MainViewModel)DataContext!;
 
@@ -34,7 +35,6 @@ public partial class MainWindow : Window
         AddHandler(DragDrop.DropEvent, OnDrop);
         PointerMoved += (_, _) => Vm.NotifyActivity();
         PointerWheelChanged += (_, e) => Vm.HandleKey(e.Delta.Y > 0 ? "WHEEL_UP" : "WHEEL_DOWN");
-        DoubleTapped += (_, _) => { if (!Vm.IsIdle) Vm.ToggleFullscreenCommand.Execute(null); };
 
         PositionChanged += (_, _) =>
         {
@@ -104,6 +104,9 @@ public partial class MainWindow : Window
         _tick.Start();
         UpdateOverlays();
         ProbeHdr();
+        // Double-click fullscreen; on Linux mpv reports the clicks instead (PlayerService).
+        if (TryGetPlatformHandle()?.Handle is { } hwnd)
+            _clicks = VideoClicks.Watch(hwnd, () => { if (!Vm.IsIdle) Vm.HandleClick(DateTime.UtcNow); });
     }
 
     private void ProbeHdr()
@@ -116,6 +119,7 @@ public partial class MainWindow : Window
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         _tick.Stop();
+        _clicks?.Dispose();
         _bottom?.Close();
         _top?.Close();
         // A resize or move already queued would otherwise try to show the closed bars again.

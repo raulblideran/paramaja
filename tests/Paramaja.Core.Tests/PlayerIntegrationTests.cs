@@ -215,6 +215,22 @@ public class PlayerIntegrationTests
     }
 
     [MpvFact]
+    public void Chapters_are_listed_and_can_be_stepped_through()
+    {
+        using var h = new PlayerHarness();
+        h.OpenAndWait(TestEnvironment.Media("chapters.mkv"));
+        PlayerHarness.WaitUntil(() => h.Player.Chapters.Count == 3, "chapter list");
+        Assert.Equal(["Opening", "Middle", "Ending"], h.Player.Chapters.Select(c => c.Title));
+        Assert.Equal(2, h.Player.Chapters[1].Time, 1);
+        h.Player.SetPaused(true);
+        h.Player.StepChapter(1);
+        PlayerHarness.WaitUntil(() => h.Player.State.Chapter == 1, "next chapter");
+        h.Player.GoToChapter(2);
+        PlayerHarness.WaitUntil(() => h.Player.State.Chapter == 2, "chosen chapter");
+        Assert.True(h.Player.Titles.Count <= 1, "a plain file has no titles to choose between");
+    }
+
+    [MpvFact]
     public void Bwdif_keeps_the_picture_size_and_doubles_the_frame_rate()
     {
         using var h = new PlayerHarness();

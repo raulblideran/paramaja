@@ -45,7 +45,9 @@
                      Text="Uses BWDIF, a motion-adaptive deinterlacer that outputs one frame per field (50i becomes 50p)." />
 
           <TextBlock Classes="section" Text="Decoding" />
-          <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration (D3D11 / VA-API)" OffContent="Software decoding" />
+          <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration for HEVC (D3D11 / VA-API)" OffContent="Software decoding" />
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="Only HEVC (H.265) is hardware-decoded; H.264, AV1 and other codecs always decode in software." />
           <Expander x:Name="RenderingAdvanced" Header="Advanced: rendering quality" HorizontalAlignment="Stretch">
             <StackPanel Spacing="8">
               <ComboBox SelectedIndex="{Binding RenderQualityIndex}" Width="420" HorizontalAlignment="Left">

@@ -22,6 +22,13 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
 
     public event Action<string>? StateChanged;
     public event Action? TracksChanged;
+    public event Action? ChaptersChanged;
+    public IReadOnlyList<ChapterInfo> Chapters { get; set; } = [];
+    public IReadOnlyList<DiscTitleInfo> Titles { get; set; } = [];
+    public void RaiseChapters() => ChaptersChanged?.Invoke();
+    public void GoToChapter(int index) => Log($"GoToChapter {index}");
+    public void StepChapter(int delta) => Log($"StepChapter {delta}");
+    public void SelectTitle(int id) => Log($"SelectTitle {id}");
     public event Action<string>? KeyPressed;
     public event Action? MouseMoved;
     public event Action? MouseClicked;

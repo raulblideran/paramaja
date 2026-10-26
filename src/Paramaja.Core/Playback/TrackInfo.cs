@@ -36,3 +36,15 @@ public sealed record TrackInfo(
         _ => $"{channels}ch",
     };
 }
+
+/// <summary>A chapter of the playing video (or of the disc title being played).</summary>
+public sealed record ChapterInfo(int Index, string Title, double Time)
+{
+    public string Label => $"{Index + 1}. {Title}  ·  {TimeFormat.Format(Time)}";
+}
+
+/// <summary>
+/// A title of a DVD or Blu-ray (the main film, the extras…). mpv lists them as editions;
+/// a file with several editions (some MKVs) shows up the same way.
+/// </summary>
+public sealed record DiscTitleInfo(int Id, string Title, bool Selected);

@@ -93,6 +93,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<TrackItem> AudioTracks { get; } = [];
     public ObservableCollection<TrackItem> SubtitleTracks { get; } = [];
     public ObservableCollection<TorrentFileItem> TorrentFiles { get; } = [];
+    public ObservableCollection<ChapterItem> Chapters { get; } = [];
+    /// <summary>A DVD's or Blu-ray's titles (main film, extras); empty for ordinary files.</summary>
+    public ObservableCollection<ChapterItem> DiscTitles { get; } = [];
+    public bool HasChapters => Chapters.Count > 1;
+    public bool HasDiscTitles => DiscTitles.Count > 1;
+    public bool HasChapterMenu => HasChapters || HasDiscTitles;
     public ObservableCollection<string> RecentItems { get; }
     public IReadOnlyList<string> ToneMappingCurves => PlayerSettings.ToneMappingCurves;
     public IReadOnlyList<(string Keys, PlayerAction Action)> Shortcuts { get; } = ShortcutMap.Describe().ToList();
@@ -120,6 +126,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _player = _playerFactory(windowId);
         _player.StateChanged += name => _ui.Post(() => SyncState(name));
         _player.TracksChanged += () => _ui.Post(SyncTracks);
+        _player.ChaptersChanged += () => _ui.Post(SyncChapters);
         _player.KeyPressed += key => _ui.Post(() => HandleKey(key));
         _player.MouseMoved += () => _ui.Post(NotifyActivity);
         _player.MouseClicked += () => _ui.Post(() => HandleClick(DateTime.UtcNow));
@@ -156,16 +163,31 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case "demuxer-cache-time": UpdateBuffered(s); break;
             case "hwdec-current": DecoderBadge = s.IsHardwareDecoding ? $"HW · {s.HwdecCurrent}" : "SW"; break;
             case "video-params/gamma" or "video-params/primaries": UpdateHdrBadge(); break;
+            case "video-format": OnPropertyChanged(nameof(IsHevcVideo)); break;
+            case "chapter": MarkCurrentChapter(); break;
             case "video-params/h" or "video-params/w": ResolutionBadge = ResolutionLabel(s.VideoWidth, s.VideoHeight); break;
-            case "audio-params/channel-count" or "audio-out-params/channel-count": UpdateAudioBadge(); break;
+            case "audio-params/channel-count" or "audio-out-params/channel-count":
+                UpdateAudioBadge();
+                OnPropertyChanged(nameof(IsSurroundAudio));
+                break;
         }
     }
 
     private void UpdateBuffered(PlayerState s) =>
         BufferedUntil = s.CacheTime is { } c ? Math.Min(Duration, Math.Max(c, s.Position)) : s.Position;
 
+    /// <summary>The playing video is HDR: only then does the HDR / tonemapping menu apply.</summary>
+    public bool IsHdrVideo => _player?.State.IsHdr == true;
+
+    /// <summary>5.1, 7.1 and the like: only then is there anything to downmix.</summary>
+    public bool IsSurroundAudio => _player?.State.SourceChannels > 2;
+
+    /// <summary>Hardware decoding is used for HEVC only, so its switch only matters for HEVC.</summary>
+    public bool IsHevcVideo => _player?.State.VideoFormat == "hevc";
+
     internal void UpdateHdrBadge()
     {
+        OnPropertyChanged(nameof(IsHdrVideo));
         var s = _player?.State;
         if (s is null || !s.IsHdr) { HdrBadge = ""; return; }
         var kind = s.Transfer == "hlg" ? "HLG" : "HDR";
@@ -198,6 +220,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var subs = tracks.Where(t => t.Type == TrackType.Subtitle).Select(t => new TrackItem(t, t.Label)).ToList();
         subs.Insert(0, TrackItem.Off(!subs.Any(s => s.IsSelected)));
         Replace(SubtitleTracks, subs);
+    }
+
+    private void SyncChapters()
+    {
+        if (_player is null) return;
+        Replace(Chapters, _player.Chapters.Select(c => new ChapterItem(c.Index, c.Label)));
+        Replace(DiscTitles, _player.Titles.Select(t => new ChapterItem(t.Id, t.Title) { IsCurrent = t.Selected }));
+        MarkCurrentChapter();
+        OnPropertyChanged(nameof(HasChapters));
+        OnPropertyChanged(nameof(HasDiscTitles));
+        OnPropertyChanged(nameof(HasChapterMenu));
+    }
+
+    private void MarkCurrentChapter()
+    {
+        var current = _player?.State.Chapter;
+        foreach (var c in Chapters) c.IsCurrent = c.Id == current;
     }
 
     private static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> items)
@@ -436,6 +475,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand] private void FrameStep() => _player?.FrameStep();
     [RelayCommand] private void FrameBackStep() => _player?.FrameBackStep();
     [RelayCommand] private void ToggleMute() => _player?.ToggleMute();
+    [RelayCommand] private void NextChapter() => _player?.StepChapter(1);
+    [RelayCommand] private void PreviousChapter() => _player?.StepChapter(-1);
+    [RelayCommand] private void GoToChapter(ChapterItem item) => _player?.GoToChapter(item.Id);
+    [RelayCommand] private void SelectDiscTitle(ChapterItem item) => _player?.SelectTitle(item.Id);
     [RelayCommand] private void ToggleStats() => _player?.ToggleStats();
     [RelayCommand] private void ToggleFullscreen() => FullscreenRequested?.Invoke(null);
 
@@ -598,6 +641,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case PlayerAction.SeekBackwardLong: p?.SeekRelative(-Settings.LongSeekSeconds); break;
             case PlayerAction.FrameStep: p?.FrameStep(); break;
             case PlayerAction.FrameBackStep: p?.FrameBackStep(); break;
+            case PlayerAction.NextChapter: p?.StepChapter(1); break;
+            case PlayerAction.PreviousChapter: p?.StepChapter(-1); break;
             case PlayerAction.VolumeUp: p?.ChangeVolume(5); Osd($"Volume {p?.Settings.Volume:0}%"); break;
             case PlayerAction.VolumeDown: p?.ChangeVolume(-5); Osd($"Volume {p?.Settings.Volume:0}%"); break;
             case PlayerAction.ToggleMute: p?.ToggleMute(); break;

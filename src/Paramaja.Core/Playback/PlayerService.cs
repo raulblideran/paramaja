@@ -21,10 +21,13 @@ public sealed class PlayerService : IPlayer
     public PlayerSettings Settings { get; }
     public PlayerState State { get; } = new();
     public IReadOnlyList<TrackInfo> Tracks { get; private set; } = [];
+    public IReadOnlyList<ChapterInfo> Chapters { get; private set; } = [];
+    public IReadOnlyList<DiscTitleInfo> Titles { get; private set; } = [];
     public MpvClient Mpv => _mpv;
 
     public event Action<string>? StateChanged;
     public event Action? TracksChanged;
+    public event Action? ChaptersChanged;
     public event Action<string>? KeyPressed;
     public event Action? MouseMoved;
     public event Action? MouseClicked;
@@ -60,6 +63,7 @@ public sealed class PlayerService : IPlayer
         _mpv.FileLoaded += () =>
         {
             RefreshTracks();
+            RefreshChapters();
             FileLoaded?.Invoke();
         };
         _mpv.StartFile += () =>
@@ -88,7 +92,7 @@ public sealed class PlayerService : IPlayer
         foreach (var p in new[] { "pause", "mute", "paused-for-cache", "eof-reached", "idle-active", "seeking", "video-frame-info/interlaced" })
             _mpv.ObserveFlag(p);
         foreach (var p in new[] { "audio-params/channel-count", "audio-out-params/channel-count", "video-params/w",
-                     "video-params/h", "track-list/count" })
+                     "video-params/h", "track-list/count", "chapter", "chapter-list/count", "current-edition" })
             _mpv.ObserveLong(p);
         foreach (var p in new[] { "media-title", "path", "hwdec-current", "video-codec", "video-params/gamma",
                      "video-params/primaries", "deinterlace", "vf", "video-format", "current-vo" })
@@ -99,14 +103,15 @@ public sealed class PlayerService : IPlayer
     /// When the video surface has focus mpv gets the keystrokes; forward each of our
     /// shortcuts back to us as a client message so handling is identical to the app window.
     /// Double-clicks are timed by the app from single clicks: mpv's own MBTN_LEFT_DBL isn't
-    /// reliably generated for an embedded window.
+    /// reliably generated for an embedded window. On Windows the app reads clicks from the OS
+    /// instead (VideoClicks), as mpv's window doesn't reliably report them there.
     /// </summary>
     private void BindKeys()
     {
         foreach (var key in ShortcutMap.Default.Keys.Where(k => k != "MBTN_LEFT_DBL"))
             _mpv.TryCommand("keybind", key, $"script-message {KeyMessage} \"{key}\"");
         _mpv.TryCommand("keybind", "MOUSE_MOVE", $"script-message {MouseMessage}");
-        _mpv.TryCommand("keybind", "MBTN_LEFT", $"script-message {ClickMessage}");
+        if (!OperatingSystem.IsWindows()) _mpv.TryCommand("keybind", "MBTN_LEFT", $"script-message {ClickMessage}");
     }
 
     private void OnProperty(string name, object? value)
@@ -150,6 +155,8 @@ public sealed class PlayerService : IPlayer
                 if (Settings.RenderQuality == RenderQuality.Auto) ApplyRenderQuality();
                 break;
             case "track-list/count": RefreshTracks(); break;
+            case "chapter": s.Chapter = ToInt(value); break;
+            case "chapter-list/count" or "current-edition": RefreshChapters(); break;
             case "media-title": s.Title = value as string; break;
             case "path": s.Path = value as string; break;
             case "hwdec-current": s.HwdecCurrent = value as string; break;
@@ -436,6 +443,37 @@ public sealed class PlayerService : IPlayer
         Settings.Deinterlace = mode;
         ApplyDeinterlace();
     }
+
+    // ---- Chapters and disc titles ---------------------------------------------------------
+
+    public void RefreshChapters()
+    {
+        var chapters = new List<ChapterInfo>();
+        for (var i = 0; i < (_mpv.GetLong("chapter-list/count") ?? 0); i++)
+        {
+            var title = _mpv.GetString($"chapter-list/{i}/title");
+            chapters.Add(new ChapterInfo(i, string.IsNullOrWhiteSpace(title) ? $"Chapter {i + 1}" : title,
+                _mpv.GetDouble($"chapter-list/{i}/time") ?? 0));
+        }
+        var current = _mpv.GetLong("current-edition");
+        var titles = new List<DiscTitleInfo>();
+        for (var i = 0; i < (_mpv.GetLong("edition-list/count") ?? 0); i++)
+        {
+            var id = (int)(_mpv.GetLong($"edition-list/{i}/id") ?? i);
+            titles.Add(new DiscTitleInfo(id, _mpv.GetString($"edition-list/{i}/title") ?? $"Title {id + 1}", id == current));
+        }
+        Chapters = chapters;
+        Titles = titles;
+        ChaptersChanged?.Invoke();
+    }
+
+    public void GoToChapter(int index) => _mpv.TrySetProperty("chapter", index.ToString(CultureInfo.InvariantCulture));
+
+    /// <summary>Next (+1) or previous (-1) chapter; at the first chapter, back to its start.</summary>
+    public void StepChapter(int delta) => _mpv.TryCommand("add", "chapter", delta.ToString(CultureInfo.InvariantCulture));
+
+    /// <summary>Plays another title of the disc (an mpv edition).</summary>
+    public void SelectTitle(int id) => _mpv.TrySetProperty("edition", id.ToString(CultureInfo.InvariantCulture));
 
     // ---- Tracks ---------------------------------------------------------------------------
 

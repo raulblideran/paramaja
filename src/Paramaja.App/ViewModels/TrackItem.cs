@@ -13,6 +13,14 @@ public sealed partial class TrackItem(TrackInfo? track, string label) : Observab
     public static TrackItem Off(bool selected) => new(null, "Off") { IsSelected = selected };
 }
 
+/// <summary>A row of the Chapters menu: a chapter, or a disc title (Command decides which).</summary>
+public sealed partial class ChapterItem(int id, string label) : ObservableObject
+{
+    public int Id { get; } = id;
+    public string Label { get; } = label;
+    [ObservableProperty] private bool _isCurrent;
+}
+
 public sealed record TorrentFileItem(int Index, string Name, string Size)
 {
     public override string ToString() => $"{Name}  ({Size})";

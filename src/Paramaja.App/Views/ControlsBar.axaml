@@ -29,6 +29,14 @@
           <Button Classes="icon" Command="{Binding FrameStepCommand}" ToolTip.Tip="Next frame ( . )">
             <PathIcon Data="{StaticResource IconFrameNext}" />
           </Button>
+          <Button Classes="icon" Command="{Binding PreviousChapterCommand}" IsVisible="{Binding HasChapters}"
+                  ToolTip.Tip="Previous chapter (Page Up)" Margin="6,0,0,0">
+            <PathIcon Data="{StaticResource IconChapterPrev}" />
+          </Button>
+          <Button Classes="icon" Command="{Binding NextChapterCommand}" IsVisible="{Binding HasChapters}"
+                  ToolTip.Tip="Next chapter (Page Down)">
+            <PathIcon Data="{StaticResource IconChapterNext}" />
+          </Button>
           <Button Classes="icon" Command="{Binding ToggleMuteCommand}" ToolTip.Tip="Mute (M)" Margin="8,0,0,0">
             <Panel>
               <PathIcon Data="{StaticResource IconVolume}" IsVisible="{Binding !IsMuted}" />
@@ -62,6 +70,44 @@
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+          <Button x:Name="ChaptersButton" Classes="icon" ToolTip.Tip="Titles &amp; chapters" IsVisible="{Binding HasChapterMenu}">
+            <PathIcon Data="{StaticResource IconChapters}" />
+            <Button.Flyout>
+              <Flyout Placement="TopEdgeAlignedRight">
+                <ScrollViewer MaxHeight="460" Width="340">
+                  <StackPanel Spacing="4">
+                    <StackPanel IsVisible="{Binding HasDiscTitles}" Spacing="2" Margin="0,0,0,8">
+                      <TextBlock Classes="section" Text="Titles" Margin="0,0,0,4" />
+                      <ItemsControl ItemsSource="{Binding DiscTitles}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:ChapterItem">
+                            <RadioButton GroupName="titles" Content="{Binding Label}" IsChecked="{Binding IsCurrent, Mode=OneWay}"
+                                         Command="{Binding $parent[v:ControlsBar].((vm:MainViewModel)DataContext).SelectDiscTitleCommand}"
+                                         CommandParameter="{Binding}" />
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                    <StackPanel IsVisible="{Binding HasChapters}" Spacing="2">
+                      <TextBlock Classes="section" Text="Chapters" Margin="0,0,0,4" />
+                      <ItemsControl ItemsSource="{Binding Chapters}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:ChapterItem">
+                            <RadioButton GroupName="chapters" Content="{Binding Label}" IsChecked="{Binding IsCurrent, Mode=OneWay}"
+                                         Command="{Binding $parent[v:ControlsBar].((vm:MainViewModel)DataContext).GoToChapterCommand}"
+                                         CommandParameter="{Binding}" />
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                    <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
+                               Text="Page Up / Page Down jump to the previous / next chapter" />
+                  </StackPanel>
+                </ScrollViewer>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+
           <Button Classes="icon" ToolTip.Tip="Subtitles">
             <PathIcon Data="{StaticResource IconSubtitles}" />
             <Button.Flyout>
@@ -103,9 +149,11 @@
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
-                  <TextBlock Classes="section" Text="Surround (5.1 / 7.1)" />
-                  <ToggleSwitch IsChecked="{Binding DownmixToStereo}" OnContent="Downmix to stereo"
-                                OffContent="Original channels (default)" />
+                  <StackPanel x:Name="SurroundOptions" Spacing="4" IsVisible="{Binding IsSurroundAudio}">
+                    <TextBlock Classes="section" Text="Surround (5.1 / 7.1)" />
+                    <ToggleSwitch IsChecked="{Binding DownmixToStereo}" OnContent="Downmix to stereo"
+                                  OffContent="Original channels (default)" />
+                  </StackPanel>
                   <ToggleSwitch IsChecked="{Binding AudioPassthrough}" OnContent="Passthrough to AV receiver"
                                 OffContent="Decode here (default)" />
                   <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
@@ -120,6 +168,7 @@
             <Button.Flyout>
               <Flyout Placement="TopEdgeAlignedRight">
                 <StackPanel Width="340" Spacing="6">
+                  <StackPanel x:Name="HdrOptions" Spacing="6" IsVisible="{Binding IsHdrVideo}">
                   <TextBlock Classes="section" Text="HDR" Margin="0,0,0,2" />
                   <ComboBox SelectedIndex="{Binding HdrModeIndex}" HorizontalAlignment="Stretch">
                     <ComboBoxItem Content="Auto — follows the display (default)" />
@@ -137,14 +186,17 @@
                                     OnContent="Scene-adaptive brightness" OffContent="Static brightness (metadata)" />
                     </StackPanel>
                   </Expander>
+                  </StackPanel>
                   <TextBlock Classes="section" Text="Deinterlacing" />
                   <ComboBox SelectedIndex="{Binding DeinterlaceIndex}" HorizontalAlignment="Stretch">
                     <ComboBoxItem Content="Auto — only interlaced content" />
                     <ComboBoxItem Content="Always on" />
                     <ComboBoxItem Content="Off" />
                   </ComboBox>
-                  <TextBlock Classes="section" Text="Decoding" />
-                  <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration" OffContent="Software decoding" />
+                  <StackPanel x:Name="HevcOptions" Spacing="6" IsVisible="{Binding IsHevcVideo}">
+                    <TextBlock Classes="section" Text="Decoding (HEVC)" />
+                    <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration" OffContent="Software decoding" />
+                  </StackPanel>
                   <Expander Header="Advanced: rendering quality" HorizontalAlignment="Stretch">
                     <StackPanel Spacing="6">
                       <ComboBox SelectedIndex="{Binding RenderQualityIndex}" HorizontalAlignment="Stretch">

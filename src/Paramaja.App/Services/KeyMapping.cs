@@ -21,6 +21,8 @@ public static class KeyMapping
             Key.Down => "DOWN",
             Key.Escape => "ESC",
             Key.Enter => "ENTER",
+            Key.PageUp => "PGUP",
+            Key.PageDown => "PGDWN",
             Key.MediaPlayPause => "PLAYPAUSE",
             Key.OemPeriod or Key.Decimal => ".",
             Key.OemComma => ",",

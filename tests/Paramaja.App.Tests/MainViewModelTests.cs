@@ -118,6 +118,72 @@ public class KeyboardTests
     }
 
     [Fact]
+    public void Chapters_and_disc_titles_reach_the_menu()
+    {
+        using var r = new Rig();
+        Assert.False(r.Vm.HasChapterMenu);
+        r.Player.Chapters = [new ChapterInfo(0, "Opening", 0), new ChapterInfo(1, "Middle", 120)];
+        r.Player.Titles = [new DiscTitleInfo(0, "title: 1 (01:52:00)", true), new DiscTitleInfo(1, "title: 2 (00:03:10)", false)];
+        r.Player.State.Chapter = 1;
+        r.Player.RaiseChapters();
+        Assert.True(r.Vm.HasChapters);
+        Assert.True(r.Vm.HasDiscTitles);
+        Assert.True(r.Vm.Chapters[1].IsCurrent);
+        Assert.Equal("2. Middle  ·  02:00", r.Vm.Chapters[1].Label);
+        Assert.True(r.Vm.DiscTitles[0].IsCurrent);
+
+        r.Vm.HandleKey("PGDWN");
+        r.Vm.HandleKey("PGUP");
+        r.Vm.GoToChapterCommand.Execute(r.Vm.Chapters[0]);
+        r.Vm.SelectDiscTitleCommand.Execute(r.Vm.DiscTitles[1]);
+        Assert.Equal(["StepChapter 1", "StepChapter -1", "GoToChapter 0", "SelectTitle 1"],
+            r.Player.Calls.Where(c => c.Contains("Chapter") || c.StartsWith("SelectTitle")));
+    }
+
+    [Fact]
+    public void Hdr_menu_shows_only_for_hdr_video()
+    {
+        using var r = new Rig();
+        var changed = new List<string?>();
+        r.Vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        r.Player.State.Transfer = "bt.1886";
+        r.Player.RaiseState("video-params/gamma");
+        Assert.False(r.Vm.IsHdrVideo);
+        r.Player.State.Transfer = "pq";
+        r.Player.RaiseState("video-params/gamma");
+        Assert.True(r.Vm.IsHdrVideo);
+        Assert.Contains(nameof(MainViewModel.IsHdrVideo), changed);
+    }
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, false)]
+    [InlineData(6, true)]
+    [InlineData(8, true)]
+    public void Downmix_shows_only_for_surround_audio(int channels, bool shown)
+    {
+        using var r = new Rig();
+        r.Player.State.SourceChannels = channels;
+        r.Player.RaiseState("audio-params/channel-count");
+        Assert.Equal(shown, r.Vm.IsSurroundAudio);
+    }
+
+    [Theory]
+    [InlineData("hevc", true)]
+    [InlineData("h264", false)]
+    [InlineData("av1", false)]
+    public void Hardware_decoding_switch_shows_only_for_hevc(string codec, bool shown)
+    {
+        using var r = new Rig();
+        var changed = new List<string?>();
+        r.Vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        r.Player.State.VideoFormat = codec;
+        r.Player.RaiseState("video-format");
+        Assert.Equal(shown, r.Vm.IsHevcVideo);
+        Assert.Contains(nameof(MainViewModel.IsHevcVideo), changed);
+    }
+
+    [Fact]
     public void Auto_hdr_follows_the_display()
     {
         using var r = new Rig();

@@ -3,6 +3,21 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.4.0 — 2026-10-26
+
+- **Titles & chapters** menu: jump to any chapter, or switch a DVD's or Blu-ray's title
+  (main film, extras) at any moment. Previous / next chapter buttons and Page Up / Page Down.
+  Works for any video with chapters, MKVs included. The discs' own interactive menus aren't
+  shown yet
+- The video menu's HDR options (tonemapping) appear only while an HDR video plays
+- Hardware acceleration is used for HEVC (H.265) only; other codecs decode in software. Its
+  switch appears in the video menu only while an HEVC video plays
+- The "Downmix to stereo" switch appears only for 5.1 / 7.1 audio, not for mono or stereo
+- Windows: double-click on the video for fullscreen now works; clicks are read from
+  Windows itself, as the video window didn't reliably pass them on
+- Releases go up as soon as the Windows zip is built; the Linux Flatpak is attached a few
+  minutes later
+
 ## 1.3.3 — 2026-10-26
 
 - Windows: closing the window right as it was being resized could raise an error

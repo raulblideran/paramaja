@@ -65,4 +65,28 @@ EOF
 [ -f "$OUT/dvd_mpeg2.vob" ] || ff -f lavfi -i testsrc=size=720x576:rate=25:duration=2 \
   -f lavfi -i sine=frequency=600:duration=2 -target pal-dvd -f vob "$OUT/dvd_mpeg2.vob"
 
+# Three named chapters, 2 s each
+if [ ! -f "$OUT/chapters.mkv" ]; then
+  cat > "$OUT/chapters.txt" <<'EOF'
+;FFMETADATA1
+[CHAPTER]
+TIMEBASE=1/1000
+START=0
+END=2000
+title=Opening
+[CHAPTER]
+TIMEBASE=1/1000
+START=2000
+END=4000
+title=Middle
+[CHAPTER]
+TIMEBASE=1/1000
+START=4000
+END=6000
+title=Ending
+EOF
+  ff -f lavfi -i testsrc=size=320x240:rate=25:duration=6 -i "$OUT/chapters.txt" -map_metadata 1 \
+    -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$OUT/chapters.mkv"
+fi
+
 echo "Fixtures in $OUT:"; ls -1 "$OUT"

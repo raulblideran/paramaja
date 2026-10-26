@@ -12,6 +12,12 @@ public interface IPlayer : IDisposable
 
     event Action<string>? StateChanged;
     event Action? TracksChanged;
+    event Action? ChaptersChanged;
+    IReadOnlyList<ChapterInfo> Chapters { get; }
+    IReadOnlyList<DiscTitleInfo> Titles { get; }
+    void GoToChapter(int index);
+    void StepChapter(int delta);
+    void SelectTitle(int id);
     event Action<string>? KeyPressed;
     event Action? MouseMoved;
     event Action? MouseClicked;
