@@ -51,16 +51,16 @@ negs-player/
 
 ### Phase 0 — Scaffolding
 - [x] Copy this plan to `negs-player/PLAN.md`, `git init`, `.gitignore`
-- [ ] Create .NET solution (App, Core, two test projects) and Rust crate
+- [x] Create .NET solution (App, Core, two test projects) and Rust crate
 - [ ] Script to fetch `libmpv` (Linux: system pkg; Windows: shinchiro `libmpv-2.dll`)
 - [x] `tests/fixtures/make-fixtures.sh`: ffmpeg-generated clips. HEVC 10-bit HDR10 (PQ/BT.2020), H.264 SDR, interlaced 1080i, 5.1 and 7.1 audio, `.srt`/`.ass` subs, and a 4K HEVC clip
 
 ### Phase 1 — Playback core (`NegsPlayer.Core`)
-- [ ] libmpv P/Invoke bindings (create/initialize/command/set/get property/observe/event loop)
-- [ ] `PlayerService`: open, play/pause, seek, frame-step ±, volume, tracks, events → observable state
-- [ ] `MpvOptionsBuilder`: maps `Settings` → mpv options (hwdec, gpu-next, tonemap, deinterlace, downmix, screenshots, no-normalise)
-- [ ] `Settings` load/save to `settings.json` beside the exe (`AppContext.BaseDirectory`), with mpv `portable_config`
-- [ ] Unit tests for options mapping and settings round-trip
+- [x] libmpv P/Invoke bindings (create/initialize/command/set/get property/observe/event loop)
+- [x] `PlayerService`: open, play/pause, seek, frame-step ±, volume, tracks, events → observable state
+- [x] `MpvOptionsBuilder`: maps `Settings` → mpv options (hwdec, gpu-next, tonemap, deinterlace, downmix, screenshots, no-normalise)
+- [x] `Settings` load/save to `settings.json` beside the exe (`AppContext.BaseDirectory`), with mpv `portable_config`
+- [x] Unit tests for options mapping and settings round-trip
 
 ### Phase 2 — UI (`NegsPlayer.App`)
 - [ ] Main window with `NativeControlHost` hosting the mpv HWND (X11 window id on Linux)
@@ -82,13 +82,13 @@ negs-player/
 
 ### Phase 4 — Feature polish
 - [ ] HDR: verify tonemap on HDR10 fixture; DV profile 5/8 samples; passthrough toggle
-- [ ] Downmix: verify 5.1/7.1 → 2ch only when enabled; original channels otherwise
-- [ ] Screenshots: PNG, compression 0, correct resolution, 10-bit where possible
-- [ ] Deinterlace auto on 1080i fixture, off on progressive
+- [x] Downmix: verify 5.1/7.1 → 2ch only when enabled; original channels otherwise
+- [x] Screenshots: PNG, compression 0, correct resolution, 10-bit where possible
+- [x] Deinterlace auto on 1080i fixture, off on progressive
 - [ ] Hwdec confirmed (`hwdec-current` ≠ `no`) on 4K HEVC
 
 ### Phase 5 — Testing (the "lot of testing" part)
-- [ ] **Core integration tests (headless mpv, `vo=null`/`ao=null` or `vo=image`)**: each fixture opens; codec/colour params are correct; tracks enumerate; frame-back-step changes `estimated-frame-number` by −1; screenshot writes a valid PNG (check the IHDR header and zlib level 0); `audio-params/channel-count` is 6/8 without downmix and 2 with it; `af` stays empty (no normalisation)
+- [x] **Core integration tests (headless mpv, `vo=null`/`ao=null` or `vo=image`)**: each fixture opens; codec/colour params are correct; tracks enumerate; frame-back-step changes `estimated-frame-number` by −1; screenshot writes a valid PNG (check the IHDR header and zlib level 0); `audio-params/channel-count` is 6/8 without downmix and 2 with it; `af` stays empty (no normalisation)
 - [x] **Torrent integration (offline, deterministic)**: create a `.torrent` from a fixture, seed it with a second librqbit session on localhost, add by magnet, stream via HTTP, check that bytes match and mpv plays it, and that a seek mid-file works
 - [x] **Torrent integration (network, opt-in `[Trait("net")]`)**: Sintel/Big Buck Bunny public magnets. Check that metadata resolves, the first frame plays within a timeout, and a seek works
 - [ ] **UI tests (Avalonia.Headless)**: view-model commands, shortcut bindings, settings panel persists, magnet dialog validation
