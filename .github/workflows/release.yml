@@ -71,7 +71,10 @@ jobs:
         run: |
           awk -v v="${{ needs.check.outputs.version }}" '
             /^## / { if (found) exit; if (index($0, "## " v " ") == 1) { found = 1; next } }
-            found' CHANGELOG.md > notes.md
+            found' CHANGELOG.md |
+            # CHANGELOG.md wraps bullets onto indented lines; release pages keep line breaks,
+            # so join each bullet back into one line.
+            awk '/^  / { sub(/^ +/, " "); printf "%s", $0; next } { if (NR > 1) print ""; printf "%s", $0 } END { print "" }' > notes.md
           printf '\nEarlier versions: [CHANGELOG.md](https://github.com/%s/blob/%s/CHANGELOG.md)\n' \
             "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" >> notes.md
           cat notes.md
