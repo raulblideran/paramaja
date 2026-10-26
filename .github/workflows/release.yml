@@ -14,6 +14,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
@@ -29,12 +30,13 @@ jobs:
   windows:
     needs: check
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "8.0.x" }
       # The torrent engine is cross-compiled with MinGW, as on a Linux dev machine.
-      - run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 p7zip-full cmake nasm
+      - run: sudo rm -f /var/lib/man-db/auto-update && sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 p7zip-full cmake nasm
       - run: rustup target add x86_64-pc-windows-gnu
       - run: ./build/publish-win.sh
       # Named after the file inside, so a download from the run page says what it is.
@@ -47,6 +49,7 @@ jobs:
   flatpak:
     needs: check
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
       options: --privileged
@@ -65,6 +68,7 @@ jobs:
   release:
     needs: [check, windows]
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
@@ -86,6 +90,7 @@ jobs:
     needs: [check, release, flatpak]
     if: ${{ !cancelled() && needs.release.result == 'success' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:

@@ -1,19 +1,47 @@
 name: ci
-on: [push, pull_request]
+# Branch pushes and pull requests only: a release pushes main and its tag together, and
+# the tag's commit is the one main was just tested at. Changes that can't affect the app
+# (docs, the release and cache workflows) don't need a test run.
+on:
+  push:
+    branches: ["**"]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - "prompts/**"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/flatpak-cache.yml"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - "prompts/**"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/flatpak-cache.yml"
+
+# A newer push to the same branch makes an unfinished run of the older one pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # Time limits a few times the usual run, so a hung step fails fast instead of after 6 hours.
   linux:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "8.0.x" }
       - uses: dtolnay/rust-toolchain@stable
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg mpv libmpv-dev
+      # Only what the tests use: ffmpeg makes the fixtures, libmpv2 plays them. Skipping
+      # recommends and the man-db index rebuild keeps the install quick.
+      - run: sudo rm -f /var/lib/man-db/auto-update && sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg libmpv2
       - run: ./build/test.sh
 
   windows-portable:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
