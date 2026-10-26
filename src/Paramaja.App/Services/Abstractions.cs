@@ -10,6 +10,7 @@ public interface IUiDispatcher
 public interface IDialogService
 {
     Task<string?> PickMediaFileAsync();
+    Task<string?> PickFolderAsync();
     Task<string?> PickSubtitleFileAsync();
     Task<string?> AskLinkAsync();
     Task<string?> ReadClipboardTextAsync();

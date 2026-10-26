@@ -13,7 +13,8 @@ public sealed class DialogService(Window owner, Func<MainViewModel> vm) : IDialo
     {
         Patterns = ["*.mkv", "*.mp4", "*.m4v", "*.avi", "*.mov", "*.wmv", "*.ts", "*.m2ts", "*.mts", "*.webm", "*.flv",
                     "*.mpg", "*.mpeg", "*.vob", "*.ogv", "*.3gp", "*.hevc", "*.h265", "*.rmvb", "*.iso", "*.mka",
-                    "*.flac", "*.mp3", "*.m4a", "*.opus", "*.ogg", "*.wav", "*.ac3", "*.dts", "*.thd"],
+                    "*.flac", "*.mp3", "*.m4a", "*.opus", "*.ogg", "*.wav", "*.ac3", "*.dts", "*.thd", "*.y4m",
+                    "*.ifo", "*.bdmv", "*.mpls"],
     };
 
     private static readonly FilePickerFileType Subs = new("Subtitles")
@@ -30,6 +31,17 @@ public sealed class DialogService(Window owner, Func<MainViewModel> vm) : IDialo
             FileTypeFilter = [Media, FilePickerFileTypes.All],
         });
         return files.FirstOrDefault()?.TryGetLocalPath();
+    }
+
+    /// <summary>A folder of videos, or a DVD (VIDEO_TS) or Blu-ray (BDMV) folder.</summary>
+    public async Task<string?> PickFolderAsync()
+    {
+        var folders = await owner.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Open folder, DVD or Blu-ray",
+            AllowMultiple = false,
+        });
+        return folders.FirstOrDefault()?.TryGetLocalPath();
     }
 
     public async Task<string?> PickSubtitleFileAsync()

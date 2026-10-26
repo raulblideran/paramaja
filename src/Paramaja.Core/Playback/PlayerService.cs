@@ -13,6 +13,7 @@ public sealed class PlayerService : IPlayer
 {
     public const string KeyMessage = "paramaja-key";
     public const string MouseMessage = "paramaja-mouse";
+    public const string ClickMessage = "paramaja-click";
 
     private readonly MpvClient _mpv;
     private readonly PortablePaths _paths;
@@ -26,6 +27,7 @@ public sealed class PlayerService : IPlayer
     public event Action? TracksChanged;
     public event Action<string>? KeyPressed;
     public event Action? MouseMoved;
+    public event Action? MouseClicked;
     public event Action? FileLoaded;
     public event Action<EndFileReason, string?>? EndFile;
     public event Action<MpvLogMessage>? Log;
@@ -69,6 +71,7 @@ public sealed class PlayerService : IPlayer
         {
             if (args.Length >= 2 && args[0] == KeyMessage) KeyPressed?.Invoke(args[1]);
             else if (args.Length >= 1 && args[0] == MouseMessage) MouseMoved?.Invoke();
+            else if (args.Length >= 1 && args[0] == ClickMessage) MouseClicked?.Invoke();
         };
         _mpv.LogMessage += m => Log?.Invoke(m);
     }
@@ -91,12 +94,15 @@ public sealed class PlayerService : IPlayer
     /// <summary>
     /// When the video surface has focus mpv gets the keystrokes; forward each of our
     /// shortcuts back to us as a client message so handling is identical to the app window.
+    /// Double-clicks are timed by the app from single clicks: mpv's own MBTN_LEFT_DBL isn't
+    /// reliably generated for an embedded window.
     /// </summary>
     private void BindKeys()
     {
-        foreach (var key in ShortcutMap.Default.Keys)
+        foreach (var key in ShortcutMap.Default.Keys.Where(k => k != "MBTN_LEFT_DBL"))
             _mpv.TryCommand("keybind", key, $"script-message {KeyMessage} \"{key}\"");
         _mpv.TryCommand("keybind", "MOUSE_MOVE", $"script-message {MouseMessage}");
+        _mpv.TryCommand("keybind", "MBTN_LEFT", $"script-message {ClickMessage}");
     }
 
     private void OnProperty(string name, object? value)
@@ -171,6 +177,20 @@ public sealed class PlayerService : IPlayer
         _mpv.SetProperty("pause", false);
     }
 
+    /// <summary>
+    /// Plays a DVD (VIDEO_TS) or Blu-ray (BDMV) folder from its main title, the longest one.
+    /// Throws <see cref="MpvException"/> if this libmpv was built without DVD or Blu-ray support.
+    /// </summary>
+    public void OpenDisc(string root, bool bluray)
+    {
+        _streaming = false;
+        _stalls = 0;
+        _mpv.SetProperty(bluray ? "bluray-device" : "dvd-device", root);
+        _mpv.SetProperty("force-media-title", Path.GetFileName(root));
+        _mpv.Command("loadfile", bluray ? "bd://" : "dvd://", "replace");
+        _mpv.SetProperty("pause", false);
+    }
+
     public void Stop() => _mpv.TryCommand("stop");
     public void TogglePause() => _mpv.TryCommand("cycle", "pause");
     public void SetPaused(bool paused) => _mpv.SetProperty("pause", paused);
@@ -205,6 +225,13 @@ public sealed class PlayerService : IPlayer
         _mpv.SetProperty("mute", Settings.Muted);
     }
 
+    /// <summary>Hides the pointer over the video while the controls are hidden.</summary>
+    public void SetCursorHidden(bool hidden)
+    {
+        try { _mpv.SetProperty("cursor-autohide", hidden ? "always" : "no"); }
+        catch (MpvException) { }
+    }
+
     public void ShowText(string text, int durationMs = 1500) =>
         _mpv.TryCommand("show-text", text, durationMs.ToString(CultureInfo.InvariantCulture));
 
@@ -234,7 +261,17 @@ public sealed class PlayerService : IPlayer
 
     // ---- Live settings --------------------------------------------------------------------
 
-    public void ApplyHdr() => ApplyGroup(MpvOptionsBuilder.Hdr(Settings, RenderProfile));
+    public void ApplyHdr() => ApplyGroup(MpvOptionsBuilder.Hdr(Settings, RenderProfile, DisplayIsHdr));
+
+    /// <summary>Whether the window's display is in HDR mode; HdrMode.Auto follows it.</summary>
+    public bool DisplayIsHdr { get; private set; }
+
+    public void SetDisplayHdr(bool isHdr)
+    {
+        if (DisplayIsHdr == isHdr) return;
+        DisplayIsHdr = isHdr;
+        ApplyHdr();
+    }
     public void ApplyAudio() => ApplyGroup(MpvOptionsBuilder.Audio(Settings));
     private bool _streaming;
     private int _stalls;
@@ -279,7 +316,7 @@ public sealed class PlayerService : IPlayer
             if (profile == RenderProfile) return;
             // Apply before publishing, so anyone who sees the new profile also sees its options.
             ApplyGroup(MpvOptionsBuilder.Scaling(profile));
-            ApplyGroup(MpvOptionsBuilder.Hdr(Settings, profile));
+            ApplyGroup(MpvOptionsBuilder.Hdr(Settings, profile, DisplayIsHdr));
             RenderProfile = profile;
         }
         RenderProfileChanged?.Invoke(profile);
@@ -312,7 +349,7 @@ public sealed class PlayerService : IPlayer
 
     /// <summary>
     /// Inserts or removes our deinterlacing filter. Auto follows the frames' own interlaced
-    /// flag; the filter is BWDIF or Bob as chosen, never the GPU's own deinterlacer.
+    /// flag; the filter is always BWDIF, never the GPU's own deinterlacer.
     /// </summary>
     public void ApplyDeinterlace()
     {
@@ -324,7 +361,7 @@ public sealed class PlayerService : IPlayer
                 DeinterlaceMode.Off => false,
                 _ => _sourceInterlaced,
             };
-            var filter = wanted ? MpvOptionsBuilder.DeinterlaceFilter(Settings.DeinterlaceAlgorithm) : null;
+            var filter = wanted ? MpvOptionsBuilder.DeinterlaceFilter : null;
             if (filter == _deinterlaceFilter) return;
 
             if (_deinterlaceFilter is not null) _mpv.TryCommand("vf", "remove", MpvOptionsBuilder.DeinterlaceLabel);
@@ -336,7 +373,7 @@ public sealed class PlayerService : IPlayer
 
             _deinterlaceFilter = filter;
             State.DeinterlaceActive = filter is not null;
-            State.DeinterlaceFilter = filter is null ? null : Settings.DeinterlaceAlgorithm == DeinterlaceAlgorithm.Bob ? "Bob" : "BWDIF";
+            State.DeinterlaceFilter = filter is null ? null : "BWDIF";
         }
         StateChanged?.Invoke("deinterlace-active");
     }
@@ -349,11 +386,6 @@ public sealed class PlayerService : IPlayer
         catch (MpvException) { }
     }
 
-    public void SetDeinterlaceAlgorithm(DeinterlaceAlgorithm algorithm)
-    {
-        Settings.DeinterlaceAlgorithm = algorithm;
-        ApplyDeinterlace();
-    }
     public void ApplySubtitles() => ApplyGroup(MpvOptionsBuilder.Subtitles(Settings));
 
     public void ApplyHardwareDecoding()

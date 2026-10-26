@@ -49,25 +49,49 @@ public sealed partial class MainViewModel
         }
     }
 
-    public bool HdrPassthrough
+    /// <summary>0 Auto (default), 1 always tonemap, 2 always passthrough.</summary>
+    public int HdrModeIndex
     {
-        get => Settings.HdrMode == HdrMode.Passthrough;
-        set
-        {
-            var mode = value ? HdrMode.Passthrough : HdrMode.TonemapToSdr;
-            if (Settings.HdrMode == mode) return;
-            Settings.HdrMode = mode;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(HdrTonemap));
-            Changed(() => _player?.SetHdrMode(mode));
-        }
+        get => (int)Settings.HdrMode;
+        set => SetHdrMode((HdrMode)Math.Clamp(value, 0, 2));
     }
 
-    public bool HdrTonemap
+    private void SetHdrMode(HdrMode mode)
     {
-        get => !HdrPassthrough;
-        set => HdrPassthrough = !value;
+        if (Settings.HdrMode == mode) return;
+        Settings.HdrMode = mode;
+        OnPropertyChanged(nameof(HdrModeIndex));
+        OnHdrEffectChanged();
+        Changed(() => _player?.SetHdrMode(mode));
     }
+
+    private void OnHdrEffectChanged()
+    {
+        OnPropertyChanged(nameof(HdrPassthrough));
+        OnPropertyChanged(nameof(HdrTonemap));
+        OnPropertyChanged(nameof(HdrStatusText));
+    }
+
+    /// <summary>
+    /// Whether HDR video is currently passed through (Auto on an HDR display, or chosen).
+    /// Setting it picks that mode by hand, which is what H does.
+    /// </summary>
+    public bool HdrPassthrough
+    {
+        get => Settings.EffectiveHdrMode(DisplayIsHdr) == HdrMode.Passthrough;
+        set => SetHdrMode(value ? HdrMode.Passthrough : HdrMode.TonemapToSdr);
+    }
+
+    /// <summary>HDR is tonemapped to SDR; only then do the tonemapping options apply.</summary>
+    public bool HdrTonemap => !HdrPassthrough;
+
+    public string HdrStatusText => (DisplayIsHdr, HdrPassthrough) switch
+    {
+        (true, true) => "This display is in HDR mode: HDR video is sent to it untouched.",
+        (true, false) => "This display is in HDR mode, but HDR video is tonemapped to SDR as chosen.",
+        (false, true) => "This display isn't in HDR mode, but HDR video is passed through as chosen.",
+        (false, false) => "This display is SDR: HDR video is tonemapped to SDR.",
+    };
 
     public string ToneMapping
     {
@@ -131,20 +155,6 @@ public sealed partial class MainViewModel
             OnPropertyChanged();
             Changed(() => _player?.ApplyRenderQuality());
             if (_player is not null) RenderProfileText = DescribeProfile(_player.RenderProfile);
-        }
-    }
-
-    /// <summary>0 = BWDIF (default), 1 = Bob.</summary>
-    public int DeinterlaceAlgorithmIndex
-    {
-        get => (int)Settings.DeinterlaceAlgorithm;
-        set
-        {
-            var alg = (DeinterlaceAlgorithm)Math.Clamp(value, 0, 1);
-            if (Settings.DeinterlaceAlgorithm == alg) return;
-            Settings.DeinterlaceAlgorithm = alg;
-            OnPropertyChanged();
-            Changed(() => _player?.SetDeinterlaceAlgorithm(alg), $"Deinterlacer: {(alg == DeinterlaceAlgorithm.Bob ? "Bob" : "BWDIF")}");
         }
     }
 

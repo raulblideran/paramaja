@@ -14,10 +14,12 @@ public interface IPlayer : IDisposable
     event Action? TracksChanged;
     event Action<string>? KeyPressed;
     event Action? MouseMoved;
+    event Action? MouseClicked;
     event Action? FileLoaded;
     event Action<EndFileReason, string?>? EndFile;
 
     void Open(string pathOrUrl, string? displayTitle = null, bool streaming = false);
+    void OpenDisc(string root, bool bluray);
     void Stop();
     void TogglePause();
     void SetPaused(bool paused);
@@ -29,12 +31,13 @@ public interface IPlayer : IDisposable
     void ChangeVolume(double delta);
     void ToggleMute();
     void ShowText(string text, int durationMs = 1500);
+    void SetCursorHidden(bool hidden);
     void ToggleStats();
     string Screenshot(bool includeSubtitles);
     void SetDownmix(bool stereo);
     void SetHdrMode(HdrMode mode);
+    void SetDisplayHdr(bool isHdr);
     void SetDeinterlace(DeinterlaceMode mode);
-    void SetDeinterlaceAlgorithm(DeinterlaceAlgorithm algorithm);
     HealthSample SampleHealth();
     RenderProfile RenderProfile { get; }
     event Action<RenderProfile>? RenderProfileChanged;

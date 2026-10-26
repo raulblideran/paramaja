@@ -19,6 +19,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private int _ticks;
     private readonly ICursorProbe _cursor = CursorProbe.Create();
+    private readonly IDisplayHdrProbe _hdr = DisplayHdr.Create();
+    private PixelRect? _hdrScreen;
 
     private MainViewModel Vm => (MainViewModel)DataContext!;
 
@@ -34,7 +36,12 @@ public partial class MainWindow : Window
         PointerWheelChanged += (_, e) => Vm.HandleKey(e.Delta.Y > 0 ? "WHEEL_UP" : "WHEEL_DOWN");
         DoubleTapped += (_, _) => { if (!Vm.IsIdle) Vm.ToggleFullscreenCommand.Execute(null); };
 
-        PositionChanged += (_, _) => UpdateOverlays();
+        PositionChanged += (_, _) =>
+        {
+            UpdateOverlays();
+            // Moving to another monitor may move between HDR and SDR.
+            if (Screens.ScreenFromWindow(this)?.Bounds != _hdrScreen) ProbeHdr();
+        };
         Resized += (_, _) => UpdateOverlays();
         Video.LayoutUpdated += (_, _) => UpdateOverlays();
 
@@ -88,10 +95,22 @@ public partial class MainWindow : Window
             bar.Activated += (_, _) => Dispatcher.UIThread.Post(UpdateOverlays);
             bar.Deactivated += (_, _) => Dispatcher.UIThread.Post(UpdateOverlays);
         }
-        Activated += (_, _) => Dispatcher.UIThread.Post(UpdateOverlays);
+        Activated += (_, _) =>
+        {
+            Dispatcher.UIThread.Post(UpdateOverlays);
+            ProbeHdr(); // catches HDR switched on or off in the system settings meanwhile
+        };
         Deactivated += (_, _) => Dispatcher.UIThread.Post(UpdateOverlays);
         _tick.Start();
         UpdateOverlays();
+        ProbeHdr();
+    }
+
+    private void ProbeHdr()
+    {
+        if (TryGetPlatformHandle()?.Handle is not { } hwnd || DataContext is not MainViewModel vm) return;
+        _hdrScreen = Screens.ScreenFromWindow(this)?.Bounds;
+        vm.DisplayIsHdr = _hdr.IsHdrActive(hwnd);
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)

@@ -13,6 +13,10 @@ YTDLP_VERSION=2026.08.19
 YTDLP_SHA256=66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a
 QJS_VERSION=v0.17.0
 QJS_SHA256=2aeabf0092c3262d6b2609824418f7dd7ed1f1df939f73b2b15645230cac0d77
+# ffmpeg.exe, which yt-dlp needs to merge the separate video and audio streams of a
+# download. Gyan's "essentials" release build, pinned by version and SHA-256.
+FFMPEG_VERSION=9.0.2
+FFMPEG_SHA256=4705843ccaaf54257c16ad90f3e952ece33c17df964ecf7bfdbb0f49c7171077
 export PATH="$HOME/.cargo/bin:$PATH"
 
 OUT="$ROOT/libs/$RID"
@@ -48,6 +52,14 @@ case "$RID" in
       "$YTDLP_SHA256" "$OUT/yt-dlp.exe"
     fetch_checked "https://github.com/quickjs-ng/quickjs/releases/download/$QJS_VERSION/qjs-windows-x86_64.exe" \
       "$QJS_SHA256" "$OUT/qjs.exe"
+    if [ ! -f "$OUT/ffmpeg.exe" ]; then
+      DL="$(mktemp -d)"
+      fetch_checked "https://github.com/GyanD/codexffmpeg/releases/download/$FFMPEG_VERSION/ffmpeg-$FFMPEG_VERSION-essentials_build.7z" \
+        "$FFMPEG_SHA256" "$DL/ffmpeg.7z"
+      7z e -y -o"$DL/x" "$DL/ffmpeg.7z" "ffmpeg-$FFMPEG_VERSION-essentials_build/bin/ffmpeg.exe" >/dev/null
+      cp "$DL/x/ffmpeg.exe" "$OUT/"
+      rm -rf "$DL"
+    fi
     ;;
   linux-x64)
     cargo build --release

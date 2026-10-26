@@ -9,7 +9,7 @@ public class SettingsTests
     {
         var s = new SettingsStore(Path.Combine(TestEnvironment.TempDir(), "settings.json")).Load();
         Assert.False(s.DownmixToStereo);
-        Assert.Equal(HdrMode.TonemapToSdr, s.HdrMode);
+        Assert.Equal(HdrMode.Auto, s.HdrMode);
         Assert.Equal(100, s.Volume);
     }
 

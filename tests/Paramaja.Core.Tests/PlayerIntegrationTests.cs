@@ -14,7 +14,7 @@ public class PlayerIntegrationTests
         {
             new PlayerSettings(),
             new PlayerSettings { HdrMode = HdrMode.Passthrough, DownmixToStereo = true, Deinterlace = DeinterlaceMode.On },
-            new PlayerSettings { AudioPassthrough = true, DeinterlaceAlgorithm = DeinterlaceAlgorithm.Bob, Volume = 37 },
+            new PlayerSettings { AudioPassthrough = true, Volume = 37 },
             new PlayerSettings { RenderQuality = RenderQuality.Balanced },
             new PlayerSettings { RenderQuality = RenderQuality.Fast, HdrMode = HdrMode.TonemapToSdr },
             new PlayerSettings { HardwareDecoding = false, Deinterlace = DeinterlaceMode.Off, PreferredAudioLanguages = "jpn",
@@ -36,11 +36,8 @@ public class PlayerIntegrationTests
         }
         // Mid-playback commands with the same filter strings must parse too.
         using var player = new PlayerHarness();
-        foreach (var alg in Enum.GetValues<DeinterlaceAlgorithm>())
-        {
-            player.Player.Mpv.Command("vf", "add", MpvOptionsBuilder.DeinterlaceFilter(alg));
-            player.Player.Mpv.Command("vf", "remove", MpvOptionsBuilder.DeinterlaceLabel);
-        }
+        player.Player.Mpv.Command("vf", "add", MpvOptionsBuilder.DeinterlaceFilter);
+        player.Player.Mpv.Command("vf", "remove", MpvOptionsBuilder.DeinterlaceLabel);
     }
 
     [MpvTheory]
@@ -49,6 +46,9 @@ public class PlayerIntegrationTests
     [InlineData("uhd_hevc.mkv", "hevc")]
     [InlineData("interlaced_1080i.ts", "h264")]
     [InlineData("audio_71.mkv", "h264")]
+    [InlineData("uncompressed_uyvy.avi", "rawvideo")]
+    [InlineData("uncompressed_v210.avi", "v210")]
+    [InlineData("dvd_mpeg2.vob", "mpeg2video")]
     public void Opens_fixture_and_reports_codec(string file, string codec)
     {
         using var h = new PlayerHarness();
@@ -209,17 +209,14 @@ public class PlayerIntegrationTests
     }
 
     [MpvFact]
-    public void Bob_can_replace_bwdif_live()
+    public void Bwdif_keeps_the_picture_size_and_doubles_the_frame_rate()
     {
         using var h = new PlayerHarness();
         h.OpenAndWait(TestEnvironment.Media("interlaced_1080i.ts"));
         PlayerHarness.WaitUntil(() => h.Player.State.DeinterlaceActive, "deinterlacer on 1080i");
-        h.Player.SetDeinterlaceAlgorithm(DeinterlaceAlgorithm.Bob);
-        PlayerHarness.WaitUntil(() => h.Player.State.DeinterlaceFilter == "Bob", "bob filter");
-        var vf = h.Player.Mpv.GetString("vf") ?? "";
-        Assert.Contains("separatefields", vf);
-        Assert.DoesNotContain("bwdif", vf);
-        PlayerHarness.WaitUntil(() => h.Player.Mpv.GetString("video-out-params/h") == "1080", "bob keeps full height");
+        Assert.Equal("BWDIF", h.Player.State.DeinterlaceFilter);
+        PlayerHarness.WaitUntil(() => h.Player.Mpv.GetString("video-out-params/h") == "1080", "full height");
+        PlayerHarness.WaitUntil(() => h.Player.Mpv.GetString("video-out-params/w") == "1920", "full width");
     }
 
     [MpvFact]

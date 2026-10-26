@@ -11,7 +11,7 @@ public sealed class PlayerState
     public bool IsBuffering { get; set; }
     public bool IsSeeking { get; set; }
     public bool DeinterlaceActive { get; set; }
-    /// <summary>"BWDIF" or "Bob" while deinterlacing, otherwise null.</summary>
+    /// <summary>"BWDIF" while deinterlacing, otherwise null.</summary>
     public string? DeinterlaceFilter { get; set; }
     /// <summary>The current file's frames are flagged interlaced.</summary>
     public bool SourceInterlaced { get; set; }

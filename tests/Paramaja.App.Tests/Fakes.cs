@@ -24,6 +24,7 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public event Action? TracksChanged;
     public event Action<string>? KeyPressed;
     public event Action? MouseMoved;
+    public event Action? MouseClicked;
     public event Action? FileLoaded;
     public event Action<EndFileReason, string?>? EndFile;
 
@@ -31,6 +32,7 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public void RaiseTracks() => TracksChanged?.Invoke();
     public void RaiseKey(string key) => KeyPressed?.Invoke(key);
     public void RaiseMouse() => MouseMoved?.Invoke();
+    public void RaiseClick() => MouseClicked?.Invoke();
     public void RaiseEnd(EndFileReason r, string? e) => EndFile?.Invoke(r, e);
     public void RaiseLoaded() => FileLoaded?.Invoke();
 
@@ -38,6 +40,7 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
 
     public void Open(string pathOrUrl, string? displayTitle = null, bool streaming = false) =>
         Log($"Open {pathOrUrl} {displayTitle}".TrimEnd() + (streaming ? " [stream]" : ""));
+    public void OpenDisc(string root, bool bluray) => Log($"OpenDisc {(bluray ? "bd" : "dvd")} {root}");
     public void Stop() => Log("Stop");
     public void TogglePause() => Log("TogglePause");
     public void SetPaused(bool paused) => Log($"SetPaused {paused}");
@@ -49,12 +52,13 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public void ChangeVolume(double delta) { Settings.Volume += delta; Log($"ChangeVolume {delta}"); }
     public void ToggleMute() => Log("ToggleMute");
     public void ShowText(string text, int durationMs = 1500) => Log($"ShowText {text}");
+    public void SetCursorHidden(bool hidden) => Log($"SetCursorHidden {hidden}");
     public void ToggleStats() => Log("ToggleStats");
     public string Screenshot(bool includeSubtitles) { Log($"Screenshot {includeSubtitles}"); return "/tmp/shot.png"; }
     public void SetDownmix(bool stereo) => Log($"SetDownmix {stereo}");
     public void SetHdrMode(HdrMode mode) => Log($"SetHdrMode {mode}");
+    public void SetDisplayHdr(bool isHdr) => Log($"SetDisplayHdr {isHdr}");
     public void SetDeinterlace(DeinterlaceMode mode) => Log($"SetDeinterlace {mode}");
-    public void SetDeinterlaceAlgorithm(DeinterlaceAlgorithm algorithm) => Log($"SetDeinterlaceAlgorithm {algorithm}");
 
     /// <summary>Tests set this to simulate playback statistics.</summary>
     public Func<HealthSample> NextSample { get; set; } = () => new(DateTime.UtcNow, true, false, 0, 0, 0, null, null, null, 0);
@@ -139,6 +143,8 @@ public sealed class FakeDialogs : IDialogService
     public int SettingsShown { get; private set; }
 
     public Task<string?> PickMediaFileAsync() => Task.FromResult(NextFile);
+    public string? NextFolder { get; set; }
+    public Task<string?> PickFolderAsync() => Task.FromResult(NextFolder);
     public Task<string?> PickSubtitleFileAsync() => Task.FromResult(NextSubtitle);
     public Task<string?> AskLinkAsync() => Task.FromResult(NextLink);
     public Task<string?> ReadClipboardTextAsync() => Task.FromResult(Clipboard);

@@ -5,6 +5,8 @@ namespace Paramaja.Core.Settings;
 [JsonConverter(typeof(JsonStringEnumConverter<HdrMode>))]
 public enum HdrMode
 {
+    /// <summary>Passthrough when the display is in HDR mode, otherwise tonemap.</summary>
+    Auto,
     /// <summary>Tonemap HDR to SDR on the fly (like PotPlayer / madVR).</summary>
     TonemapToSdr,
     /// <summary>Send HDR untouched to an HDR-capable display.</summary>
@@ -18,15 +20,6 @@ public enum DeinterlaceMode
     Auto,
     On,
     Off,
-}
-
-[JsonConverter(typeof(JsonStringEnumConverter<DeinterlaceAlgorithm>))]
-public enum DeinterlaceAlgorithm
-{
-    /// <summary>Motion-adaptive, field-rate output (50i → 50p). The best quality.</summary>
-    Bwdif,
-    /// <summary>Each field line-doubled on its own: no motion artefacts, slightly softer.</summary>
-    Bob,
 }
 
 /// <summary>The rendering pipeline actually in use.</summary>
@@ -58,7 +51,7 @@ public sealed class PlayerSettings
     // Video
     public bool HardwareDecoding { get; set; } = true;
     public RenderQuality RenderQuality { get; set; } = RenderQuality.Auto;
-    public HdrMode HdrMode { get; set; } = HdrMode.TonemapToSdr;
+    public HdrMode HdrMode { get; set; } = HdrMode.Auto;
     public string ToneMapping { get; set; } = "spline";
     /// <summary>Measure each frame's brightness so tonemapping adapts scene by scene.</summary>
     public bool HdrDynamicPeak { get; set; } = true;
@@ -66,7 +59,6 @@ public sealed class PlayerSettings
     public double HdrContrastRecovery { get; set; } = 0.3;
     public string GamutMapping { get; set; } = "perceptual";
     public DeinterlaceMode Deinterlace { get; set; } = DeinterlaceMode.Auto;
-    public DeinterlaceAlgorithm DeinterlaceAlgorithm { get; set; } = DeinterlaceAlgorithm.Bwdif;
 
     // Audio — never normalised; downmix is strictly opt-in.
     public bool DownmixToStereo { get; set; }
@@ -92,6 +84,13 @@ public sealed class PlayerSettings
     public int TorrentMetadataTimeoutSeconds { get; set; } = 90;
     public int TorrentListenPort { get; set; }
     public bool TorrentUpnp { get; set; } = true;
+
+    /// <summary>What <see cref="HdrMode"/> amounts to on a display that is (or isn't) in HDR mode.</summary>
+    public HdrMode EffectiveHdrMode(bool displayIsHdr) => HdrMode switch
+    {
+        HdrMode.Auto => displayIsHdr ? HdrMode.Passthrough : HdrMode.TonemapToSdr,
+        var m => m,
+    };
 
     public List<string> RecentItems { get; set; } = [];
     public const int MaxRecentItems = 15;

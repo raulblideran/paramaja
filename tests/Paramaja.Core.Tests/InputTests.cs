@@ -68,6 +68,43 @@ public class InputTests
     }
 
     [Fact]
+    public void Dvd_folders_are_recognised_from_the_disc_its_video_ts_or_its_ifo()
+    {
+        var disc = Path.Combine(TestEnvironment.TempDir(), "MY_MOVIE");
+        var videoTs = Directory.CreateDirectory(Path.Combine(disc, "VIDEO_TS")).FullName;
+        File.WriteAllText(Path.Combine(videoTs, "VIDEO_TS.IFO"), "");
+        File.WriteAllText(Path.Combine(videoTs, "VTS_01_1.VOB"), "");
+        Assert.Equal((InputKind.Dvd, disc), InputClassifier.Classify(disc));
+        Assert.Equal((InputKind.Dvd, disc), InputClassifier.Classify(disc + Path.DirectorySeparatorChar));
+        Assert.Equal((InputKind.Dvd, disc), InputClassifier.Classify(videoTs));
+        Assert.Equal((InputKind.Dvd, disc), InputClassifier.Classify(Path.Combine(videoTs, "VIDEO_TS.IFO")));
+        // A single VOB still plays on its own.
+        Assert.Equal(InputKind.File, InputClassifier.Classify(Path.Combine(videoTs, "VTS_01_1.VOB")).Kind);
+    }
+
+    [Fact]
+    public void Bluray_folders_are_recognised_from_the_disc_its_bdmv_or_a_playlist()
+    {
+        var disc = Path.Combine(TestEnvironment.TempDir(), "MOVIE_BD");
+        var bdmv = Directory.CreateDirectory(Path.Combine(disc, "BDMV")).FullName;
+        var playlists = Directory.CreateDirectory(Path.Combine(bdmv, "PLAYLIST")).FullName;
+        File.WriteAllText(Path.Combine(bdmv, "index.bdmv"), "");
+        File.WriteAllText(Path.Combine(playlists, "00800.mpls"), "");
+        Assert.Equal((InputKind.Bluray, disc), InputClassifier.Classify(disc));
+        Assert.Equal((InputKind.Bluray, disc), InputClassifier.Classify(bdmv));
+        Assert.Equal((InputKind.Bluray, disc), InputClassifier.Classify(Path.Combine(bdmv, "index.bdmv")));
+        Assert.Equal((InputKind.Bluray, disc), InputClassifier.Classify(Path.Combine(playlists, "00800.mpls")));
+    }
+
+    [Fact]
+    public void Other_folders_play_as_a_playlist()
+    {
+        var dir = TestEnvironment.TempDir();
+        Assert.Equal((InputKind.Folder, dir), InputClassifier.Classify(dir));
+        Assert.False(InputClassifier.IsStreaming(InputKind.Folder));
+    }
+
+    [Fact]
     public void Track_labels()
     {
         Assert.Equal("1: Commentary [eng] AC3 5.1", new TrackInfo(1, TrackType.Audio, "Commentary", "eng", "ac3", false, false, false, 6).Label);

@@ -57,4 +57,12 @@ EOF
 [ -f "$OUT/uhd_hevc.mkv" ] || ff -f lavfi -i testsrc2=size=3840x2160:rate=24:duration=1 \
   -c:v libx265 -preset ultrafast -pix_fmt yuv420p10le -x265-params log-level=error "$OUT/uhd_hevc.mkv"
 
+# Uncompressed AVI (8-bit 4:2:2 and 10-bit v210, the usual capture formats) and a DVD-style VOB
+[ -f "$OUT/uncompressed_uyvy.avi" ] || ff -f lavfi -i testsrc=size=720x576:rate=25:duration=1 \
+  -f lavfi -i sine=frequency=500:duration=1 -c:v rawvideo -pix_fmt uyvy422 -c:a pcm_s16le "$OUT/uncompressed_uyvy.avi"
+[ -f "$OUT/uncompressed_v210.avi" ] || ff -f lavfi -i testsrc=size=720x576:rate=25:duration=1 \
+  -c:v v210 "$OUT/uncompressed_v210.avi"
+[ -f "$OUT/dvd_mpeg2.vob" ] || ff -f lavfi -i testsrc=size=720x576:rate=25:duration=2 \
+  -f lavfi -i sine=frequency=600:duration=2 -target pal-dvd -f vob "$OUT/dvd_mpeg2.vob"
+
 echo "Fixtures in $OUT:"; ls -1 "$OUT"

@@ -121,34 +121,41 @@
               <Flyout Placement="TopEdgeAlignedRight">
                 <StackPanel Width="340" Spacing="6">
                   <TextBlock Classes="section" Text="HDR" Margin="0,0,0,2" />
-                  <RadioButton GroupName="hdr" IsChecked="{Binding HdrTonemap}" Content="Tonemap to SDR (for normal displays)" />
-                  <RadioButton GroupName="hdr" IsChecked="{Binding HdrPassthrough}" Content="HDR passthrough (HDR display)" />
-                  <Grid ColumnDefinitions="*,Auto" IsEnabled="{Binding HdrTonemap}">
-                    <TextBlock Text="Tonemapping curve" VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="1" Width="140" ItemsSource="{Binding ToneMappingCurves}" SelectedItem="{Binding ToneMapping}" />
-                  </Grid>
-                  <ToggleSwitch IsChecked="{Binding HdrDynamicPeak}" IsEnabled="{Binding HdrTonemap}"
-                                OnContent="Scene-adaptive brightness" OffContent="Static brightness (metadata)" />
+                  <ComboBox SelectedIndex="{Binding HdrModeIndex}" HorizontalAlignment="Stretch">
+                    <ComboBoxItem Content="Auto — follows the display (default)" />
+                    <ComboBoxItem Content="Always tonemap to SDR" />
+                    <ComboBoxItem Content="Always pass HDR through" />
+                  </ComboBox>
+                  <TextBlock Text="{Binding HdrStatusText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                  <Expander Header="Advanced: tonemapping" IsVisible="{Binding HdrTonemap}" HorizontalAlignment="Stretch">
+                    <StackPanel Spacing="6">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Tonemapping curve" VerticalAlignment="Center" />
+                        <ComboBox Grid.Column="1" Width="140" ItemsSource="{Binding ToneMappingCurves}" SelectedItem="{Binding ToneMapping}" />
+                      </Grid>
+                      <ToggleSwitch IsChecked="{Binding HdrDynamicPeak}"
+                                    OnContent="Scene-adaptive brightness" OffContent="Static brightness (metadata)" />
+                    </StackPanel>
+                  </Expander>
                   <TextBlock Classes="section" Text="Deinterlacing" />
                   <ComboBox SelectedIndex="{Binding DeinterlaceIndex}" HorizontalAlignment="Stretch">
                     <ComboBoxItem Content="Auto — only interlaced content" />
                     <ComboBoxItem Content="Always on" />
                     <ComboBoxItem Content="Off" />
                   </ComboBox>
-                  <ComboBox SelectedIndex="{Binding DeinterlaceAlgorithmIndex}" HorizontalAlignment="Stretch">
-                    <ComboBoxItem Content="BWDIF — motion adaptive (default)" />
-                    <ComboBoxItem Content="Bob — line doubling" />
-                  </ComboBox>
-                  <TextBlock Classes="section" Text="Rendering" />
-                  <ComboBox SelectedIndex="{Binding RenderQualityIndex}" HorizontalAlignment="Stretch">
-            <ComboBoxItem Content="Auto — High below 4K, Balanced for 4K (default)" />
-            <ComboBoxItem Content="High — best scaling, needs a strong GPU for 4K" />
-            <ComboBoxItem Content="Balanced — nearly as sharp, far lighter" />
-            <ComboBoxItem Content="Fast — lightest, for laptops and older GPUs" />
-          </ComboBox>
-                  <TextBlock Text="{Binding RenderProfileText}" Classes="muted" FontSize="12" />
                   <TextBlock Classes="section" Text="Decoding" />
                   <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration" OffContent="Software decoding" />
+                  <Expander Header="Advanced: rendering quality" HorizontalAlignment="Stretch">
+                    <StackPanel Spacing="6">
+                      <ComboBox SelectedIndex="{Binding RenderQualityIndex}" HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="Auto — High below 4K, Balanced for 4K (default)" />
+                        <ComboBoxItem Content="High — best scaling, needs a strong GPU for 4K" />
+                        <ComboBoxItem Content="Balanced — nearly as sharp, far lighter" />
+                        <ComboBoxItem Content="Fast — lightest, for laptops and older GPUs" />
+                      </ComboBox>
+                      <TextBlock Text="{Binding RenderProfileText}" Classes="muted" FontSize="12" />
+                    </StackPanel>
+                  </Expander>
                   <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                     <Button Content="Statistics (I)" Command="{Binding ToggleStatsCommand}" />
                     <Button Content="Copy diagnostics" Command="{Binding CopyDiagnosticsCommand}" />
@@ -168,6 +175,7 @@
             <Button.Flyout>
               <MenuFlyout Placement="TopEdgeAlignedRight">
                 <MenuItem Header="Open file…" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
+                <MenuItem Header="Open folder, DVD or Blu-ray…" InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
                 <MenuItem Header="Open link (magnet, YouTube, MEGA, URL)…" InputGesture="Ctrl+U" Command="{Binding OpenLinkCommand}" />
                 <MenuItem Header="Play from clipboard" InputGesture="Ctrl+V" Command="{Binding PasteAndPlayCommand}" />
                 <Separator />

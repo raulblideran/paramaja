@@ -74,6 +74,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _ytDlpStatus = "";
     [ObservableProperty] private string _torrentStatus = "";
     [ObservableProperty] private TorrentFileItem? _selectedTorrentFile;
+    /// <summary>Set by the view: the window's display is in HDR mode (only detectable on Windows).</summary>
+    [ObservableProperty] private bool _displayIsHdr;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(CanDownload))] private bool _isDownloading;
+    [ObservableProperty] private string _downloadStatus = "";
 
     public string PositionText => TimeFormat.Format(Position, Duration >= 3600);
     public string DurationText => TimeFormat.Format(Duration);
@@ -100,6 +104,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(PositionText));
     }
     partial void OnMediaTitleChanged(string value) => OnPropertyChanged(nameof(WindowTitle));
+    partial void OnDisplayIsHdrChanged(bool value)
+    {
+        _player?.SetDisplayHdr(value);
+        OnHdrEffectChanged();
+        UpdateHdrBadge();
+    }
 
     // ---- Player lifecycle -----------------------------------------------------------------
 
@@ -112,9 +122,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _player.TracksChanged += () => _ui.Post(SyncTracks);
         _player.KeyPressed += key => _ui.Post(() => HandleKey(key));
         _player.MouseMoved += () => _ui.Post(NotifyActivity);
+        _player.MouseClicked += () => _ui.Post(() => HandleClick(DateTime.UtcNow));
         _player.FileLoaded += () => _ui.Post(_health.Reset);
         _player.RenderProfileChanged += p => _ui.Post(() => RenderProfileText = DescribeProfile(p));
         RenderProfileText = DescribeProfile(_player.RenderProfile);
+        if (DisplayIsHdr) _player.SetDisplayHdr(true);
         _player.EndFile += (reason, error) => _ui.Post(() =>
         {
             if (reason == EndFileReason.Error) ShowStatus($"Can't play this: {error}");
@@ -139,7 +151,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case "volume": Volume = s.Volume; break;
             case "deinterlace-active": DeinterlaceBadge = s.DeinterlaceActive ? s.DeinterlaceFilter ?? "" : ""; break;
             case "paused-for-cache": IsBuffering = s.IsBuffering; break;
-            case "idle-active": IsIdle = s.IsIdle; break;
+            case "idle-active": IsIdle = s.IsIdle; OnPropertyChanged(nameof(CanDownload)); break;
             case "media-title": MediaTitle = s.Title ?? ""; break;
             case "demuxer-cache-time": UpdateBuffered(s); break;
             case "hwdec-current": DecoderBadge = s.IsHardwareDecoding ? $"HW · {s.HwdecCurrent}" : "SW"; break;
@@ -157,7 +169,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var s = _player?.State;
         if (s is null || !s.IsHdr) { HdrBadge = ""; return; }
         var kind = s.Transfer == "hlg" ? "HLG" : "HDR";
-        HdrBadge = Settings.HdrMode == HdrMode.Passthrough ? $"{kind} passthrough" : $"{kind} → SDR";
+        HdrBadge = HdrPassthrough ? $"{kind} passthrough" : $"{kind} → SDR";
     }
 
     internal void UpdateAudioBadge()
@@ -220,8 +232,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 return;
         }
         CloseTorrent();
-        _source = kind == InputKind.File ? MediaSource.Local : MediaSource.Web;
-        _player.Open(value, streaming: InputClassifier.IsStreaming(kind));
+        SetSource(kind is InputKind.Url ? MediaSource.Web : MediaSource.Local, kind is InputKind.Url ? value : null);
+        if (kind is InputKind.Dvd or InputKind.Bluray)
+        {
+            try { _player.OpenDisc(value, bluray: kind == InputKind.Bluray); }
+            catch (MpvException)
+            {
+                ShowStatus(kind == InputKind.Dvd ? "This build can't play DVD folders." : "This build can't play Blu-ray folders.");
+                return;
+            }
+        }
+        else _player.Open(value, streaming: InputClassifier.IsStreaming(kind));
         Remember(value);
     }
 
@@ -253,7 +274,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 return;
             }
             var file = info.Files.First(f => f.Index == fileIdx);
-            _source = MediaSource.Torrent;
+            SetSource(MediaSource.Torrent);
             _player!.Open(info.StreamUrl, file.FileName, streaming: true);
             Remember(magnet);
             ShowStatus($"Streaming {file.FileName}");
@@ -292,7 +313,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             EnsureEngine();
             var info = await _torrents.AddMegaAsync(link, TimeSpan.FromSeconds(30));
             CloseTorrent();
-            _source = MediaSource.Mega;
+            SetSource(MediaSource.Mega);
             _player!.Open(info.StreamUrl, info.Name, streaming: true);
             Remember(link);
             ShowStatus($"Streaming {info.Name} from MEGA");
@@ -359,6 +380,56 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SaveSettings();
     }
 
+    private string? _webUrl;
+
+    private void SetSource(MediaSource source, string? webUrl = null)
+    {
+        _source = source;
+        _webUrl = webUrl;
+        OnPropertyChanged(nameof(CanDownload));
+    }
+
+    // ---- Downloads ------------------------------------------------------------------------
+
+    private CancellationTokenSource? _downloadCts;
+    private Task? _downloadTask;
+
+    /// <summary>The playing video came from a web page yt-dlp can save (YouTube and the like).</summary>
+    public bool CanDownload => _webUrl is not null && HasYtDlp && !IsDownloading && !IsIdle;
+
+    /// <summary>Saves the playing web video, best quality, to the Downloads folder.</summary>
+    [RelayCommand]
+    private async Task Download()
+    {
+        if (_webUrl is not { } url || IsDownloading) return;
+        using var cts = _downloadCts = new CancellationTokenSource();
+        IsDownloading = true;
+        DownloadStatus = "Starting download…";
+        try
+        {
+            var task = Task.Run(() => _ytdlp.DownloadAsync(url, _paths.Downloads,
+                p => _ui.Post(() => { if (IsDownloading) DownloadStatus = p.ToString(); }), cts.Token));
+            _downloadTask = task;
+            var file = await task;
+            ShowStatus($"Saved to {Path.GetFileName(_paths.Downloads.TrimEnd(Path.DirectorySeparatorChar))}: {Path.GetFileName(file)}");
+        }
+        catch (OperationCanceledException) { ShowStatus("Download cancelled."); }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        {
+            ShowStatus($"Download failed: {e.Message}");
+        }
+        finally
+        {
+            _downloadCts = null;
+            IsDownloading = false;
+            DownloadStatus = "";
+        }
+    }
+
+    [RelayCommand] private void CancelDownload() => _downloadCts?.Cancel();
+
+    [RelayCommand] private void OpenDownloadsFolder() => Dialogs?.OpenFolder(_paths.Downloads);
+
     // ---- Commands -------------------------------------------------------------------------
 
     [RelayCommand] private void TogglePause() => _player?.TogglePause();
@@ -391,6 +462,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         if (Dialogs is null) return;
         if (await Dialogs.PickMediaFileAsync() is { } f) await OpenInputAsync(f);
+    }
+
+    [RelayCommand]
+    private async Task OpenFolder()
+    {
+        if (Dialogs is null) return;
+        if (await Dialogs.PickFolderAsync() is { } f) await OpenInputAsync(f);
     }
 
     [RelayCommand]
@@ -543,6 +621,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case PlayerAction.SubtitleDelayUp: p?.AdjustSubtitleDelay(0.1); break;
             case PlayerAction.SubtitleDelayDown: p?.AdjustSubtitleDelay(-0.1); break;
             case PlayerAction.OpenFile: _ = OpenFile(); break;
+            case PlayerAction.OpenFolder: _ = OpenFolder(); break;
             case PlayerAction.OpenLink: _ = OpenLink(); break;
             case PlayerAction.PasteAndPlay: _ = PasteAndPlay(); break;
             case PlayerAction.Stop: CloseTorrent(); p?.Stop(); break;
@@ -566,6 +645,24 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // ---- Auto-hiding controls -------------------------------------------------------------
 
     public static readonly TimeSpan ControlsHideDelay = TimeSpan.FromSeconds(2.5);
+
+    /// <summary>Two clicks on the video within this time toggle fullscreen.</summary>
+    public static readonly TimeSpan DoubleClickTime = TimeSpan.FromMilliseconds(500);
+    private DateTime _lastClick = DateTime.MinValue;
+
+    /// <summary>A left click on the video; the second of two quick clicks toggles fullscreen.</summary>
+    public void HandleClick(DateTime utcNow)
+    {
+        NotifyActivity();
+        if (utcNow - _lastClick <= DoubleClickTime)
+        {
+            _lastClick = DateTime.MinValue; // a third click starts a new pair
+            Execute(PlayerAction.ToggleFullscreen);
+        }
+        else _lastClick = utcNow;
+    }
+
+    partial void OnControlsVisibleChanged(bool value) => _player?.SetCursorHidden(!value);
 
     public void NotifyActivity()
     {
@@ -638,6 +735,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         SaveSettings();
+        // Stop yt-dlp rather than leave it running without us; cancelling kills it.
+        _downloadCts?.Cancel();
+        try { _downloadTask?.Wait(TimeSpan.FromSeconds(3)); }
+        catch (AggregateException) { }
         _player?.Dispose();
         _player = null;
         _torrents.Dispose();

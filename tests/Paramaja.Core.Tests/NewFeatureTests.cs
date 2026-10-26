@@ -121,6 +121,92 @@ public class YtDlpTests
         Assert.Equal(Path.Combine(dir, "yt-dlp" + exe), y.BundledPath);
     }
 
+    [Theory]
+    [InlineData("PARAMAJA 512|2048|1048576|3|avc1.640028", 25.0, false)]
+    [InlineData("PARAMAJA 100|NA|NA|NA|none", null, true)]
+    public void Progress_lines_are_parsed(string line, double? percent, bool audio)
+    {
+        var p = DownloadProgress.Parse(line)!;
+        Assert.Equal(percent, p.Percent);
+        Assert.Equal(audio, p.IsAudio);
+        Assert.StartsWith(audio ? "Downloading audio" : "Downloading video", p.ToString());
+        Assert.Null(DownloadProgress.Parse("[download] Destination: x.mp4"));
+    }
+
+    [Fact]
+    public void Download_merges_best_video_and_audio_with_the_bundled_tools()
+    {
+        var dir = TestEnvironment.TempDir();
+        var exe = OperatingSystem.IsWindows() ? ".exe" : "";
+        foreach (var f in new[] { "yt-dlp", "qjs", "ffmpeg" }) File.WriteAllText(Path.Combine(dir, f + exe), "");
+        var args = new YtDlp(dir).DownloadArguments("https://youtu.be/x", "/dl", "/tmp/p.txt").ToList();
+        Assert.Equal("bv*+ba/b", args[args.IndexOf("-f") + 1]);
+        Assert.Equal("mkv", args[args.IndexOf("--merge-output-format") + 1]);
+        Assert.Equal(Path.Combine(dir, "ffmpeg" + exe), args[args.IndexOf("--ffmpeg-location") + 1]);
+        Assert.Equal("quickjs:" + Path.Combine(dir, "qjs" + exe), args[args.IndexOf("--js-runtimes") + 1]);
+        Assert.Equal("/dl", args[args.IndexOf("-P") + 1]);
+        Assert.Equal(["--", "https://youtu.be/x"], args[^2..]);
+    }
+
+    /// <summary>A stand-in yt-dlp: reports progress, then saves a file (or hangs, to be cancelled).</summary>
+    private static YtDlp FakeYtDlp(bool hang)
+    {
+        var dir = TestEnvironment.TempDir();
+        var script = Path.Combine(dir, "yt-dlp");
+        File.WriteAllText(script, $$"""
+            #!/bin/sh
+            while [ $# -gt 0 ]; do
+              case "$1" in
+                --print-to-file) print="$3"; shift 2 ;;
+                -P) out="$2"; shift ;;
+              esac
+              shift
+            done
+            echo "[download] Destination: $out/clip.f137.mp4"
+            echo "partial" > "$out/clip.f137.mp4.part"
+            echo "PARAMAJA 50|100|10|1|avc1"
+            {{(hang ? "sleep 30" : "")}}
+            echo "video" > "$out/clip.mkv"
+            echo "$out/clip.mkv" >> "$print"
+            """.Replace("\r", ""));
+        File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return new YtDlp(dir);
+    }
+
+    [Fact]
+    public async Task Download_reports_progress_and_returns_the_saved_file()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var downloads = TestEnvironment.TempDir();
+        var seen = new List<DownloadProgress>();
+        var file = await FakeYtDlp(hang: false).DownloadAsync("https://youtu.be/x", downloads, seen.Add);
+        Assert.Equal(Path.Combine(downloads, "clip.mkv"), file);
+        Assert.True(File.Exists(file));
+        Assert.Equal(50, Assert.Single(seen).Percent);
+    }
+
+    [Fact]
+    public async Task Cancelling_a_download_stops_it_and_deletes_the_partial_file()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var downloads = TestEnvironment.TempDir();
+        using var cts = new CancellationTokenSource();
+        var task = FakeYtDlp(hang: true).DownloadAsync("https://youtu.be/x", downloads, _ => cts.Cancel(), cts.Token);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
+        Assert.Empty(Directory.GetFiles(downloads));
+    }
+
+    [Fact]
+    public void Downloads_folder_follows_xdg_user_dirs()
+    {
+        var f = Path.Combine(TestEnvironment.TempDir(), "user-dirs.dirs");
+        File.WriteAllText(f, "# comment\nXDG_DOWNLOAD_DIR=\"$HOME/Descărcări\"\n");
+        Assert.Equal("/home/me/Descărcări", PortablePaths.XdgDownloads(f, "/home/me"));
+        File.WriteAllText(f, "XDG_DOWNLOAD_DIR=\"$HOME/\"\n"); // disabled
+        Assert.Null(PortablePaths.XdgDownloads(f, "/home/me"));
+        Assert.False(string.IsNullOrEmpty(new PortablePaths(TestEnvironment.TempDir()).Downloads));
+    }
+
     [Fact]
     public async Task Update_without_a_bundled_copy_says_so()
     {
@@ -137,7 +223,6 @@ public class NewSettingsTests
         var s = new PlayerSettings();
         Assert.False(s.DownmixToStereo);
         Assert.False(s.AudioPassthrough);
-        Assert.Equal(DeinterlaceAlgorithm.Bwdif, s.DeinterlaceAlgorithm);
     }
 
     [Fact]
@@ -152,11 +237,17 @@ public class NewSettingsTests
     public void New_settings_round_trip()
     {
         var store = new SettingsStore(Path.Combine(TestEnvironment.TempDir(), "settings.json"));
-        store.Save(new PlayerSettings { DeinterlaceAlgorithm = DeinterlaceAlgorithm.Bob, AudioPassthrough = true });
-        var json = File.ReadAllText(store.FilePath);
-        Assert.Contains("\"Bob\"", json);
+        store.Save(new PlayerSettings { AudioPassthrough = true });
         var loaded = store.Load();
-        Assert.Equal(DeinterlaceAlgorithm.Bob, loaded.DeinterlaceAlgorithm);
         Assert.True(loaded.AudioPassthrough);
+    }
+
+    [Fact]
+    public void Settings_from_before_bob_was_removed_still_load()
+    {
+        var store = new SettingsStore(Path.Combine(TestEnvironment.TempDir(), "settings.json"));
+        File.WriteAllText(store.FilePath, """{ "deinterlaceAlgorithm": "Bob", "audioPassthrough": true }""");
+        Assert.True(store.Load().AudioPassthrough);
+        Assert.False(File.Exists(store.FilePath + ".corrupt"));
     }
 }

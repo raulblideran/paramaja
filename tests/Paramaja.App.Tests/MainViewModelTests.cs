@@ -1,3 +1,4 @@
+using Paramaja.Core.Input;
 using Paramaja.App.ViewModels;
 using Paramaja.Core.Mpv;
 using Paramaja.Core.Playback;
@@ -117,6 +118,36 @@ public class KeyboardTests
     }
 
     [Fact]
+    public void Auto_hdr_follows_the_display()
+    {
+        using var r = new Rig();
+        Assert.True(r.Vm.HdrTonemap);
+        r.Vm.DisplayIsHdr = true;
+        Assert.Contains("SetDisplayHdr True", r.Player.Calls);
+        Assert.True(r.Vm.HdrPassthrough);
+        Assert.False(r.Vm.HdrTonemap);
+        Assert.Contains("HDR mode", r.Vm.HdrStatusText);
+        Assert.Equal(HdrMode.Auto, r.Settings.HdrMode);
+
+        // H overrides by hand: tonemap even on the HDR display.
+        r.Vm.HandleKey("h");
+        Assert.Equal(HdrMode.TonemapToSdr, r.Settings.HdrMode);
+        Assert.True(r.Vm.HdrTonemap);
+        r.Vm.HdrModeIndex = 0;
+        Assert.Equal(HdrMode.Auto, r.Store.Load().HdrMode);
+        Assert.True(r.Vm.HdrPassthrough);
+    }
+
+    [Fact]
+    public void A_display_found_hdr_before_the_player_exists_is_passed_on()
+    {
+        using var r = new Rig(attach: false);
+        r.Vm.DisplayIsHdr = true;
+        r.Vm.AttachPlayer(1);
+        Assert.Contains("SetDisplayHdr True", r.Player.Calls);
+    }
+
+    [Fact]
     public void D_cycles_deinterlace_modes()
     {
         using var r = new Rig();
@@ -139,6 +170,45 @@ public class KeyboardTests
         r.Vm.HandleKey("MBTN_LEFT_DBL");
         r.Vm.HandleKey("ESC");
         Assert.Equal([null, null, false], requests);
+    }
+
+    [Fact]
+    public void Two_quick_clicks_on_the_video_toggle_fullscreen()
+    {
+        using var r = new Rig();
+        var requests = new List<bool?>();
+        r.Vm.FullscreenRequested += requests.Add;
+        var t = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        r.Vm.HandleClick(t);
+        r.Vm.HandleClick(t + TimeSpan.FromSeconds(2)); // too slow: a new first click
+        Assert.Empty(requests);
+        r.Vm.HandleClick(t + TimeSpan.FromSeconds(2.3)); // enter
+        Assert.Equal([null], requests);
+        r.Vm.HandleClick(t + TimeSpan.FromSeconds(2.5)); // a third quick click doesn't toggle back
+        Assert.Single(requests);
+        r.Vm.HandleClick(t + TimeSpan.FromSeconds(2.8)); // exit
+        Assert.Equal([null, null], requests);
+    }
+
+    [Fact]
+    public void Mpvs_click_message_reaches_the_double_click_logic()
+    {
+        using var r = new Rig();
+        var requests = new List<bool?>();
+        r.Vm.FullscreenRequested += requests.Add;
+        r.Player.RaiseClick();
+        r.Player.RaiseClick();
+        Assert.Equal([null], requests);
+    }
+
+    [Fact]
+    public void The_pointer_hides_and_returns_with_the_controls()
+    {
+        using var r = new Rig();
+        r.Vm.ControlsVisible = false;
+        Assert.Contains("SetCursorHidden True", r.Player.Calls);
+        r.Vm.NotifyActivity();
+        Assert.Equal("SetCursorHidden False", r.Player.Calls.Last(c => c.StartsWith("SetCursorHidden")));
     }
 
     [Fact]
@@ -200,6 +270,25 @@ public class OpeningTests
         r.Dialogs.NextFile = r.MediaFile();
         await r.Vm.OpenFileCommand.ExecuteAsync(null);
         Assert.Contains($"Open {r.Dialogs.NextFile}", r.Player.Calls);
+    }
+
+    [Fact]
+    public async Task Open_folder_plays_a_dvd_folder_as_a_disc()
+    {
+        using var r = new Rig();
+        var disc = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "paramaja-tests", Guid.NewGuid().ToString("N"), "MOVIE")).FullName;
+        var videoTs = Directory.CreateDirectory(Path.Combine(disc, "VIDEO_TS")).FullName;
+        File.WriteAllText(Path.Combine(videoTs, "VIDEO_TS.IFO"), "");
+        r.Dialogs.NextFolder = disc;
+        await r.Vm.OpenFolderCommand.ExecuteAsync(null);
+        Assert.Contains($"OpenDisc dvd {disc}", r.Player.Calls);
+    }
+
+    [Fact]
+    public void Ctrl_shift_o_opens_a_folder()
+    {
+        Assert.True(ShortcutMap.TryGet(ShortcutMap.Canonical("o", ctrl: true, shift: true), out var action));
+        Assert.Equal(PlayerAction.OpenFolder, action);
     }
 
     [Fact]
@@ -641,17 +730,6 @@ public class PlaybackSettingTests
         r.Vm.SubtitleScale = 1.5;
         Assert.Equal("Font size 66  (1.50×)", r.Vm.SubtitleSizeText);
         Assert.Contains(nameof(MainViewModel.SubtitleSizeText), changed);
-    }
-
-    [Fact]
-    public void Bob_can_be_chosen_instead_of_bwdif()
-    {
-        using var r = new Rig();
-        Assert.Equal(0, r.Vm.DeinterlaceAlgorithmIndex);
-        r.Vm.DeinterlaceAlgorithmIndex = 1;
-        Assert.Equal(DeinterlaceAlgorithm.Bob, r.Settings.DeinterlaceAlgorithm);
-        Assert.Contains("SetDeinterlaceAlgorithm Bob", r.Player.Calls);
-        Assert.Equal(DeinterlaceAlgorithm.Bob, r.Store.Load().DeinterlaceAlgorithm);
     }
 
     [Fact]

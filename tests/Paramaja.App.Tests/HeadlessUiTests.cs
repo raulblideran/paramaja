@@ -102,16 +102,32 @@ public class HeadlessUiTests
     }
 
     [AvaloniaFact]
-    public void Settings_window_offers_bob_and_passthrough()
+    public void Tonemapping_and_rendering_are_advanced_and_tonemapping_hides_on_an_hdr_display()
     {
         using var r = new Rig();
         var w = new SettingsWindow { DataContext = r.Vm };
         w.Show();
         Dispatch();
-        var algorithm = w.GetVisualDescendants().OfType<ComboBox>()
-            .Single(c => c.Items.OfType<ComboBoxItem>().Any(i => (i.Content as string)?.StartsWith("Bob") == true));
-        algorithm.SelectedIndex = 1;
-        Assert.Equal(DeinterlaceAlgorithm.Bob, r.Settings.DeinterlaceAlgorithm);
+        var tonemap = w.FindControl<Expander>("TonemapAdvanced")!;
+        var rendering = w.FindControl<Expander>("RenderingAdvanced")!;
+        Assert.True(tonemap.IsVisible);
+        Assert.False(tonemap.IsExpanded);
+        Assert.False(rendering.IsExpanded);
+        r.Vm.DisplayIsHdr = true;
+        Dispatch();
+        Assert.False(tonemap.IsVisible);
+        Assert.True(rendering.IsVisible);
+    }
+
+    [AvaloniaFact]
+    public void Settings_window_offers_passthrough_and_no_bob()
+    {
+        using var r = new Rig();
+        var w = new SettingsWindow { DataContext = r.Vm };
+        w.Show();
+        Dispatch();
+        Assert.DoesNotContain(w.GetVisualDescendants().OfType<ComboBox>().SelectMany(c => c.Items.OfType<ComboBoxItem>()),
+            i => (i.Content as string)?.StartsWith("Bob") == true);
 
         w.GetLogicalDescendants().OfType<TabControl>().Single().SelectedIndex = 1;
         Dispatch();

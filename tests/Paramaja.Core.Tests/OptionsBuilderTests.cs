@@ -53,6 +53,21 @@ public class OptionsBuilderTests
         Assert.False(o.ContainsKey("hdr-compute-peak"));
     }
 
+    [Fact]
+    public void Auto_hdr_tonemaps_on_sdr_and_passes_through_on_an_hdr_display()
+    {
+        var s = new PlayerSettings();
+        Assert.Equal(HdrMode.Auto, s.HdrMode);
+        var sdr = MpvOptionsBuilder.Hdr(s, RenderProfile.High, displayIsHdr: false).ToDictionary(kv => kv.Key, kv => kv.Value);
+        Assert.Equal("no", sdr["target-colorspace-hint"]);
+        Assert.Equal("spline", sdr["tone-mapping"]);
+        var hdr = MpvOptionsBuilder.Hdr(s, RenderProfile.High, displayIsHdr: true).ToDictionary(kv => kv.Key, kv => kv.Value);
+        Assert.Equal("yes", hdr["target-colorspace-hint"]);
+        // A manual choice wins over the display.
+        Assert.Equal(HdrMode.TonemapToSdr, new PlayerSettings { HdrMode = HdrMode.TonemapToSdr }.EffectiveHdrMode(true));
+        Assert.Equal(HdrMode.Passthrough, new PlayerSettings { HdrMode = HdrMode.Passthrough }.EffectiveHdrMode(false));
+    }
+
     [Theory]
     [InlineData("bt.2446a")]
     [InlineData("bt.2390")]
@@ -65,17 +80,12 @@ public class OptionsBuilderTests
     [InlineData(DeinterlaceMode.On)]
     [InlineData(DeinterlaceMode.Off)]
     public void Mpvs_own_deinterlacer_is_never_used(DeinterlaceMode mode) =>
-        // The app inserts BWDIF/Bob itself; mpv's option would pick the GPU deinterlacer.
+        // The app inserts BWDIF itself; mpv's option would pick the GPU deinterlacer.
         Assert.Equal("no", Build(new PlayerSettings { Deinterlace = mode })["deinterlace"]);
 
     [Fact]
-    public void Deinterlace_filters_are_bwdif_by_default_or_bob()
-    {
-        Assert.Equal(DeinterlaceAlgorithm.Bwdif, new PlayerSettings().DeinterlaceAlgorithm);
-        Assert.Equal("@paramaja-deint:bwdif=mode=send_field", MpvOptionsBuilder.DeinterlaceFilter(DeinterlaceAlgorithm.Bwdif));
-        Assert.Contains("separatefields", MpvOptionsBuilder.DeinterlaceFilter(DeinterlaceAlgorithm.Bob));
-        Assert.StartsWith(MpvOptionsBuilder.DeinterlaceLabel, MpvOptionsBuilder.DeinterlaceFilter(DeinterlaceAlgorithm.Bob));
-    }
+    public void Deinterlacer_is_field_rate_bwdif() =>
+        Assert.Equal("@paramaja-deint:bwdif=mode=send_field", MpvOptionsBuilder.DeinterlaceFilter);
 
     [Fact]
     public void Volume_option_uses_the_logarithmic_curve()

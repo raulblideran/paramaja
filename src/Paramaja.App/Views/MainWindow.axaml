@@ -26,19 +26,21 @@
         <Image Source="/Assets/paramaja-256.png" Width="128" Height="128" />
         <TextBlock Classes="h1" Text="Paramaja" HorizontalAlignment="Center" />
         <TextBlock Classes="muted" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
-                   Text="Drop a video here, paste a magnet, YouTube or MEGA link with Ctrl+V, or pick a file." />
+                   Text="Drop a video or folder here, paste a magnet, YouTube or MEGA link with Ctrl+V, or open a file, folder or link." />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,8,0,0">
-          <Button Classes="accent" Command="{Binding OpenFileCommand}">
+          <Button x:Name="OpenMenu" Classes="accent">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <PathIcon Data="{StaticResource IconFolder}" Width="16" Height="16" />
-              <TextBlock Text="Open file" />
+              <TextBlock Text="Open" />
+              <PathIcon Data="{StaticResource IconChevronDown}" Width="12" Height="12" />
             </StackPanel>
-          </Button>
-          <Button Classes="ghost" Command="{Binding OpenLinkCommand}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <PathIcon Data="{StaticResource IconMagnet}" Width="16" Height="16" />
-              <TextBlock Text="Open link" />
-            </StackPanel>
+            <Button.Flyout>
+              <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                <MenuItem Header="Open file…" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
+                <MenuItem Header="Open folder, DVD or Blu-ray…" InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
+                <MenuItem Header="Open link (magnet, YouTube, MEGA, URL)…" InputGesture="Ctrl+U" Command="{Binding OpenLinkCommand}" />
+              </MenuFlyout>
+            </Button.Flyout>
           </Button>
           <Button Classes="ghost" Command="{Binding PasteAndPlayCommand}">
             <StackPanel Orientation="Horizontal" Spacing="8">

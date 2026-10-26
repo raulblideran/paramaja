@@ -26,6 +26,7 @@ public enum PlayerAction
     SubtitleDelayUp,
     SubtitleDelayDown,
     OpenFile,
+    OpenFolder,
     OpenLink,
     PasteAndPlay,
     Stop,

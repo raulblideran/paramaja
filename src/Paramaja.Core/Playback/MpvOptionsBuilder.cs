@@ -58,13 +58,16 @@ public static class MpvOptionsBuilder
         yield return P("idle", "yes");
         yield return P("keep-open", "yes");
         yield return P("force-window", windowId is null ? "no" : "yes");
-        yield return P("cursor-autohide", "1500");
+        // The app hides the pointer together with its controls (see PlayerService.SetCursorHidden).
+        yield return P("cursor-autohide", "no");
         // Precise seeks are required for exact frame stepping.
         yield return P("hr-seek", "yes");
         yield return P("hr-seek-framedrop", "no");
         yield return P("terminal", "no");
         // Drops are handled by the app (magnet text, subtitles), not by mpv's video window.
         yield return P("drag-and-drop", "no");
+        // An opened folder plays as a playlist of its videos, without cover art or subtitles in between.
+        yield return P("directory-filter-types", "video,audio");
     }
 
     /// <summary>YouTube and other sites: mpv's ytdl hook hands page URLs to yt-dlp.</summary>
@@ -131,9 +134,11 @@ public static class MpvOptionsBuilder
         yield return P("video-sync", p == RenderProfile.Fast ? "audio" : "display-resample");
     }
 
-    public static IEnumerable<KeyValuePair<string, string>> Hdr(PlayerSettings s, RenderProfile profile = RenderProfile.High)
+    /// <param name="displayIsHdr">The window is on a display in HDR mode; decides what Auto does.</param>
+    public static IEnumerable<KeyValuePair<string, string>> Hdr(PlayerSettings s, RenderProfile profile = RenderProfile.High,
+        bool displayIsHdr = false)
     {
-        if (s.HdrMode == HdrMode.Passthrough)
+        if (s.EffectiveHdrMode(displayIsHdr) == HdrMode.Passthrough)
         {
             // Let the display do the work; mpv switches the swapchain to HDR when content is HDR.
             yield return P("target-colorspace-hint", "yes");
@@ -161,12 +166,8 @@ public static class MpvOptionsBuilder
 
     public const string DeinterlaceLabel = "@paramaja-deint";
 
-    /// <summary>The video filter for an algorithm. Both output one frame per field (50i → 50p).</summary>
-    public static string DeinterlaceFilter(DeinterlaceAlgorithm algorithm) => algorithm switch
-    {
-        DeinterlaceAlgorithm.Bob => $"{DeinterlaceLabel}:lavfi=[separatefields,scale=w=iw:h=ih*2:flags=bicubic]",
-        _ => $"{DeinterlaceLabel}:bwdif=mode=send_field",
-    };
+    /// <summary>BWDIF, motion adaptive, one frame per field (50i → 50p).</summary>
+    public const string DeinterlaceFilter = $"{DeinterlaceLabel}:bwdif=mode=send_field";
 
     public static IEnumerable<KeyValuePair<string, string>> Audio(PlayerSettings s)
     {
