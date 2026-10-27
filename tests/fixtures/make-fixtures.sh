@@ -89,4 +89,16 @@ EOF
     -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$OUT/chapters.mkv"
 fi
 
+# A CD rip as EAC writes it: one FLAC per track, while the cue sheet still names the .wav it
+# ripped to, gives the pregap ("INDEX 00") in the previous track's file, and differs in case.
+if [ ! -f "$OUT/cd_rip/rip.cue" ]; then
+  mkdir -p "$OUT/cd_rip"
+  ff -f lavfi -i sine=frequency=440:duration=2 -ac 2 -ar 44100 -c:a flac "$OUT/cd_rip/01 - First Song.flac"
+  ff -f lavfi -i sine=frequency=660:duration=3 -ac 2 -ar 44100 -c:a flac "$OUT/cd_rip/02 - Second Song.flac"
+  printf '%s\r\n' 'REM COMMENT "ExactAudioCopy v0.99pb4"' 'PERFORMER "Test"' 'TITLE "Test Album"' \
+    'FILE "01 - First Song.wav" WAVE' '  TRACK 01 AUDIO' '    TITLE "First Song"' '    INDEX 01 00:00:00' \
+    '  TRACK 02 AUDIO' '    TITLE "Second Song"' '    INDEX 00 00:01:50' \
+    'FILE "02 - SECOND song.wav" WAVE' '    INDEX 01 00:00:00' > "$OUT/cd_rip/rip.cue"
+fi
+
 echo "Fixtures in $OUT:"; ls -1 "$OUT"

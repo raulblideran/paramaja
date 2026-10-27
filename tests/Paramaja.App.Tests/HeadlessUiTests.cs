@@ -150,6 +150,82 @@ public class HeadlessUiTests
         w.Close();
     }
 
+    private static List<string?> MenuHeaders(Button button) =>
+        ((MenuFlyout)button.Flyout!).Items.OfType<MenuItem>().Select(i => i.Header as string).ToList();
+
+    private static string? ButtonText(Button b) =>
+        b.Content as string ?? (b.Content as Panel)?.GetLogicalDescendants().OfType<TextBlock>().FirstOrDefault()?.Text;
+
+    [AvaloniaFact]
+    public void Welcome_screen_offers_open_open_link_and_download_video_but_no_paste()
+    {
+        using var r = new Rig(attach: false);
+        var w = new MainWindow { DataContext = r.Vm };
+        w.Show();
+        var texts = w.FindControl<Grid>("Welcome")!.GetLogicalDescendants().OfType<Button>().Select(ButtonText).ToList();
+        Assert.Contains("Open", texts);
+        Assert.Contains("Open Link", texts);
+        Assert.Contains("Download Video", texts);
+        Assert.DoesNotContain("Paste", texts);
+        Assert.Equal(["Open file", "Open folder", "Open Disc"], MenuHeaders(w.FindControl<Button>("OpenMenu")!));
+        w.Close();
+    }
+
+    [AvaloniaFact]
+    public void Controls_bar_open_menu_has_no_link_or_clipboard_and_download_video_is_its_own_button()
+    {
+        using var r = new Rig();
+        r.Vm.IsIdle = false;
+        var bar = new ControlsBar { DataContext = r.Vm, Width = 1280 };
+        bar.Show();
+        Assert.Equal(["Open file", "Open folder", "Open Disc", "Screenshots folder"], MenuHeaders(bar.FindControl<Button>("OpenMenuButton")!));
+        var download = bar.FindControl<Button>("DownloadVideoButton")!;
+        Assert.StartsWith("Download Video", ToolTip.GetTip(download) as string);
+        Assert.Same(r.Vm.OpenDownloaderCommand, download.Command);
+        bar.Close();
+    }
+
+    [AvaloniaFact]
+    public void Hardware_switch_is_in_the_video_menu_only_where_it_applies_and_not_in_settings()
+    {
+        using var r = new Rig();
+        r.Vm.IsIdle = false;
+        var bar = new ControlsBar { DataContext = r.Vm, Width = 1280 };
+        bar.Show();
+        // The video menu's content takes its bindings once the menu opens.
+        var video = bar.GetVisualDescendants().OfType<Button>().First(b => (ToolTip.GetTip(b) as string)?.StartsWith("Video") == true);
+        video.Flyout!.ShowAt(video);
+        Dispatch();
+        var hardware = bar.FindControl<StackPanel>("HardwareOptions")!;
+        Assert.False(hardware.IsVisible);
+        r.Player.State.HardwareDecodingApplies = r.Player.State.HardwareDecodingOn = true;
+        r.Player.RaiseState("hardware-decoding");
+        Dispatch();
+        Assert.True(hardware.IsVisible);
+        video.Flyout.Hide();
+        bar.Close();
+
+        var w = new SettingsWindow { DataContext = r.Vm };
+        w.Show();
+        Dispatch();
+        Assert.DoesNotContain(w.GetVisualDescendants().OfType<ToggleSwitch>(),
+            t => (t.OnContent as string)?.Contains("Hardware") == true);
+        w.Close();
+    }
+
+    [AvaloniaFact]
+    public void Downloader_has_no_get_qualities_button()
+    {
+        using var r = new Rig();
+        var w = new DownloadDialog { DataContext = new DownloadDialogViewModel(r.Vm) };
+        w.Show();
+        var buttons = w.GetVisualDescendants().OfType<Button>().Select(b => b.Content as string).ToList();
+        Assert.DoesNotContain("Get qualities", buttons);
+        Assert.Contains("Download", buttons);
+        Assert.Equal("Download Video", w.Title);
+        w.Close();
+    }
+
     [AvaloniaFact]
     public void Window_and_app_icons_are_embedded()
     {

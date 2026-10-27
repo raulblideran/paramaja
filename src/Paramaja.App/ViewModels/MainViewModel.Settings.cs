@@ -222,15 +222,19 @@ public sealed partial class MainViewModel
         set => Deinterlace = (DeinterlaceMode)Math.Clamp(value, 0, 2);
     }
 
+    /// <summary>
+    /// The video menu's switch, there only while <see cref="HardwareDecodingApplies"/>. It's on
+    /// for every video it applies to; switching it off lasts for the playing video only.
+    /// </summary>
     public bool HardwareDecoding
     {
-        get => Settings.HardwareDecoding;
+        get => _player?.State.HardwareDecodingOn == true;
         set
         {
-            if (Settings.HardwareDecoding == value) return;
-            Settings.HardwareDecoding = value;
+            if (_player is null || value == HardwareDecoding) return;
+            _player.SetHardwareDecoding(value);
             OnPropertyChanged();
-            Changed(() => _player?.ApplyHardwareDecoding());
+            Osd(value ? "Hardware decoding: on" : "Hardware decoding: off for this video");
         }
     }
 

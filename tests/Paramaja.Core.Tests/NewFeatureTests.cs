@@ -231,6 +231,29 @@ public class YtDlpTests
     }
 
     [Fact]
+    public void Audio_only_takes_the_best_audio_stream_as_it_is()
+    {
+        var args = new YtDlp(TestEnvironment.TempDir()).DownloadArguments("https://youtu.be/x", "/dl", "/tmp/p.txt", audioOnly: true).ToList();
+        Assert.Equal("ba/b", args[args.IndexOf("-f") + 1]);
+        Assert.Contains("-x", args);
+        Assert.Equal("best", args[args.IndexOf("--audio-format") + 1]); // no re-encoding
+        Assert.DoesNotContain("--merge-output-format", args);
+        Assert.Contains("--embed-metadata", args);
+        Assert.Equal(["--", "https://youtu.be/x"], args[^2..]);
+    }
+
+    [Fact]
+    public void Audio_names_are_numbered_whatever_the_extension()
+    {
+        var dir = TestEnvironment.TempDir();
+        Assert.Equal("Song [id]", YtDlp.UniqueStem(dir, "Song [id]"));
+        File.WriteAllText(Path.Combine(dir, "Song [id].m4a"), "");
+        Assert.Equal("Song [id] (1)", YtDlp.UniqueStem(dir, "Song [id]"));
+        File.WriteAllText(Path.Combine(dir, "Song [id] (1).opus"), "");
+        Assert.Equal("Song [id] (2)", YtDlp.UniqueStem(dir, "Song [id]"));
+    }
+
+    [Fact]
     public void Clashing_names_get_the_resolution_then_a_counter()
     {
         var dir = TestEnvironment.TempDir();
@@ -321,5 +344,22 @@ public class NewSettingsTests
         File.WriteAllText(store.FilePath, """{ "deinterlaceAlgorithm": "Bob", "audioPassthrough": true }""");
         Assert.True(store.Load().AudioPassthrough);
         Assert.False(File.Exists(store.FilePath + ".corrupt"));
+    }
+}
+
+public class DiscEngineCacheTests
+{
+    [Fact]
+    public void Plugin_cache_stamp_changes_when_a_plugin_file_does()
+    {
+        var plugins = Path.Combine(Path.GetTempPath(), "paramaja-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(plugins, "access"));
+        var plugin = Path.Combine(plugins, "access", "libcdda_plugin.dll");
+        File.WriteAllText(plugin, "x");
+        File.WriteAllText(Path.Combine(plugins, "plugins.dat"), "cache"); // not a plugin: not stamped
+        var stamp = VlcDiscPlayer.PluginStamp(plugins);
+        Assert.Equal(stamp, VlcDiscPlayer.PluginStamp(plugins));
+        File.SetLastWriteTimeUtc(plugin, DateTime.UtcNow.AddDays(-3)); // as unzipping a new version over does
+        Assert.NotEqual(stamp, VlcDiscPlayer.PluginStamp(plugins));
     }
 }

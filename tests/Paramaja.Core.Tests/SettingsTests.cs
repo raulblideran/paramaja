@@ -39,7 +39,6 @@ public class SettingsTests
             ToneMapping = "bt.2446a",
             Deinterlace = DeinterlaceMode.Off,
             Volume = 77,
-            HardwareDecoding = false,
             ClearTorrentCacheOnExit = false,
         };
         s.AddRecent("a.mkv");
@@ -50,7 +49,6 @@ public class SettingsTests
         Assert.Equal("bt.2446a", loaded.ToneMapping);
         Assert.Equal(DeinterlaceMode.Off, loaded.Deinterlace);
         Assert.Equal(77, loaded.Volume);
-        Assert.False(loaded.HardwareDecoding);
         Assert.False(loaded.ClearTorrentCacheOnExit);
         Assert.Equal(["a.mkv"], loaded.RecentItems);
     }
@@ -82,10 +80,34 @@ public class SettingsTests
         File.WriteAllText(path, """{ "volume": 9000, "toneMapping": "nonsense", "seekSeconds": 0, "subtitleScale": 100, "recentItems": null, }""");
         var s = new SettingsStore(path).Load();
         Assert.Equal(150, s.Volume);
-        Assert.Equal("spline", s.ToneMapping);
+        Assert.Equal("mobius", s.ToneMapping);
         Assert.Equal(1, s.SeekSeconds);
         Assert.Equal(4, s.SubtitleScale);
         Assert.NotNull(s.RecentItems);
+    }
+
+    [Fact]
+    public void Mobius_is_the_default_curve_and_the_old_default_moves_to_it_once()
+    {
+        Assert.Equal("mobius", new PlayerSettings().ToneMapping);
+        Assert.Equal("mobius", PlayerSettings.ToneMappingCurves[0]);
+        var path = Path.Combine(TestEnvironment.TempDir(), "settings.json");
+
+        // 1.6.0 and older saved spline, the default then (and a switch that no longer exists).
+        File.WriteAllText(path, """{ "settingsVersion": 2, "toneMapping": "spline", "hardwareDecoding": false }""");
+        var store = new SettingsStore(path);
+        var s = store.Load();
+        Assert.Equal("mobius", s.ToneMapping);
+        Assert.Equal(PlayerSettings.CurrentVersion, s.SettingsVersion);
+
+        // Choosing spline afterwards sticks.
+        s.ToneMapping = "spline";
+        store.Save(s);
+        Assert.Equal("spline", store.Load().ToneMapping);
+
+        // Any other curve someone picked before is kept.
+        File.WriteAllText(path, """{ "settingsVersion": 2, "toneMapping": "hable" }""");
+        Assert.Equal("hable", new SettingsStore(path).Load().ToneMapping);
     }
 
     [Fact]

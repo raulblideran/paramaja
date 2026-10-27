@@ -42,4 +42,13 @@ public sealed class PlayerState
     public bool IsHdr => Transfer is "pq" or "hlg";
 
     public bool IsHardwareDecoding => !string.IsNullOrEmpty(HwdecCurrent) && HwdecCurrent != "no";
+
+    /// <summary>
+    /// Hardware decoding helps this video and the GPU can decode it: only then is there a
+    /// switch for it. Decided anew for every video.
+    /// </summary>
+    public bool HardwareDecodingApplies { get; set; }
+
+    /// <summary>The switch: on for every video it applies to, until switched off for that video.</summary>
+    public bool HardwareDecodingOn { get; set; }
 }

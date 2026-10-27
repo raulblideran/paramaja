@@ -32,7 +32,7 @@ public partial class OpenDiscDialog : Window
     {
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "DVD (VIDEO_TS) or Blu-ray (BDMV) folder",
+            Title = "DVD (VIDEO_TS), Blu-ray (BDMV) or CD rip (.cue) folder",
             AllowMultiple = false,
         });
         if (folders.FirstOrDefault()?.TryGetLocalPath() is { } path) Close(path);

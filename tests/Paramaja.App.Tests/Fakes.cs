@@ -52,6 +52,7 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public void Open(string pathOrUrl, string? displayTitle = null, bool streaming = false) =>
         Log($"Open {pathOrUrl} {displayTitle}".TrimEnd() + (streaming ? " [stream]" : ""));
     public void OpenDisc(string root, bool bluray) => Log($"OpenDisc {(bluray ? "bd" : "dvd")} {root}");
+    public void OpenAudioCd(string device) => Log($"OpenAudioCd {device}");
     public void Stop() => Log("Stop");
     public void TogglePause() => Log("TogglePause");
     public void SetPaused(bool paused) => Log($"SetPaused {paused}");
@@ -89,7 +90,12 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
 
     public void ApplyRenderQuality() => Log($"ApplyRenderQuality {Settings.RenderQuality}");
     public void ApplyHdr() => Log("ApplyHdr");
-    public void ApplyHardwareDecoding() => Log("ApplyHardwareDecoding");
+    public void SetHardwareDecoding(bool on)
+    {
+        Log($"SetHardwareDecoding {on}");
+        State.HardwareDecodingOn = on;
+        RaiseState("hardware-decoding");
+    }
     public void ApplySubtitles() => Log("ApplySubtitles");
     public void ApplyAudio() => Log("ApplyAudio");
     public void SelectTrack(TrackType type, int? id) => Log($"SelectTrack {type} {id?.ToString() ?? "off"}");

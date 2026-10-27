@@ -17,6 +17,7 @@ public class DownloaderTests
         File.WriteAllText(script, """
             #!/bin/sh
             for a in "$@"; do [ "$a" = "-J" ] && { echo '{"title":"Test clip","formats":[{"vcodec":"none"},{"vcodec":"vp9","height":720},{"vcodec":"av01","height":2160},{"vcodec":"avc1","height":1080}]}'; exit 0; }; done
+            for a in "$@"; do [ "$a" = "-x" ] && audio=1; done
             while [ $# -gt 0 ]; do
               case "$1" in
                 -f) fmt="$2"; shift ;;
@@ -27,7 +28,9 @@ public class DownloaderTests
               esac
               shift
             done
+            [ -n "$dry" ] && [ -n "$audio" ] && { echo NA; echo "$out/clip.webm"; exit 0; }
             [ -n "$dry" ] && { echo 1080; echo "$out/clip.mkv"; exit 0; }
+            [ -n "$audio" ] && name=$(echo "$name" | sed 's/%(ext)s/opus/')
             echo "PARAMAJA 100|100|10|0|avc1"
             echo "$fmt" > "$out/$name"
             echo "$out/$name" >> "$print"
@@ -68,16 +71,60 @@ public class DownloaderTests
     {
         if (OperatingSystem.IsWindows()) return; // the stand-in is a shell script
         using var r = new Rig(ytdlp: FakeYtDlp());
+        // Opened with a link: its qualities load by themselves (no button to press).
         var dialog = new DownloadDialogViewModel(r.Vm, "https://youtube.com/watch?v=abc");
-
-        await dialog.CheckCommand.ExecuteAsync(null);
+        await dialog.Lookup;
         Assert.Equal("Test clip", dialog.Title);
-        Assert.Equal(["Best available", "2160p (4K)", "1080p (Full HD)", "720p (HD)"], dialog.Qualities.Select(q => q.Label));
+        Assert.Equal(["Best available", "2160p (4K)", "1080p (Full HD)", "720p (HD)", "Audio only (best quality)"],
+            dialog.Qualities.Select(q => q.Label));
+        Assert.True(dialog.StartCommand.CanExecute(null));
 
         dialog.SelectedQuality = dialog.Qualities.Single(q => q.Height == 1080);
         await r.Vm.StartDownloadAsync(dialog.Url, dialog.SelectedQuality.Height);
         var file = Assert.IsType<string>(r.Vm.LastDownloadedFile);
         Assert.StartsWith(r.Paths.Downloads, file);
         Assert.Equal(YtDlp.Format(1080), File.ReadAllText(file).Trim());
+    }
+
+    [Fact]
+    public async Task Audio_only_downloads_the_best_audio_alone()
+    {
+        if (OperatingSystem.IsWindows()) return; // the stand-in is a shell script
+        using var r = new Rig(ytdlp: FakeYtDlp());
+        var dialog = new DownloadDialogViewModel(r.Vm, "https://youtube.com/watch?v=abc");
+        await dialog.Lookup;
+        dialog.SelectedQuality = dialog.Qualities.Single(q => q.AudioOnly);
+        Assert.False(dialog.WithBestAudio); // no "+ best audio" next to it
+        await r.Vm.StartDownloadAsync(dialog.Url, dialog.SelectedQuality.Height, dialog.SelectedQuality.AudioOnly);
+        var file = Assert.IsType<string>(r.Vm.LastDownloadedFile);
+        Assert.Equal("clip.opus", Path.GetFileName(file));
+        Assert.Equal(YtDlp.AudioFormat, File.ReadAllText(file).Trim());
+
+        // The same audio again gets a number rather than overwriting.
+        await r.Vm.StartDownloadAsync(dialog.Url, 0, audioOnly: true);
+        Assert.Equal("clip (1).opus", Path.GetFileName(r.Vm.LastDownloadedFile));
+    }
+
+    [Fact]
+    public async Task A_pasted_link_looks_up_its_qualities_and_a_newer_one_replaces_it()
+    {
+        if (OperatingSystem.IsWindows()) return; // the stand-in is a shell script
+        using var r = new Rig(ytdlp: FakeYtDlp());
+        var dialog = new DownloadDialogViewModel(r.Vm) { LookupDelay = TimeSpan.FromMilliseconds(200) };
+        Assert.Empty(dialog.Qualities);
+
+        dialog.Url = "https://youtube.com/watch?v=first";
+        var first = dialog.Lookup;
+        dialog.Url = "https://youtube.com/watch?v=second"; // typed on before the pause ended
+        await first;                                      // cancelled: shows nothing
+        Assert.Empty(dialog.Qualities);
+        await dialog.Lookup;
+        Assert.Equal("Test clip", dialog.Title);
+        Assert.Equal(5, dialog.Qualities.Count);
+
+        dialog.Url = "not a link";
+        Assert.Empty(dialog.Qualities);
+        Assert.False(dialog.IsChecking);
+        Assert.False(dialog.StartCommand.CanExecute(null));
     }
 }

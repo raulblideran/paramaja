@@ -40,7 +40,7 @@ public class OptionsBuilderTests
         var o = Build(new PlayerSettings { RenderQuality = RenderQuality.High });
         Assert.Equal("gpu-next", o["vo"]);
         Assert.Equal("no", o["target-colorspace-hint"]);
-        Assert.Equal("spline", o["tone-mapping"]);
+        Assert.Equal("mobius", o["tone-mapping"]);
         Assert.Equal("yes", o["hdr-compute-peak"]);
         Assert.Equal("perceptual", o["gamut-mapping-mode"]);
         Assert.Equal("0.3", o["hdr-contrast-recovery"]);
@@ -59,10 +59,12 @@ public class OptionsBuilderTests
     [InlineData("h264", 1920, 1080, true)]   // any codec from 1080p up
     [InlineData("av1", 3840, 2160, true)]
     [InlineData("h264", 1920, 800, true)]    // scope 1080p
-    [InlineData("h264", 1280, 720, false)]   // smaller non-HEVC: software
+    [InlineData("av1", 854, 480, true)]      // AV1 at any size, like HEVC
+    [InlineData("h264", 1280, 720, false)]   // smaller H.264, VP9, MPEG-2…: software
     [InlineData("vp9", 854, 480, false)]
+    [InlineData("mpeg2video", 720, 576, false)]
     [InlineData(null, null, null, false)]
-    public void Hardware_decoding_is_for_hevc_and_1080p_up(string? codec, int? w, int? h, bool hardware) =>
+    public void Hardware_decoding_is_for_hevc_av1_and_1080p_up(string? codec, int? w, int? h, bool hardware) =>
         Assert.Equal(hardware, MpvOptionsBuilder.UseHardwareDecoding(codec, w, h));
 
     [Fact]
@@ -113,7 +115,7 @@ public class OptionsBuilderTests
         Assert.Equal(HdrMode.Auto, s.HdrMode);
         var sdr = MpvOptionsBuilder.Hdr(s, RenderProfile.High, displayIsHdr: false).ToDictionary(kv => kv.Key, kv => kv.Value);
         Assert.Equal("no", sdr["target-colorspace-hint"]);
-        Assert.Equal("spline", sdr["tone-mapping"]);
+        Assert.Equal("mobius", sdr["tone-mapping"]);
         var hdr = MpvOptionsBuilder.Hdr(s, RenderProfile.High, displayIsHdr: true).ToDictionary(kv => kv.Key, kv => kv.Value);
         Assert.Equal("yes", hdr["target-colorspace-hint"]);
         // A manual choice wins over the display.

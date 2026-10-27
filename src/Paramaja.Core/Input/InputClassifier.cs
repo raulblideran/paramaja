@@ -1,6 +1,6 @@
 namespace Paramaja.Core.Input;
 
-public enum InputKind { None, Magnet, Url, File, Mega, Folder, Dvd, Bluray }
+public enum InputKind { None, Magnet, Url, File, Mega, Folder, Dvd, Bluray, AudioCd }
 
 /// <summary>Decides what a pasted/dropped/command-line string is.</summary>
 public static class InputClassifier
@@ -28,12 +28,14 @@ public static class InputClassifier
     /// <summary>
     /// A local file or folder. DVD (VIDEO_TS) and Blu-ray (BDMV) folders, and their
     /// VIDEO_TS.IFO / index.bdmv / .mpls files, play as discs (the main title); the value is
-    /// then the disc's root folder. Any other folder plays as a playlist.
+    /// then the disc's root folder. An Audio CD's drive (Track01.cda… on Windows) plays as a CD.
+    /// A folder holding a CD rip's cue sheet plays the cue sheet (its tracks as chapters). Any
+    /// other folder plays as a playlist.
     /// </summary>
     private static (InputKind, string) Local(string path)
     {
-        // A raw optical drive (an unmounted disc): DVDs play straight from it.
-        if (IsOpticalDevice(path)) return (InputKind.Dvd, path);
+        // A raw optical drive (an unmounted disc): an Audio CD, or a DVD, which plays straight from it.
+        if (IsOpticalDevice(path)) return (OpticalDisc.Probe(path) == DiscContent.Audio ? InputKind.AudioCd : InputKind.Dvd, path);
         if (!File.Exists(path) && !Directory.Exists(path)) return (InputKind.None, "");
         var full = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         // A drive root keeps its separator: "D:" alone means "the current folder on D:".
@@ -47,10 +49,14 @@ public static class InputClassifier
             if (dir is not null && (name.Equals("index.bdmv", StringComparison.OrdinalIgnoreCase)
                                     || Path.GetExtension(name).Equals(".mpls", StringComparison.OrdinalIgnoreCase)))
                 return FindBluray(dir) is { } bd ? (InputKind.Bluray, bd) : (InputKind.File, full);
+            if (dir is not null && Path.GetExtension(name).Equals(".cda", StringComparison.OrdinalIgnoreCase))
+                return (InputKind.AudioCd, Path.GetPathRoot(full) ?? dir);
             return (InputKind.File, full);
         }
         if (IsDvd(full)) return (InputKind.Dvd, full);
         if (IsBluray(full)) return (InputKind.Bluray, full);
+        if (OpticalDisc.HasCdaTracks(full)) return (InputKind.AudioCd, full);
+        if (CueSheet(full) is { } cue) return (InputKind.File, cue);
         // The VIDEO_TS or BDMV folder itself was picked: the disc is its parent.
         if (Path.GetFileName(full).Equals("VIDEO_TS", StringComparison.OrdinalIgnoreCase)
             && Path.GetDirectoryName(full) is { } dvdParent && IsDvd(dvdParent))
@@ -94,6 +100,34 @@ public static class InputClassifier
         {
             var entries = file ? Directory.EnumerateFiles(dir) : Directory.EnumerateDirectories(dir);
             return entries.FirstOrDefault(e => Path.GetFileName(e).Equals(name, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts", ".mts", ".webm", ".vob", ".mpg", ".mpeg",
+    };
+
+    /// <summary>
+    /// A CD rip's cue sheet in a folder of music (not one with videos): the one naming files that
+    /// are there, else one whose files are there under another audio extension (EAC names the
+    /// .wav it ripped to), else the first. Null if there's none.
+    /// </summary>
+    internal static string? CueSheet(string dir)
+    {
+        try
+        {
+            var files = Directory.EnumerateFiles(dir).ToList();
+            if (files.Any(f => VideoExtensions.Contains(Path.GetExtension(f)))) return null;
+            var cues = files.Where(f => Path.GetExtension(f).Equals(".cue", StringComparison.OrdinalIgnoreCase))
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .Select(c => (Path: c, Tracks: Playback.CueSheet.Read(c).Tracks))
+                .ToList();
+            return (cues.FirstOrDefault(c => c.Tracks.Count > 0 && c.Tracks.All(t => File.Exists(Path.Combine(dir, Playback.CueSheet.FileName(t.File)))))
+                    .Path
+                ?? cues.FirstOrDefault(c => c.Tracks.Count > 0 && c.Tracks.All(t => Playback.CueSheet.Resolve(dir, t.File) is not null)).Path)
+                ?? cues.FirstOrDefault().Path;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
     }

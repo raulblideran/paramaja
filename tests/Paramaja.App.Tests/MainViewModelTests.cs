@@ -174,22 +174,34 @@ public class KeyboardTests
     }
 
     [Theory]
-    [InlineData("hevc", 1280, 720, true)]
-    [InlineData("h264", 1920, 1080, true)]
-    [InlineData("h264", 1280, 720, false)]
-    [InlineData("av1", 854, 480, false)]
-    public void Hardware_decoding_switch_shows_for_hevc_and_1080p_up(string codec, int w, int h, bool shown)
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Hardware_decoding_switch_shows_only_where_the_player_says_it_applies(bool applies)
     {
         using var r = new Rig();
         var changed = new List<string?>();
         r.Vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
-        r.Player.State.VideoFormat = codec;
-        r.Player.State.VideoWidth = w;
-        r.Player.State.VideoHeight = h;
-        r.Player.RaiseState("video-format");
-        r.Player.RaiseState("video-params/h");
-        Assert.Equal(shown, r.Vm.HardwareDecodingApplies);
+        r.Player.State.HardwareDecodingApplies = applies;
+        r.Player.State.HardwareDecodingOn = applies; // on by default wherever it applies
+        r.Player.RaiseState("hardware-decoding");
+        Assert.Equal(applies, r.Vm.HardwareDecodingApplies);
+        Assert.Equal(applies, r.Vm.HardwareDecoding);
         Assert.Contains(nameof(MainViewModel.HardwareDecodingApplies), changed);
+        Assert.Contains(nameof(MainViewModel.HardwareDecoding), changed);
+    }
+
+    [Fact]
+    public void Hardware_decoding_switch_is_for_the_playing_video_and_isnt_saved()
+    {
+        using var r = new Rig();
+        r.Player.State.HardwareDecodingApplies = true;
+        r.Player.State.HardwareDecodingOn = true;
+        r.Player.RaiseState("hardware-decoding");
+        r.Vm.HardwareDecoding = false;
+        Assert.Contains("SetHardwareDecoding False", r.Player.Calls);
+        Assert.Contains("ShowText Hardware decoding: off for this video", r.Player.Calls);
+        Assert.False(r.Vm.HardwareDecoding);
+        Assert.DoesNotContain("ardware", File.Exists(r.Store.FilePath) ? File.ReadAllText(r.Store.FilePath) : "");
     }
 
     [Theory]
@@ -668,17 +680,14 @@ public class StateTests
     {
         using var r = new Rig();
         r.Vm.ToneMapping = "bt.2446a";
-        r.Vm.HardwareDecoding = false;
         r.Vm.SubtitleScale = 1.5;
         r.Vm.DeinterlaceIndex = 2;
         r.Vm.ToneMapping = "not-a-curve";
         Assert.Contains("ApplyHdr", r.Player.Calls);
-        Assert.Contains("ApplyHardwareDecoding", r.Player.Calls);
         Assert.Contains("ApplySubtitles", r.Player.Calls);
         Assert.Contains("SetDeinterlace Off", r.Player.Calls);
         var saved = r.Store.Load();
         Assert.Equal("bt.2446a", saved.ToneMapping);
-        Assert.False(saved.HardwareDecoding);
         Assert.Equal(1.5, saved.SubtitleScale);
         Assert.Equal(DeinterlaceMode.Off, saved.Deinterlace);
     }

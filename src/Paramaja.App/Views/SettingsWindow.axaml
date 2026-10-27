@@ -25,7 +25,7 @@
                 <ComboBox Grid.Column="1" Width="160" ItemsSource="{Binding ToneMappingCurves}" SelectedItem="{Binding ToneMapping}" />
               </Grid>
               <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                         Text="spline: balanced default · bt.2446a: brighter, closer to PotPlayer · bt.2390: the ITU reference curve · hable: filmic" />
+                         Text="mobius: default, keeps colours exact and softens only the highlights · spline: balanced · bt.2446a: brighter, closer to PotPlayer · bt.2390: the ITU reference curve · hable: filmic" />
               <ToggleSwitch IsChecked="{Binding HdrDynamicPeak}"
                             OnContent="Scene-adaptive brightness (measures each frame)" OffContent="Use the disc's static metadata" />
               <StackPanel>
@@ -45,9 +45,8 @@
                      Text="Uses BWDIF, a motion-adaptive deinterlacer that outputs one frame per field (50i becomes 50p)." />
 
           <TextBlock Classes="section" Text="Decoding" />
-          <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration (D3D11 / VA-API)" OffContent="Software decoding" />
           <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                     Text="Used for HEVC (H.265) at any size and for every codec from 1080p up; smaller videos decode in software." />
+                     Text="Hardware acceleration is decided for each video: it's on for HEVC (H.265) and AV1 at any size and for every codec from 1080p up, where your graphics card can decode them. Its switch then appears in the video menu, for that video. Smaller videos decode in software and have no switch." />
           <Expander x:Name="RenderingAdvanced" Header="Advanced: rendering quality" HorizontalAlignment="Stretch">
             <StackPanel Spacing="8">
               <ComboBox SelectedIndex="{Binding RenderQualityIndex}" Width="420" HorizontalAlignment="Left">

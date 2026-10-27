@@ -105,6 +105,68 @@ public class InputTests
     }
 
     [Fact]
+    public void A_cd_rip_folder_plays_its_cue_sheet()
+    {
+        var dir = TestEnvironment.TempDir();
+        File.WriteAllText(Path.Combine(dir, "01 - Jam.flac"), "");
+        // EAC names the .wav it ripped; the files are FLAC by now. Both play, but the cue sheet
+        // naming the files that are there wins.
+        File.WriteAllText(Path.Combine(dir, "A.cue"), "FILE \"01 - Jam.wav\" WAVE\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n");
+        File.WriteAllText(Path.Combine(dir, "B.flactracks.cue"), "REM x\nFILE \"01 - Jam.flac\" WAVE\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n");
+        Assert.Equal((InputKind.File, Path.Combine(dir, "B.flactracks.cue")), InputClassifier.Classify(dir));
+        File.Delete(Path.Combine(dir, "B.flactracks.cue"));
+        Assert.Equal((InputKind.File, Path.Combine(dir, "A.cue")), InputClassifier.Classify(dir)); // its .wav is a .flac now
+
+        // A folder with videos stays a playlist, cue sheet or not.
+        File.WriteAllText(Path.Combine(dir, "concert.mkv"), "");
+        Assert.Equal((InputKind.Folder, dir), InputClassifier.Classify(dir));
+    }
+
+    [Fact]
+    public void Cue_sheets_are_read_the_way_rippers_write_them()
+    {
+        // EAC's "gaps appended": a track's FILE line comes after its INDEX 00, before its INDEX 01;
+        // a TITLE may also follow the INDEX.
+        var sheet = CueSheet.Parse([
+            "TITLE \"Album\"", "FILE \"a.wav\" WAVE", "  TRACK 01 AUDIO", "    TITLE \"One\"", "    INDEX 01 00:00:00",
+            "  TRACK 02 AUDIO", "    INDEX 00 03:59:70", "FILE \"b.wav\" WAVE", "    INDEX 01 00:00:00", "    TITLE \"Two\"",
+            "FILE image.flac WAVE", "  TRACK 03 AUDIO", "    INDEX 01 01:02:15"]);
+        Assert.Equal("Album", sheet.Title);
+        Assert.Equal([new CueSheet.Track("a.wav", 0, "One"), new CueSheet.Track("b.wav", 0, "Two"), new CueSheet.Track("image.flac", 62.2, null)],
+            sheet.Tracks);
+    }
+
+    [Fact]
+    public void Cue_sheet_files_are_found_by_another_extension_another_case_or_without_their_windows_folder()
+    {
+        var dir = TestEnvironment.TempDir();
+        File.WriteAllText(Path.Combine(dir, "01 - HIStory.flac"), "");
+        Assert.Equal(Path.Combine(dir, "01 - HIStory.flac"), CueSheet.Resolve(dir, "01 - History.wav"));
+        Assert.Equal(Path.Combine(dir, "01 - HIStory.flac"), CueSheet.Resolve(dir, @"Rip [FLAC]\01 - HIStory.wav"));
+        Assert.Null(CueSheet.Resolve(dir, "02 - Missing.wav"));
+
+        // Every track found: an EDL with the files really there, one chapter per track.
+        File.WriteAllText(Path.Combine(dir, "rip.cue"), "FILE \"01 - History.wav\" WAVE\n  TRACK 01 AUDIO\n    TITLE \"A, B; C\"\n    INDEX 01 00:00:00\n");
+        var url = CueSheet.PlayableUrl(Path.Combine(dir, "rip.cue"));
+        var file = Path.Combine(dir, "01 - HIStory.flac");
+        Assert.Equal($"edl://%{System.Text.Encoding.UTF8.GetByteCount(file)}%{file},title=%7%A, B; C", url);
+
+        // A track missing: left to mpv as it is.
+        File.AppendAllText(Path.Combine(dir, "rip.cue"), "FILE \"02 - Missing.wav\" WAVE\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n");
+        Assert.Null(CueSheet.PlayableUrl(Path.Combine(dir, "rip.cue")));
+    }
+
+    [Fact]
+    public void Windows_audio_cd_tracks_open_the_cd()
+    {
+        var drive = TestEnvironment.TempDir();
+        File.WriteAllText(Path.Combine(drive, "Track01.cda"), "");
+        Assert.Equal((InputKind.AudioCd, drive), InputClassifier.Classify(drive));
+        Assert.True(OpticalDisc.HasCdaTracks(drive));
+        Assert.Equal(DiscContent.Unknown, OpticalDisc.Probe("/nonexistent/sr9"));
+    }
+
+    [Fact]
     public void Track_labels()
     {
         Assert.Equal("1: Commentary [eng] AC3 5.1", new TrackInfo(1, TrackType.Audio, "Commentary", "eng", "ac3", false, false, false, 6).Label);

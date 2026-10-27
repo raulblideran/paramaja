@@ -1,0 +1,238 @@
+diff --git a/modules/video_filter/deinterlace/algo_yadif.c b/modules/video_filter/deinterlace/algo_yadif.c
+index a89d240..f1da6c6 100644
+--- a/modules/video_filter/deinterlace/algo_yadif.c
++++ b/modules/video_filter/deinterlace/algo_yadif.c
+@@ -27,6 +27,7 @@
+ #endif
+ 
+ #include <stdint.h>
++#include <stdlib.h>
+ #include <assert.h>
+ 
+ #include <vlc_common.h>
+@@ -200,3 +201,159 @@ int RenderYadif( filter_t *p_filter, picture_t *p_dst, picture_t *p_src,
+         return VLC_EGENERIC;
+     }
+ }
++
++/*****************************************************************************
++ * BWDIF (Bob Weaver Deinterlacing Filter), from FFmpeg's vf_bwdif.c and
++ * bwdifdsp.c (LGPL 2.1+, Thomas Mundt). Motion adaptive like Yadif, whose
++ * frame handling it shares here, but it interpolates with the BBC's W3FDIF
++ * coefficients (the Weston 3-field deinterlacer, BBC PH-2071) where there is
++ * motion: sharper and steadier than Yadif's spatial guess.
++ *****************************************************************************/
++
++static const int bwdif_coef_lf[2] = { 4309, 213 };
++static const int bwdif_coef_hf[3] = { 5570, 3801, 1016 };
++static const int bwdif_coef_sp[2] = { 5077, 981 };
++
++/* One line of the field being rebuilt. Near the top and bottom (edge) only
++ * the lines in reach are used: a plain average, checked spatially where two
++ * lines on either side exist (spat). */
++#define BWDIF_FILTER_LINE( pixel, suffix ) \
++static void bwdif_filter_line_##suffix( pixel *dst, const pixel *prev, \
++        const pixel *cur, const pixel *next, int w, int prefs, int mrefs, \
++        int prefs2, int mrefs2, int prefs3, int mrefs3, int prefs4, int mrefs4, \
++        int parity, int clip_max, bool edge, bool spat ) \
++{ \
++    const pixel *prev2 = parity ? prev : cur; \
++    const pixel *next2 = parity ? cur  : next; \
++    for( int x = 0; x < w; x++ ) \
++    { \
++        int c = cur[mrefs]; \
++        int d = (prev2[0] + next2[0]) >> 1; \
++        int e = cur[prefs]; \
++        int temporal_diff0 = abs( prev2[0] - next2[0] ); \
++        int temporal_diff1 = ( abs( prev[mrefs] - c ) + abs( prev[prefs] - e ) ) >> 1; \
++        int temporal_diff2 = ( abs( next[mrefs] - c ) + abs( next[prefs] - e ) ) >> 1; \
++        int diff = FFMAX3( temporal_diff0 >> 1, temporal_diff1, temporal_diff2 ); \
++        if( !diff ) \
++            dst[0] = d; \
++        else \
++        { \
++            int interpol; \
++            if( !edge || spat ) \
++            { \
++                int b = ( (prev2[mrefs2] + next2[mrefs2]) >> 1 ) - c; \
++                int f = ( (prev2[prefs2] + next2[prefs2]) >> 1 ) - e; \
++                int dc = d - c; \
++                int de = d - e; \
++                int max = FFMAX3( de, dc, FFMIN( b, f ) ); \
++                int min = FFMIN3( de, dc, FFMAX( b, f ) ); \
++                diff = FFMAX3( diff, min, -max ); \
++            } \
++            if( edge ) \
++                interpol = (c + e) >> 1; \
++            else if( abs( c - e ) > temporal_diff0 ) \
++                interpol = ( ( ( bwdif_coef_hf[0] * (prev2[0] + next2[0]) \
++                    - bwdif_coef_hf[1] * (prev2[mrefs2] + next2[mrefs2] + prev2[prefs2] + next2[prefs2]) \
++                    + bwdif_coef_hf[2] * (prev2[mrefs4] + next2[mrefs4] + prev2[prefs4] + next2[prefs4]) ) >> 2 ) \
++                    + bwdif_coef_lf[0] * (c + e) - bwdif_coef_lf[1] * (cur[mrefs3] + cur[prefs3]) ) >> 13; \
++            else \
++                interpol = ( bwdif_coef_sp[0] * (c + e) - bwdif_coef_sp[1] * (cur[mrefs3] + cur[prefs3]) ) >> 13; \
++            if( interpol > d + diff ) \
++                interpol = d + diff; \
++            else if( interpol < d - diff ) \
++                interpol = d - diff; \
++            dst[0] = VLC_CLIP( interpol, 0, clip_max ); \
++        } \
++        dst++; cur++; prev++; next++; prev2++; next2++; \
++    } \
++}
++
++BWDIF_FILTER_LINE( uint8_t, 8 )
++BWDIF_FILTER_LINE( uint16_t, 16 )
++
++int RenderBwdif( filter_t *p_filter, picture_t *p_dst, picture_t *p_src,
++                 int i_order, int i_field )
++{
++    VLC_UNUSED(p_src);
++
++    filter_sys_t *p_sys = p_filter->p_sys;
++
++    assert( i_order >= 0 && i_order <= 2 ); /* 2 = soft field repeat */
++    assert( i_field == 0 || i_field == 1 );
++
++    /* As the pitches must match, use ONLY pictures coming from picture_New()! */
++    picture_t *p_prev = p_sys->context.pp_history[0];
++    picture_t *p_cur  = p_sys->context.pp_history[1];
++    picture_t *p_next = p_sys->context.pp_history[2];
++
++    /* Field order and soft field repeat exactly as in RenderYadif(): parity 1
++       for the first field, 0 for the second, 2 for a repeated field (copied). */
++    int parity;
++    if( p_cur  &&  p_cur->i_nb_fields > 2 )
++        parity = (i_order + 1) % 3;
++    else
++        parity = (i_order + 1) % 2;
++
++    if( p_prev && p_cur && p_next )
++    {
++        const bool wide = p_sys->chroma->pixel_size == 2;
++        const int clip_max = (1 << (wide ? p_sys->chroma->pixel_bits : 8)) - 1;
++
++        for( int n = 0; n < p_dst->i_planes; n++ )
++        {
++            const plane_t *prevp = &p_prev->p[n];
++            const plane_t *curp  = &p_cur->p[n];
++            const plane_t *nextp = &p_next->p[n];
++            plane_t *dstp        = &p_dst->p[n];
++            const int h    = dstp->i_visible_lines;
++            const int w    = dstp->i_visible_pitch / (wide ? 2 : 1);
++            const int refs = curp->i_pitch / (wide ? 2 : 1);
++
++            assert( prevp->i_pitch == curp->i_pitch && curp->i_pitch == nextp->i_pitch );
++
++            for( int y = 0; y < h; y++ )
++            {
++                uint8_t *dst = &dstp->p_pixels[y * dstp->i_pitch];
++                const uint8_t *cur = &curp->p_pixels[y * curp->i_pitch];
++                if( (y % 2) == i_field  ||  parity == 2 )
++                {
++                    memcpy( dst, cur, dstp->i_visible_pitch );
++                    continue;
++                }
++                const uint8_t *prev = &prevp->p_pixels[y * prevp->i_pitch];
++                const uint8_t *next = &nextp->p_pixels[y * nextp->i_pitch];
++                const bool edge  = y < 4 || y + 5 > h;
++                const bool spat  = !( y < 2 || y + 3 > h );
++                const int  prefs = y + 1 < h ? refs : -refs;
++                const int  mrefs = y > 0 ? -refs : refs;
++                if( wide )
++                    bwdif_filter_line_16( (uint16_t *)dst, (const uint16_t *)prev,
++                                          (const uint16_t *)cur, (const uint16_t *)next,
++                                          w, prefs, mrefs, 2 * refs, -2 * refs,
++                                          3 * refs, -3 * refs, 4 * refs, -4 * refs,
++                                          parity, clip_max, edge, spat );
++                else
++                    bwdif_filter_line_8( dst, prev, cur, next,
++                                         w, prefs, mrefs, 2 * refs, -2 * refs,
++                                         3 * refs, -3 * refs, 4 * refs, -4 * refs,
++                                         parity, clip_max, edge, spat );
++            }
++        }
++
++        p_sys->context.i_frame_offset = 1; /* p_cur will be rendered at next frame, too */
++
++        return VLC_SUCCESS;
++    }
++    else if( !p_prev && !p_cur && p_next )
++    {
++        /* The first frame, as RenderYadif() does it */
++        RenderX( p_filter, p_dst, p_next );
++        return VLC_SUCCESS;
++    }
++    else
++    {
++        p_sys->context.i_frame_offset = 1; /* p_cur will be rendered at next frame */
++
++        return VLC_EGENERIC;
++    }
++}
+diff --git a/modules/video_filter/deinterlace/algo_yadif.h b/modules/video_filter/deinterlace/algo_yadif.h
+index 7bc4518..c5b3646 100644
+--- a/modules/video_filter/deinterlace/algo_yadif.h
++++ b/modules/video_filter/deinterlace/algo_yadif.h
+@@ -91,4 +91,13 @@ int RenderYadif( filter_t *p_filter, picture_t *p_dst, picture_t *p_src,
+  */
+ int RenderYadifSingle( filter_t *p_filter, picture_t *p_dst, picture_t *p_src );
+ 
++/**
++ * BWDIF (Bob Weaver Deinterlacing Filter) from FFmpeg: called like
++ * RenderYadif() in its framerate doubling mode, and needing the same three
++ * frames of history. Where there is motion it interpolates with the BBC's
++ * W3FDIF coefficients rather than Yadif's spatial guess.
++ */
++int RenderBwdif( filter_t *p_filter, picture_t *p_dst, picture_t *p_src,
++                 int i_order, int i_field );
++
+ #endif
+diff --git a/modules/video_filter/deinterlace/deinterlace.c b/modules/video_filter/deinterlace/deinterlace.c
+index 9f9d529..594f201 100644
+--- a/modules/video_filter/deinterlace/deinterlace.c
++++ b/modules/video_filter/deinterlace/deinterlace.c
+@@ -295,8 +295,15 @@ static void Close( vlc_object_t *p_this );
+                                     "in the Phosphor framerate doubler. "\
+                                     "Default: Low.")
+ 
++#define BWDIF_TEXT N_("BWDIF for yadif2x")
++#define BWDIF_LONGTEXT N_("Run BWDIF (Bob Weaver Deinterlacing Filter), a " \
++                          "sharper motion adaptive deinterlacer, when the " \
++                          "yadif2x mode is asked for. libVLC and the video " \
++                          "output only accept their own list of modes.")
++
+ vlc_module_begin ()
+-    set_description( N_("Deinterlacing video filter") )
++    /* Paramaja's build: "BWDIF" in the description tells the app it's here. */
++    set_description( N_("Deinterlacing video filter (yadif2x runs BWDIF)") )
+     set_shortname( N_("Deinterlace" ))
+     set_capability( "video filter", 0 )
+     set_category( CAT_VIDEO )
+@@ -314,6 +321,7 @@ vlc_module_begin ()
+                 PHOSPHOR_DIMMER_LONGTEXT, true )
+         change_integer_list( phosphor_dimmer_list, phosphor_dimmer_list_text )
+         change_safe ()
++    add_bool( "deinterlace-bwdif", true, BWDIF_TEXT, BWDIF_LONGTEXT, false )
+     add_shortcut( "deinterlace" )
+     set_callbacks( Open, Close )
+ vlc_module_end ()
+@@ -366,6 +374,8 @@ static struct filter_mode_t filter_mode [] = {
+                  { false, true, false, false }, false, true },
+     { "yadif2x", .pf_render_ordered = RenderYadif,
+                  { true, true, false, false }, false, true },
++    { "bwdif", .pf_render_ordered = RenderBwdif,
++                 { true, true, false, false }, false, true },
+     { "x", .pf_render_single_pic = RenderX,
+                  { false, false, false, false }, false, false },
+     { "phosphor", .pf_render_ordered = RenderPhosphor,
+@@ -389,6 +399,9 @@ static void SetFilterMethod( filter_t *p_filter, const char *mode, bool pack )
+ 
+     if ( mode == NULL || !strcmp( mode, "auto" ) )
+         mode = "x";
++    /* libVLC's API and the video output know no "bwdif" mode */
++    if ( !strcmp( mode, "yadif2x" ) && var_InheritBool( p_filter, "deinterlace-bwdif" ) )
++        mode = "bwdif";
+ 
+     for ( size_t i = 0; i < ARRAY_SIZE(filter_mode); i++ )
+     {

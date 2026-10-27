@@ -35,6 +35,9 @@ public partial class App : Application
                 new TorrentService(), new AvaloniaDispatcher(),
                 discPlayerFactory: wid => new VlcDiscPlayer(settings, paths, wid));
 
+            // libVLC (discs) builds its plugin cache now, in the background, rather than when a disc opens.
+            _ = VlcDiscPlayer.PrepareAsync();
+
             var window = new MainWindow { DataContext = vm };
             vm.Dialogs = new DialogService(window, () => vm);
             window.Closed += (_, _) => vm.Dispose();

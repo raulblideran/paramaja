@@ -18,8 +18,9 @@ QJS_SHA256=2aeabf0092c3262d6b2609824418f7dd7ed1f1df939f73b2b15645230cac0d77
 # pinned by version and SHA-256.
 FFMPEG_VERSION=9.0.2
 FFMPEG_SHA256=4705843ccaaf54257c16ad90f3e952ece33c17df964ecf7bfdbb0f49c7171077
-# libVLC plays discs with their menus. Taken from VideoLAN's own VLC release for Windows,
-# which (unlike the libVLC NuGet package) has the DVD readers; pinned by version and SHA-256.
+# libVLC plays discs with their menus, and Audio CDs. Taken from VideoLAN's own VLC release for
+# Windows, which (unlike the libVLC NuGet package) has the DVD and CD readers; pinned by version
+# and SHA-256. Its deinterlacer is swapped for the BWDIF one (build/build-vlc-bwdif-win.sh).
 LIBVLC_VERSION=3.0.24
 LIBVLC_SHA256=1ed59c09152e78aff84663fa76efab26057716576db74332858810e5ef54ae1f
 export PATH="$HOME/.cargo/bin:$PATH"
@@ -66,7 +67,9 @@ case "$RID" in
       "$YTDLP_SHA256" "$OUT/yt-dlp.exe"
     fetch_checked "https://github.com/quickjs-ng/quickjs/releases/download/$QJS_VERSION/qjs-windows-x86_64.exe" \
       "$QJS_SHA256" "$OUT/qjs.exe"
-    if [ ! -f "$OUT/libvlc/libvlc.dll" ]; then
+    # Re-extracted when a reader added since is missing (libcdda: Audio CDs, 1.7.0).
+    if [ ! -f "$OUT/libvlc/libvlc.dll" ] || [ ! -f "$OUT/libvlc/plugins/access/libcdda_plugin.dll" ]; then
+      rm -rf "$OUT/libvlc"
       DL="$(mktemp -d)"
       fetch_checked "https://download.videolan.org/pub/videolan/vlc/$LIBVLC_VERSION/win64/vlc-$LIBVLC_VERSION-win64.7z" \
         "$LIBVLC_SHA256" "$DL/vlc.7z"
@@ -80,7 +83,7 @@ case "$RID" in
                stream_filter text_renderer video_chroma video_filter video_output; do
         cp -r "$VLC/plugins/$d" "$OUT/libvlc/plugins/"
       done
-      for p in libdvdnav libdvdread liblibbluray libfilesystem; do
+      for p in libdvdnav libdvdread liblibbluray libfilesystem libcdda; do
         cp "$VLC/plugins/access/${p}_plugin.dll" "$OUT/libvlc/plugins/access/"
       done
       # Encoders and formats discs never carry (FFmpeg's decoder covers the rest).
@@ -88,6 +91,8 @@ case "$RID" in
         libvpx* libtheora* libdaala* libschroedinger* libkate* libspeex* libtwolame* libshine* libfluidsynth*)
       rm -rf "$DL"
     fi
+    # VLC's deinterlacer with BWDIF added (packaging/vlc/vlc-bwdif.patch), built for this libVLC.
+    cp "$ROOT/packaging/vlc/win64/libdeinterlace_plugin.dll" "$OUT/libvlc/plugins/video_filter/"
     if [ ! -f "$OUT/ffmpeg.exe" ] || [ ! -f "$OUT/ffprobe.exe" ]; then
       DL="$(mktemp -d)"
       fetch_checked "https://github.com/GyanD/codexffmpeg/releases/download/$FFMPEG_VERSION/ffmpeg-$FFMPEG_VERSION-essentials_build.7z" \

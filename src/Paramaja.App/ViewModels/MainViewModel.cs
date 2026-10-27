@@ -147,8 +147,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (_player is null || (_discPlayerFactory is not null && _discSurface is null)) return;
         if (_pendingOpen is not { } p) return;
         _pendingOpen = null;
-        _ = OpenInputAsync(p);
+        PendingOpenTask = OpenInputAsync(p);
     }
+
+    /// <summary>What was opened at startup, once the surfaces existed; tests await it.</summary>
+    internal Task PendingOpenTask { get; private set; } = Task.CompletedTask;
 
     /// <summary>Events count only while their engine is the one playing.</summary>
     private void Wire(IPlayer player)
@@ -185,22 +188,39 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         OpenPendingWhenReady();
     }
 
-    /// <summary>The disc engine, made on first use; null if there isn't one (or it failed to load).</summary>
-    private IPlayer? DiscEngine()
+    private Task<IPlayer?>? _discEngineStart;
+
+    /// <summary>
+    /// The disc engine, made on first use; null if there isn't one (or it failed to load). It's
+    /// made off the UI thread: libVLC loading its plugins could take seconds (on Windows, before
+    /// it had its plugin cache), and the window froze meanwhile.
+    /// </summary>
+    private Task<IPlayer?> DiscEngineAsync()
     {
-        if (_discPlayer is not null || _discPlayerFactory is null || _discSurface is not { } surface) return _discPlayer;
+        if (_discPlayer is not null || _discPlayerFactory is null || _discSurface is not { } surface) return Task.FromResult(_discPlayer);
+        return _discEngineStart ??= StartDiscEngineAsync(_discPlayerFactory, surface);
+    }
+
+    private async Task<IPlayer?> StartDiscEngineAsync(Func<long, IPlayer> factory, long surface)
+    {
+        ShowStatus("Starting the disc player…", sticky: true);
         try
         {
-            _discPlayer = _discPlayerFactory(surface);
-            Wire(_discPlayer);
+            var engine = await Task.Run(() => factory(surface));
+            Wire(engine);
+            _discPlayer = engine;
+            ShowStatus("");
         }
         catch (Exception e) when (e is DllNotFoundException or InvalidOperationException or TypeInitializationException
-                                      or LibVLCSharp.Shared.VLCException)
+                                      or LibVLCSharp.Shared.VLCException or AggregateException)
         {
             ShowStatus("Disc menus aren't available in this build: playing the disc without them.");
         }
         return _discPlayer;
     }
+
+    /// <summary>A DVD or Blu-ray plays through libVLC, with its menus: the Disc menu button applies.</summary>
+    [ObservableProperty] private bool _canShowDiscMenu;
 
     /// <summary>Hands playback to another engine, stopping the one that was playing.</summary>
     private void UseEngine(IPlayer next)
@@ -209,8 +229,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _player?.Stop();
         _player = next;
         IsDiscMode = ReferenceEquals(next, _discPlayer);
+        if (!IsDiscMode) CanShowDiscMenu = false;
         SyncTracks();
         SyncChapters();
+        OnPropertyChanged(nameof(HardwareDecodingApplies));
+        OnPropertyChanged(nameof(HardwareDecoding));
     }
 
     /// <summary>Back to the disc's root menu (the Menu button).</summary>
@@ -234,12 +257,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case "demuxer-cache-time": UpdateBuffered(s); break;
             case "hwdec-current": DecoderBadge = s.IsHardwareDecoding ? $"HW · {s.HwdecCurrent}" : "SW"; break;
             case "video-params/gamma" or "video-params/primaries": UpdateHdrBadge(); break;
-            case "video-format": OnPropertyChanged(nameof(HardwareDecodingApplies)); break;
-            case "chapter": MarkCurrentChapter(); break;
-            case "video-params/h" or "video-params/w":
-                ResolutionBadge = ResolutionLabel(s.VideoWidth, s.VideoHeight);
+            case "hardware-decoding":
                 OnPropertyChanged(nameof(HardwareDecodingApplies));
+                OnPropertyChanged(nameof(HardwareDecoding));
                 break;
+            case "chapter": MarkCurrentChapter(); break;
+            case "video-params/h" or "video-params/w": ResolutionBadge = ResolutionLabel(s.VideoWidth, s.VideoHeight); break;
             case "audio-params/channel-count" or "audio-out-params/channel-count":
                 UpdateAudioBadge();
                 OnPropertyChanged(nameof(IsSurroundAudio));
@@ -260,9 +283,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Only a stereo source can be downmixed to mono.</summary>
     public bool IsStereoAudio => _player?.State.SourceChannels == 2;
 
-    /// <summary>HEVC, or anything from 1080p up: only then does the hardware decoding switch matter.</summary>
-    public bool HardwareDecodingApplies => _player?.State is { } s
-        && MpvOptionsBuilder.UseHardwareDecoding(s.VideoFormat, s.VideoWidth, s.VideoHeight);
+    /// <summary>
+    /// The playing video gets hardware decoding: it helps (HEVC, AV1, or 1080p up) and the GPU
+    /// can decode it. Only then is there a switch; it's decided anew for each video.
+    /// </summary>
+    public bool HardwareDecodingApplies => _player?.State.HardwareDecodingApplies == true;
 
     internal void UpdateHdrBadge()
     {
@@ -351,16 +376,37 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         CloseTorrent();
         SetSource(kind is InputKind.Url ? MediaSource.Web : MediaSource.Local, kind is InputKind.Url ? value : null);
-        if (kind is InputKind.Dvd or InputKind.Bluray)
+        if (kind is InputKind.Dvd or InputKind.Bluray or InputKind.AudioCd)
         {
-            // libVLC shows the disc's menus; without it, mpv plays the main title.
-            UseEngine(DiscEngine() ?? _mpvPlayer!);
-            try { _player!.OpenDisc(value, bluray: kind == InputKind.Bluray); }
+            // libVLC shows the disc's menus and plays CDs; without it, mpv plays a disc's main title.
+            UseEngine(await DiscEngineAsync() ?? _mpvPlayer!);
+            CanShowDiscMenu = IsDiscMode && kind is not InputKind.AudioCd;
+            try
+            {
+                if (kind == InputKind.AudioCd) _player!.OpenAudioCd(value);
+                else _player!.OpenDisc(value, bluray: kind == InputKind.Bluray);
+            }
             catch (MpvException)
             {
-                ShowStatus(kind == InputKind.Dvd ? "This build can't play DVD folders." : "This build can't play Blu-ray folders.");
+                ShowStatus(kind switch
+                {
+                    InputKind.Dvd => "This build can't play DVD folders.",
+                    InputKind.Bluray => "This build can't play Blu-ray folders.",
+                    _ => "This build can't play Audio CDs.",
+                });
                 return;
             }
+        }
+        else if (kind == InputKind.File && Path.GetExtension(value).Equals(".cue", StringComparison.OrdinalIgnoreCase))
+        {
+            // A CD rip: its cue sheet's tracks play as one timeline of the files really there,
+            // with the tracks as chapters (CueSheet), under the album's title.
+            UseEngine(_mpvPlayer!);
+            string? album = null;
+            try { album = CueSheet.Read(value).Title; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            _player!.Open(CueSheet.PlayableUrl(value) ?? value,
+                string.IsNullOrWhiteSpace(album) ? Path.GetFileNameWithoutExtension(value) : album);
         }
         else
         {
@@ -541,9 +587,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Saves a page's video to the Downloads folder: the best video up to
-    /// <paramref name="maxHeight"/> (0 for the best of all) merged with the best audio.
+    /// <paramref name="maxHeight"/> (0 for the best of all) merged with the best audio, or with
+    /// <paramref name="audioOnly"/> just the best audio.
     /// </summary>
-    public async Task StartDownloadAsync(string url, int maxHeight = 0)
+    public async Task StartDownloadAsync(string url, int maxHeight = 0, bool audioOnly = false)
     {
         if (IsDownloading) return;
         using var cts = _downloadCts = new CancellationTokenSource();
@@ -552,7 +599,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             var task = Task.Run(() => _ytdlp.DownloadAsync(url, _paths.Downloads,
-                p => _ui.Post(() => { if (IsDownloading) DownloadStatus = p.ToString(); }), cts.Token, maxHeight));
+                p => _ui.Post(() => { if (IsDownloading) DownloadStatus = p.ToString(); }), cts.Token, maxHeight, audioOnly));
             _downloadTask = task;
             var file = await task;
             LastDownloadedFile = file;
@@ -620,15 +667,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (await Dialogs.PickFolderAsync() is { } f) await OpenInputAsync(f);
     }
 
-    /// <summary>A DVD or Blu-ray, from a drive or a folder, with its menus.</summary>
+    /// <summary>
+    /// A DVD or Blu-ray (with its menus) or an Audio CD, from a drive or a folder; a CD rip's
+    /// folder plays its cue sheet, with the tracks as chapters.
+    /// </summary>
     [RelayCommand]
     private async Task OpenDisc()
     {
         if (Dialogs is null) return;
         if (await Dialogs.PickDiscAsync() is not { } root) return;
-        var kind = InputClassifier.Classify(root).Kind;
-        if (kind is InputKind.Dvd or InputKind.Bluray) await OpenInputAsync(root);
-        else ShowStatus("That isn't a DVD or Blu-ray: look for a folder with VIDEO_TS or BDMV inside.");
+        var (kind, value) = InputClassifier.Classify(root);
+        var cueSheet = kind == InputKind.File && Path.GetExtension(value).Equals(".cue", StringComparison.OrdinalIgnoreCase);
+        if (kind is InputKind.Dvd or InputKind.Bluray or InputKind.AudioCd || cueSheet) await OpenInputAsync(root);
+        else ShowStatus("That isn't a disc: look for a folder with VIDEO_TS or BDMV inside, or a CD rip's .cue sheet.");
     }
 
     [RelayCommand]

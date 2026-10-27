@@ -12,6 +12,8 @@ public static class NativeLibraries
     public const string Mpv = "mpv";
     public const string Torrent = "paramaja_torrent";
     public const string Vlc = "libvlc";
+    /// <summary>libVLC's core, for the one setting libVLC's API can't make (see VlcDiscPlayer).</summary>
+    public const string VlcCore = "libvlccore";
 
     /// <summary>
     /// Where libVLC lives: on Windows a "libvlc" folder next to the exe, holding libvlc.dll,
@@ -43,6 +45,9 @@ public static class NativeLibraries
         Vlc when OperatingSystem.IsWindows() => [Path.Combine("libvlc", "libvlc.dll"), "libvlc.dll"],
         Vlc when OperatingSystem.IsMacOS() => ["libvlc.dylib"],
         Vlc => ["libvlc.so.5", "libvlc.so"],
+        VlcCore when OperatingSystem.IsWindows() => [Path.Combine("libvlc", "libvlccore.dll"), "libvlccore.dll"],
+        VlcCore when OperatingSystem.IsMacOS() => ["libvlccore.dylib"],
+        VlcCore => ["libvlccore.so.9", "libvlccore.so"],
         _ => [library],
     };
 
@@ -82,7 +87,7 @@ public static class NativeLibraries
 
     private static IntPtr Resolve(string library, Assembly assembly, DllImportSearchPath? searchPath)
     {
-        if (library is not (Mpv or Torrent or Vlc)) return IntPtr.Zero;
+        if (library is not (Mpv or Torrent or Vlc or VlcCore)) return IntPtr.Zero;
         foreach (var probe in ProbeOrder(library))
         {
             if (probe.StartsWith("dir:"))

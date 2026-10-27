@@ -46,16 +46,15 @@ public enum RenderQuality
 public sealed class PlayerSettings
 {
     /// <summary>Bumped when a default changes for existing users too (see <see cref="Normalize"/>).</summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     /// <summary>The settings.json format; 0 for files written before versioning.</summary>
     public int SettingsVersion { get; set; }
 
     public static readonly string[] ToneMappingCurves =
-        ["spline", "bt.2446a", "bt.2390", "st2094-40", "hable", "mobius", "reinhard", "clip", "auto"];
+        ["mobius", "spline", "bt.2446a", "bt.2390", "st2094-40", "hable", "reinhard", "clip", "auto"];
 
-    // Video
-    public bool HardwareDecoding { get; set; } = true;
+    // Video. Hardware decoding isn't a setting: it's decided for each video (PlayerService).
     /// <summary>
     /// The display refresh rate playback is timed for, in Hz; 0 trusts what the monitor reports.
     /// 60 by default: monitors that report odd or mismatched rates made playback stutter.
@@ -65,7 +64,8 @@ public sealed class PlayerSettings
     public int StreamMaxHeight { get; set; }
     public RenderQuality RenderQuality { get; set; } = RenderQuality.Balanced;
     public HdrMode HdrMode { get; set; } = HdrMode.Auto;
-    public string ToneMapping { get; set; } = "spline";
+    /// <summary>The HDR → SDR curve; mobius keeps in-range colours exact and rolls off only the highlights.</summary>
+    public string ToneMapping { get; set; } = "mobius";
     /// <summary>Measure each frame's brightness so tonemapping adapts scene by scene.</summary>
     public bool HdrDynamicPeak { get; set; } = true;
     /// <summary>Restores fine detail lost in highlights during tonemapping (gpu-next).</summary>
@@ -125,8 +125,10 @@ public sealed class PlayerSettings
     {
         // 1.5.0 made Balanced the default; whoever was on the old default (Auto) moves too.
         if (SettingsVersion < 2 && RenderQuality == RenderQuality.Auto) RenderQuality = RenderQuality.Balanced;
+        // 1.7.0 made mobius the default curve; whoever was on the old default (spline) moves too.
+        if (SettingsVersion < 3 && ToneMapping == "spline") ToneMapping = "mobius";
         SettingsVersion = CurrentVersion;
-        if (!ToneMappingCurves.Contains(ToneMapping)) ToneMapping = "spline";
+        if (!ToneMappingCurves.Contains(ToneMapping)) ToneMapping = "mobius";
         HdrContrastRecovery = Math.Clamp(HdrContrastRecovery, 0, 2);
         Volume = Math.Clamp(Volume, 0, 150);
         if (AudioPassthrough) DownmixToStereo = false;

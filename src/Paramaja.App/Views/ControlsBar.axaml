@@ -70,7 +70,7 @@
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-          <Button x:Name="DiscMenuButton" Classes="icon" Command="{Binding ShowDiscMenuCommand}" IsVisible="{Binding IsDiscMode}"
+          <Button x:Name="DiscMenuButton" Classes="icon" Command="{Binding ShowDiscMenuCommand}" IsVisible="{Binding CanShowDiscMenu}"
                   ToolTip.Tip="Disc menu (arrow keys and Enter move through it)">
             <PathIcon Data="{StaticResource IconHome}" />
           </Button>
@@ -208,7 +208,8 @@
                   </ComboBox>
                   <StackPanel x:Name="HardwareOptions" Spacing="6" IsVisible="{Binding HardwareDecodingApplies}">
                     <TextBlock Classes="section" Text="Decoding" />
-                    <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration" OffContent="Software decoding" />
+                    <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration (default)"
+                                  OffContent="Software decoding (this video)" />
                   </StackPanel>
                   <Expander Header="Advanced: rendering quality" HorizontalAlignment="Stretch">
                     <StackPanel Spacing="6">
@@ -235,20 +236,23 @@
             <PathIcon Data="{StaticResource IconCamera}" />
           </Button>
 
-          <Button Classes="icon" Command="{Binding OpenLinkCommand}" ToolTip.Tip="Open link: magnet, YouTube, MEGA or any video URL (Ctrl+U)">
+          <Button x:Name="DownloadVideoButton" Classes="icon" Command="{Binding OpenDownloaderCommand}"
+                  ToolTip.Tip="Download Video: pick a quality, or just the audio">
+            <PathIcon Data="{StaticResource IconDownload}" />
+          </Button>
+
+          <Button Classes="icon" Command="{Binding OpenLinkCommand}" ToolTip.Tip="Open Link: magnet, YouTube, MEGA or any video URL (Ctrl+U)">
             <PathIcon Data="{StaticResource IconLink}" />
           </Button>
 
-          <Button Classes="icon" ToolTip.Tip="Open">
+          <Button x:Name="OpenMenuButton" Classes="icon" ToolTip.Tip="Open">
             <PathIcon Data="{StaticResource IconFolder}" />
             <Button.Flyout>
               <MenuFlyout Placement="TopEdgeAlignedRight">
-                <MenuItem Header="Open file…" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
-                <MenuItem Header="Open folder…" InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
-                <MenuItem Header="Open disc (DVD / Blu-ray)…" Command="{Binding OpenDiscCommand}" />
-                <MenuItem Header="Open link (magnet, YouTube, MEGA, URL)…" InputGesture="Ctrl+U" Command="{Binding OpenLinkCommand}" />
-                <MenuItem Header="Play from clipboard" InputGesture="Ctrl+V" Command="{Binding PasteAndPlayCommand}" />
-                <MenuItem Header="Download a video…" Command="{Binding OpenDownloaderCommand}" />
+                <MenuItem Header="Open file" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
+                <MenuItem Header="Open folder" InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
+                <MenuItem Header="Open Disc" Command="{Binding OpenDiscCommand}"
+                          ToolTip.Tip="DVD, Blu-ray or Audio CD, from a drive or a folder" />
                 <Separator />
                 <MenuItem Header="Screenshots folder" Command="{Binding OpenScreenshotsFolderCommand}" />
               </MenuFlyout>

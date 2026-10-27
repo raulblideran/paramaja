@@ -220,13 +220,25 @@ modules:
 
   # ---- libVLC: plays discs with their menus ------------------------------
   # mpv plays everything else but has no DVD or Blu-ray menu support, so discs
-  # go through libVLC. Only the library is built (no VLC app or interfaces),
-  # with the disc, FFmpeg and PulseAudio modules a disc player needs. VLC's own
-  # libplacebo support is off: it predates the libplacebo mpv uses.
+  # go through libVLC, and so do Audio CDs (its CD-DA reader). Only the library
+  # is built (no VLC app or interfaces), with the disc, FFmpeg and PulseAudio
+  # modules a disc player needs. VLC's own libplacebo support is off: it
+  # predates the libplacebo mpv uses. vlc-bwdif.patch adds BWDIF to VLC's
+  # deinterlacer, run for its yadif2x mode, so discs deinterlace like files.
   - name: vlc
     build-options:
       env:
         BUILDCC: gcc -std=gnu99 # VLC builds a few helper tools with the native compiler
+      # libVLC's plugin cache (below) records each plugin's size and time. Splitting debug info
+      # out afterwards changed the sizes, which made the cache stale: every plugin was opened at
+      # each start. So no debug info, and nothing touches the plugins after the cache is made:
+      # the modules after this one don't split debug info either, as flatpak-builder's
+      # post-processing of a later module reaches back to libVLC's files.
+      cflags: -O2 -pipe
+      cflags-override: true
+      cxxflags: -O2 -pipe
+      cxxflags-override: true
+      no-debuginfo: true
     config-opts:
       - --disable-vlc
       - --disable-qt
@@ -246,7 +258,6 @@ modules:
       - --disable-sndio
       - --disable-alsa
       - --disable-v4l2
-      - --disable-vcd
       - --disable-libcddb
       - --disable-addonmanagermodules
       - --disable-vlm
@@ -263,7 +274,9 @@ modules:
       - --enable-swscale
       - --enable-pulse
     post-install:
-      # The plugin cache makes libVLC start in milliseconds instead of scanning.
+      # The plugin cache makes libVLC start in milliseconds instead of opening every plugin.
+      # Installed Flatpak files all have the time 0, so the cache is made with that time.
+      - find /app/lib/vlc/plugins -name '*.so' -exec touch -h -d @0 {} +
       - /app/lib/vlc/vlc-cache-gen /app/lib/vlc/plugins
     cleanup:
       - /share/vlc/lua
@@ -276,6 +289,8 @@ modules:
       - type: archive
         url: https://download.videolan.org/pub/videolan/vlc/3.0.24/vlc-3.0.24.tar.xz
         sha256: e7cab503d1d7d5849b89d2cf0e1ee60d0ef6d012407791b644b9cfc0cc225fdf
+      - type: patch
+        path: vlc/vlc-bwdif.patch
 
   # ---- the torrent engine (Rust) -----------------------------------------
   # Cargo needs its crates and a flatpak build has no network. --share=network
@@ -285,6 +300,7 @@ modules:
   - name: paramaja-torrent
     buildsystem: simple
     build-options:
+      no-debuginfo: true # keeps libVLC's plugin cache valid (see vlc)
       append-path: /usr/lib/sdk/rust-stable/bin
       env:
         CARGO_HOME: /run/build/paramaja-torrent/cargo
@@ -319,6 +335,7 @@ modules:
   - name: paramaja
     buildsystem: simple
     build-options:
+      no-debuginfo: true # keeps libVLC's plugin cache valid (see vlc)
       append-path: /usr/lib/sdk/dotnet8/bin
       append-ld-library-path: /usr/lib/sdk/dotnet8/lib
       env:

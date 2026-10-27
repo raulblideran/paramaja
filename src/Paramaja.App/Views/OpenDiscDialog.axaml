@@ -2,16 +2,16 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:s="using:Paramaja.App.Services"
         x:Class="Paramaja.App.Views.OpenDiscDialog"
-        Title="Open disc" Icon="/Assets/paramaja.ico"
+        Title="Open Disc" Icon="/Assets/paramaja.ico"
         Width="560" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterOwner" Background="#15111A">
   <StackPanel Margin="24" Spacing="12">
     <StackPanel Orientation="Horizontal" Spacing="10">
       <PathIcon Data="{StaticResource IconDisc}" Width="22" Height="22" Foreground="{StaticResource ParamajaAccentBright}" />
-      <TextBlock Text="Open a disc" FontSize="20" FontWeight="SemiBold" />
+      <TextBlock Text="Open Disc" FontSize="20" FontWeight="SemiBold" />
     </StackPanel>
     <TextBlock Classes="muted" TextWrapping="Wrap"
-               Text="Plays a DVD or Blu-ray with its menus, from a drive or from a VIDEO_TS / BDMV folder. Store-bought DVDs work; encrypted Blu-rays don't." />
+               Text="Plays a DVD or Blu-ray with its menus, or an Audio CD, from a drive or from a folder: VIDEO_TS / BDMV, or a CD rip with its .cue sheet. Store-bought DVDs work; encrypted Blu-rays don't." />
     <TextBlock Classes="section" Text="Drives" />
     <ItemsControl x:Name="DriveList">
       <ItemsControl.ItemTemplate>
@@ -23,9 +23,10 @@
         </DataTemplate>
       </ItemsControl.ItemTemplate>
     </ItemsControl>
-    <TextBlock x:Name="NoDrives" Classes="muted" FontSize="12" Text="No DVD or Blu-ray drive found." IsVisible="False" />
+    <TextBlock x:Name="NoDrives" Classes="muted" FontSize="12" Text="No CD, DVD or Blu-ray drive found." IsVisible="False" />
     <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="10">
-      <Button Classes="ghost" Content="DVD or Blu-ray folder…" Click="OnPickFolder" />
+      <Button Classes="ghost" Content="Disc folder…" Click="OnPickFolder"
+              ToolTip.Tip="A DVD (VIDEO_TS) or Blu-ray (BDMV) folder, or a CD rip's folder with its .cue sheet" />
       <Button Grid.Column="1" Classes="ghost" Content="Refresh" Click="OnRefresh" ToolTip.Tip="After inserting a disc" />
       <Button Grid.Column="3" Classes="ghost" Content="Cancel" Click="OnCancel" IsCancel="True" />
     </Grid>

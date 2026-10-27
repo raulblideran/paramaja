@@ -28,7 +28,7 @@
         <Image Source="/Assets/paramaja-256.png" Width="128" Height="128" />
         <TextBlock Classes="h1" Text="Paramaja" HorizontalAlignment="Center" />
         <TextBlock Classes="muted" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
-                   Text="Drop a video or folder here, paste a magnet, YouTube or MEGA link with Ctrl+V, or open a file, folder or link." />
+                   Text="Drop a video or folder here, paste a magnet, YouTube or MEGA link with Ctrl+V, or open a file, folder, disc or link." />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,8,0,0">
           <Button x:Name="OpenMenu" Classes="accent">
             <StackPanel Orientation="Horizontal" Spacing="8">
@@ -38,12 +38,10 @@
             </StackPanel>
             <Button.Flyout>
               <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                <MenuItem Header="Open file…" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
-                <MenuItem Header="Open folder…" InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
-                <MenuItem Header="Open disc (DVD / Blu-ray)…" Command="{Binding OpenDiscCommand}" />
-                <MenuItem Header="Open link (magnet, YouTube, MEGA, URL)…" InputGesture="Ctrl+U" Command="{Binding OpenLinkCommand}" />
-                <Separator />
-                <MenuItem Header="Download a video…" Command="{Binding OpenDownloaderCommand}" />
+                <MenuItem Header="Open file" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
+                <MenuItem Header="Open folder" InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
+                <MenuItem Header="Open Disc" Command="{Binding OpenDiscCommand}"
+                          ToolTip.Tip="DVD, Blu-ray or Audio CD, from a drive or a folder" />
               </MenuFlyout>
             </Button.Flyout>
           </Button>
@@ -51,20 +49,14 @@
                   ToolTip.Tip="Magnet, YouTube, MEGA or any video URL (Ctrl+U)">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <PathIcon Data="{StaticResource IconLink}" Width="16" Height="16" />
-              <TextBlock Text="Open link" />
+              <TextBlock Text="Open Link" />
             </StackPanel>
           </Button>
           <Button x:Name="DownloaderButton" Classes="ghost" Command="{Binding OpenDownloaderCommand}"
-                  ToolTip.Tip="Download a YouTube (or other site) video in the quality you choose">
+                  ToolTip.Tip="Download a YouTube (or other site) video in the quality you choose, or just its audio">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <PathIcon Data="{StaticResource IconDownload}" Width="16" Height="16" />
-              <TextBlock Text="Download" />
-            </StackPanel>
-          </Button>
-          <Button Classes="ghost" Command="{Binding PasteAndPlayCommand}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <PathIcon Data="{StaticResource IconPaste}" Width="16" Height="16" />
-              <TextBlock Text="Paste" />
+              <TextBlock Text="Download Video" />
             </StackPanel>
           </Button>
           <Button Classes="ghost" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings">

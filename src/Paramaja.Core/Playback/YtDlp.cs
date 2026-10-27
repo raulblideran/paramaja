@@ -78,6 +78,12 @@ public sealed class YtDlp(string appDirectory)
         psi.ArgumentList.Add("--");
         psi.ArgumentList.Add(url);
         using var p = Process.Start(psi) ?? throw new InvalidOperationException("couldn't start yt-dlp");
+        // A lookup that's no longer wanted (another link was pasted) stops yt-dlp too.
+        await using var kill = ct.Register(() =>
+        {
+            try { p.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+        });
         var stderr = p.StandardError.ReadToEndAsync(ct);
         var json = await p.StandardOutput.ReadToEndAsync(ct);
         await p.WaitForExitAsync(ct);
@@ -122,16 +128,19 @@ public sealed class YtDlp(string appDirectory)
 
     /// <summary>
     /// Downloads the best video and audio of a page into <paramref name="folder"/>, merged into
-    /// one MKV. Returns the file's path. Cancelling stops yt-dlp and deletes its partial files.
+    /// one MKV, or with <paramref name="audioOnly"/> just its best audio stream as it is (no
+    /// re-encoding). Returns the file's path. Cancelling stops yt-dlp and deletes its partial files.
     /// </summary>
     /// <param name="maxHeight">The highest video resolution wanted (e.g. 1080); 0 for the best.</param>
     public async Task<string> DownloadAsync(string url, string folder, Action<DownloadProgress>? progress = null,
-        CancellationToken ct = default, int maxHeight = 0)
+        CancellationToken ct = default, int maxHeight = 0, bool audioOnly = false)
     {
         var exe = BundledPath ?? throw new InvalidOperationException("yt-dlp isn't bundled with this build");
         Directory.CreateDirectory(folder);
-        var (planned, height) = await PlanAsync(exe, url, folder, maxHeight, ct);
-        var fileName = UniqueFileName(folder, planned, height);
+        var (planned, height) = await PlanAsync(exe, url, folder, maxHeight, audioOnly, ct);
+        // The audio's extension is only known once yt-dlp has extracted it (.opus, .m4a…).
+        var fileName = audioOnly ? UniqueStem(folder, Path.GetFileNameWithoutExtension(planned)) : UniqueFileName(folder, planned, height);
+        var template = fileName.Replace("%", "%%") + (audioOnly ? ".%(ext)s" : "");
         var printed = Path.Combine(Path.GetTempPath(), $"paramaja-download-{Guid.NewGuid():N}.txt");
         var psi = new ProcessStartInfo(exe)
         {
@@ -141,7 +150,7 @@ public sealed class YtDlp(string appDirectory)
             CreateNoWindow = true,
         };
         // yt-dlp reads -o as a template: a literal % in the title has to be doubled.
-        foreach (var a in DownloadArguments(url, folder, printed, maxHeight, fileName.Replace("%", "%%"))) psi.ArgumentList.Add(a);
+        foreach (var a in DownloadArguments(url, folder, printed, maxHeight, template, audioOnly)) psi.ArgumentList.Add(a);
 
         using var p = Process.Start(psi) ?? throw new InvalidOperationException("couldn't start yt-dlp");
         var partials = new List<string>();
@@ -189,7 +198,7 @@ public sealed class YtDlp(string appDirectory)
     /// would get, so an existing download isn't skipped or overwritten (see UniqueFileName).
     /// </summary>
     private async Task<(string FileName, int? Height)> PlanAsync(string exe, string url, string folder, int maxHeight,
-        CancellationToken ct)
+        bool audioOnly, CancellationToken ct)
     {
         var psi = new ProcessStartInfo(exe)
         {
@@ -198,7 +207,8 @@ public sealed class YtDlp(string appDirectory)
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        foreach (var a in DownloadArguments(url, folder, "", maxHeight).Where(a => a is not "--print-to-file" and not "after_move:filepath" and not ""))
+        foreach (var a in DownloadArguments(url, folder, "", maxHeight, audioOnly: audioOnly)
+                     .Where(a => a is not "--print-to-file" and not "after_move:filepath" and not ""))
             psi.ArgumentList.Add(a);
         // Insert before "--" and the URL, which come last.
         var at = psi.ArgumentList.IndexOf("--");
@@ -231,15 +241,43 @@ public sealed class YtDlp(string appDirectory)
             if (Free($"{withHeight} ({n}){ext}")) return $"{withHeight} ({n}){ext}";
     }
 
+    /// <summary>
+    /// An audio download's name without its extension: yt-dlp's own if no file of that name
+    /// exists with any extension, else numbered ("Title [id] (1)").
+    /// </summary>
+    internal static string UniqueStem(string folder, string stem)
+    {
+        bool Free(string name) => !Directory.Exists(folder)
+            || !Directory.EnumerateFiles(folder).Any(f => Path.GetFileNameWithoutExtension(f) == name);
+        if (Free(stem)) return stem;
+        for (var n = 1; ; n++)
+            if (Free($"{stem} ({n})")) return $"{stem} ({n})";
+    }
+
+    /// <summary>The best audio stream on its own; a site with only combined files gives its audio.</summary>
+    public const string AudioFormat = "ba/b";
+
     internal IEnumerable<string> DownloadArguments(string url, string folder, string printFile, int maxHeight = 0,
-        string outputTemplate = "%(title).150B [%(id)s].%(ext)s")
+        string outputTemplate = "%(title).150B [%(id)s].%(ext)s", bool audioOnly = false)
     {
         // A watch link that is also in a playlist means the one video.
         yield return "--no-playlist";
         yield return "-f";
-        yield return Format(maxHeight);
-        yield return "--merge-output-format";
-        yield return "mkv";
+        if (audioOnly)
+        {
+            yield return AudioFormat;
+            // Out of its video container into an audio file, keeping the stream as it is:
+            // "best" never re-encodes (Opus stays Opus, AAC becomes .m4a).
+            yield return "-x";
+            yield return "--audio-format";
+            yield return "best";
+        }
+        else
+        {
+            yield return Format(maxHeight);
+            yield return "--merge-output-format";
+            yield return "mkv";
+        }
         // Title, uploader, date, description and link as tags, and the chapters, written by the
         // bundled ffmpeg. The thumbnail goes in as JPEG cover art where ffprobe is bundled too.
         yield return "--embed-metadata";

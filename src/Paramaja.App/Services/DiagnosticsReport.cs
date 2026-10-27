@@ -29,7 +29,8 @@ public static class DiagnosticsReport
         sb.AppendLine($"Video: {state.VideoFormat ?? "?"} {state.VideoWidth}x{state.VideoHeight}, " +
                       $"{(state.IsHdr ? $"HDR ({state.Transfer})" : "SDR")}, {state.ContainerFps:0.###} fps");
         sb.AppendLine($"Decoding: {(state.IsHardwareDecoding ? $"hardware ({state.HwdecCurrent})" : "software (CPU)")}" +
-                      $"{(settings.HardwareDecoding ? "" : ", hardware decoding turned off in settings")}");
+                      (!state.HardwareDecodingApplies ? ", hardware decoding doesn't apply to this video"
+                          : state.HardwareDecodingOn ? "" : ", hardware decoding switched off for this video"));
         sb.AppendLine($"Rendering: {profile?.ToString() ?? "?"} (setting: {settings.RenderQuality}), output {state.OutputFps:0.##} fps, VO {state.CurrentVo}");
         sb.AppendLine($"HDR: {settings.HdrMode}, curve {settings.ToneMapping}; deinterlace {state.DeinterlaceFilter ?? "off"}");
         sb.AppendLine($"Audio: {state.SourceChannels}ch → {state.OutputChannels}ch, passthrough {(settings.AudioPassthrough ? "on" : "off")}");

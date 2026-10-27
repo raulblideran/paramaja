@@ -43,7 +43,7 @@ public sealed class PlayerService : IPlayer
         _paths = paths;
         _paths.EnsureCreated();
         _mpv = new MpvClient();
-        _hwdec = "no"; // decided per file, once its codec and size are known
+        _hwdec = "no"; // decided per file, once its codec and size are known (DecideHardwareDecoding)
         RenderProfile = MpvOptionsBuilder.InitialProfile(settings.RenderQuality);
         foreach (var (k, v) in MpvOptionsBuilder.Build(settings, paths, windowId))
         {
@@ -54,8 +54,6 @@ public sealed class PlayerService : IPlayer
         Wire();
         _mpv.Initialize();
         Observe();
-        // Tracks are chosen but the decoders haven't started: deciding here avoids restarting
-        // the decoder a moment into playback (which raced with interlace detection).
         _mpv.AddHook("on_preloaded", DecideHardwareDecoding);
         BindKeys();
     }
@@ -74,6 +72,7 @@ public sealed class PlayerService : IPlayer
             // Every file is judged on its own frames: drop the previous file's verdict.
             _sourceInterlaced = false;
             State.SourceInterlaced = false;
+            ResetHardwareDecoding();
             if (Settings.Deinterlace == DeinterlaceMode.Auto) ApplyDeinterlace();
         };
         _mpv.EndFile += (reason, err) =>
@@ -165,7 +164,10 @@ public sealed class PlayerService : IPlayer
             case "chapter-list/count" or "current-edition": RefreshChapters(); break;
             case "media-title": s.Title = value as string; break;
             case "path": s.Path = value as string; break;
-            case "hwdec-current": s.HwdecCurrent = value as string; break;
+            case "hwdec-current":
+                s.HwdecCurrent = value as string;
+                CheckHardwareDecoding();
+                break;
             case "video-codec": s.VideoCodec = value as string; break;
             case "video-params/gamma": s.Transfer = value as string; break;
             case "video-params/primaries": s.Primaries = value as string; break;
@@ -205,6 +207,20 @@ public sealed class PlayerService : IPlayer
         _mpv.SetProperty(bluray ? "bluray-device" : "dvd-device", root);
         _mpv.SetProperty("force-media-title", Path.GetFileName(root));
         _mpv.Command("loadfile", bluray ? "bd://" : "dvd://", "replace");
+        _mpv.SetProperty("pause", false);
+    }
+
+    /// <summary>
+    /// An Audio CD, for builds without libVLC (which normally plays CDs). Throws
+    /// <see cref="MpvException"/> if this libmpv was built without CD support.
+    /// </summary>
+    public void OpenAudioCd(string device)
+    {
+        _streaming = false;
+        _stalls = 0;
+        _mpv.SetProperty("cdda-device", device);
+        _mpv.SetProperty("force-media-title", "Audio CD");
+        _mpv.Command("loadfile", "cdda://", "replace");
         _mpv.SetProperty("pause", false);
     }
 
@@ -428,32 +444,107 @@ public sealed class PlayerService : IPlayer
         StateChanged?.Invoke("deinterlace-active");
     }
 
-    /// <summary>Whether this file gets hardware decoding (see MpvOptionsBuilder.UseHardwareDecoding).</summary>
-    private bool _hardwareWanted;
+    // ---- Hardware decoding: decided for each video ------------------------------------------
 
+    /// <summary>This video benefits from hardware decoding (see MpvOptionsBuilder.UseHardwareDecoding).</summary>
+    private bool _hardwareWanted;
+    /// <summary>Switched off for this video; every new video starts with it on.</summary>
+    private bool _hardwareOff;
+    /// <summary>Whether the GPU decodes this video: null until its decoder has started.</summary>
+    private bool? _hardwareWorks;
+    /// <summary>When hwdec was last changed: hwdec-current may still report the old decoder briefly.</summary>
+    private DateTime _hwdecChangedAt;
+
+    /// <summary>How long after a change a software decoder is taken as the old one, not a fallback.</summary>
+    internal static readonly TimeSpan HwdecSettleTime = TimeSpan.FromSeconds(2);
+
+    private void ResetHardwareDecoding()
+    {
+        _hardwareWanted = false;
+        _hardwareOff = false;
+        _hardwareWorks = null;
+        PublishHardwareDecoding();
+    }
+
+    /// <summary>
+    /// Runs once the file is open but before its decoders start, so the video decodes the
+    /// chosen way from its first frame (switching later raced with interlace detection).
+    /// </summary>
     private void DecideHardwareDecoding()
     {
-        _hardwareWanted = MpvOptionsBuilder.UseHardwareDecoding(
-            _mpv.GetString("current-tracks/video/codec"),
-            ToInt(_mpv.GetLong("current-tracks/video/demux-w")),
-            ToInt(_mpv.GetLong("current-tracks/video/demux-h")));
-        ApplyHardwareDecoding();
+        var (codec, width, height) = VideoTrackToPlay();
+        _hardwareWanted = MpvOptionsBuilder.UseHardwareDecoding(codec, width, height);
+        lock (_deinterlaceLock) SetHwdec(_deinterlaceFilter is not null);
+        PublishHardwareDecoding();
+    }
+
+    /// <summary>
+    /// The video track mpv is about to play. At on_preloaded it hasn't chosen yet (so
+    /// current-tracks is still empty): the file's default video track, else its first, leaving
+    /// out cover art.
+    /// </summary>
+    private (string? Codec, int? Width, int? Height) VideoTrackToPlay()
+    {
+        var count = _mpv.GetLong("track-list/count") ?? 0;
+        int? pick = null;
+        for (var i = 0; i < count; i++)
+        {
+            var p = $"track-list/{i}/";
+            if (_mpv.GetString(p + "type") != "video" || _mpv.GetFlag(p + "albumart") == true) continue;
+            if (_mpv.GetFlag(p + "default") == true) { pick = i; break; }
+            pick ??= i;
+        }
+        if (pick is not { } t) return (null, null, null);
+        var track = $"track-list/{t}/";
+        return (_mpv.GetString(track + "codec"), ToInt(_mpv.GetLong(track + "demux-w")), ToInt(_mpv.GetLong(track + "demux-h")));
+    }
+
+    /// <summary>
+    /// The decoder started (or changed): the first answer says whether the GPU takes this video
+    /// at all (mpv's "safe" list leaves out what GPUs decode badly, and falls back to software
+    /// for what this GPU can't). A later fall back to software, mid-video, counts too.
+    /// </summary>
+    private void CheckHardwareDecoding()
+    {
+        if (!_hardwareWanted || _hardwareOff || _hwdec is null or "no") return;
+        var current = _mpv.GetString("hwdec-current"); // the live value; events can lag behind
+        if (string.IsNullOrEmpty(current)) return;     // no video decoder yet
+        bool works = current != "no";
+        if (_hardwareWorks == works) return;
+        if (!works && _hardwareWorks == true && DateTime.UtcNow - _hwdecChangedAt < HwdecSettleTime) return;
+        _hardwareWorks = works;
+        PublishHardwareDecoding();
+    }
+
+    private void PublishHardwareDecoding()
+    {
+        State.HardwareDecodingApplies = _hardwareWanted && _hardwareWorks != false;
+        State.HardwareDecodingOn = State.HardwareDecodingApplies && !_hardwareOff;
+        StateChanged?.Invoke("hardware-decoding");
+    }
+
+    public void SetHardwareDecoding(bool on)
+    {
+        if (!State.HardwareDecodingApplies || _hardwareOff == !on) return;
+        _hardwareOff = !on;
+        lock (_deinterlaceLock) SetHwdec(_deinterlaceFilter is not null);
+        PublishHardwareDecoding();
     }
 
     private void SetHwdec(bool copyBack)
     {
-        var mode = !Settings.HardwareDecoding || !_hardwareWanted ? "no" : copyBack ? "auto-copy-safe" : "auto-safe";
+        var mode = !_hardwareWanted || _hardwareOff || _hardwareWorks == false ? "no" : copyBack ? "auto-copy-safe" : "auto-safe";
         if (mode == _hwdec) return;
-        try { _mpv.SetProperty("hwdec", mode); _hwdec = mode; }
+        try
+        {
+            _mpv.SetProperty("hwdec", mode);
+            _hwdec = mode;
+            _hwdecChangedAt = DateTime.UtcNow;
+        }
         catch (MpvException) { }
     }
 
     public void ApplySubtitles() => ApplyGroup(MpvOptionsBuilder.Subtitles(Settings));
-
-    public void ApplyHardwareDecoding()
-    {
-        lock (_deinterlaceLock) SetHwdec(_deinterlaceFilter is not null);
-    }
 
     private void ApplyGroup(IEnumerable<KeyValuePair<string, string>> options)
     {

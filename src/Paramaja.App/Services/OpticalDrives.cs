@@ -1,6 +1,8 @@
+using Paramaja.Core.Input;
+
 namespace Paramaja.App.Services;
 
-/// <summary>A DVD / Blu-ray drive. <see cref="Root"/> is what to open: its mounted folder, or the raw drive.</summary>
+/// <summary>A CD / DVD / Blu-ray drive. <see cref="Root"/> is what to open: its mounted folder, or the raw drive.</summary>
 public sealed record OpticalDrive(string Root, string Name, string? DiscLabel)
 {
     public bool HasDisc => DiscLabel is not null;
@@ -14,7 +16,9 @@ public static class OpticalDrives
     {
         try
         {
-            return OperatingSystem.IsWindows() ? Windows() : Linux("/proc/mounts", Directory.GetFiles("/dev", "sr*"));
+            return OperatingSystem.IsWindows()
+                ? Windows()
+                : Linux("/proc/mounts", Directory.GetFiles("/dev", "sr*"), OpticalDisc.Probe);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return []; }
     }
@@ -22,15 +26,17 @@ public static class OpticalDrives
     private static List<OpticalDrive> Windows() =>
         DriveInfo.GetDrives()
             .Where(d => d.DriveType == DriveType.CDRom)
-            .Select(d => new OpticalDrive(d.RootDirectory.FullName, d.Name.TrimEnd('\\'),
-                d.IsReady ? (string.IsNullOrWhiteSpace(d.VolumeLabel) ? "disc" : d.VolumeLabel) : null))
+            .Select(d => new OpticalDrive(d.RootDirectory.FullName, d.Name.TrimEnd('\\'), !d.IsReady ? null
+                : OpticalDisc.HasCdaTracks(d.RootDirectory.FullName) ? "Audio CD"
+                : string.IsNullOrWhiteSpace(d.VolumeLabel) ? "disc" : d.VolumeLabel))
             .ToList();
 
     /// <summary>
     /// /dev/sr0, /dev/sr1…: a disc the desktop has mounted opens from its mount point (named
-    /// after the disc); an unmounted one opens from the raw drive, which DVDs allow.
+    /// after the disc); an unmounted one opens from the raw drive, which Audio CDs (they have
+    /// nothing to mount) and DVDs allow.
     /// </summary>
-    internal static List<OpticalDrive> Linux(string mountsFile, IEnumerable<string> devices)
+    internal static List<OpticalDrive> Linux(string mountsFile, IEnumerable<string> devices, Func<string, DiscContent> probe)
     {
         var mounts = File.Exists(mountsFile)
             ? File.ReadLines(mountsFile)
@@ -41,9 +47,13 @@ public static class OpticalDrives
         return devices.Order().Select(dev =>
         {
             var name = Path.GetFileName(dev);
-            return mounts.TryGetValue(dev, out var mountPoint)
-                ? new OpticalDrive(mountPoint, name, Path.GetFileName(mountPoint))
-                : new OpticalDrive(dev, name, "not mounted (DVDs play straight from the drive)");
+            if (mounts.TryGetValue(dev, out var mountPoint)) return new OpticalDrive(mountPoint, name, Path.GetFileName(mountPoint));
+            return probe(dev) switch
+            {
+                DiscContent.NoDisc => new OpticalDrive(dev, name, null),
+                DiscContent.Audio => new OpticalDrive(dev, name, "Audio CD"),
+                _ => new OpticalDrive(dev, name, "not mounted (DVDs play straight from the drive)"),
+            };
         }).ToList();
     }
 

@@ -3,6 +3,35 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.7.0 — 2026-10-27
+
+- **Simpler menus.** The Open menu holds **Open file**, **Open folder** and **Open Disc**;
+  **Open Link** and **Download Video** are buttons of their own, on the welcome screen and in
+  the controls. The Paste button and "Play from clipboard" are gone (Ctrl+V still plays a
+  copied link)
+- **Download Video:** the qualities appear as soon as a link is pasted (no more "Get
+  qualities"), and **Audio only** saves just the best audio stream, as it is (no re-encoding)
+- **BWDIF on discs too:** DVDs and Blu-rays (through libVLC) now deinterlace with BWDIF like
+  files, folders and links do, frame for frame the same as FFmpeg's. Auto deinterlaces only
+  what the disc flags as interlaced, instead of every disc
+- **Audio CDs:** Open Disc plays them from the drive, with the tracks as chapters (Page Up /
+  Page Down, the chapters menu), one after the other. A CD rip's folder with its `.cue` sheet
+  (or the `.cue` itself) plays the same way. The drive list now also tells empty drives apart
+- **Hardware acceleration, redone and working:** since 1.4.0 the app looked at the video
+  before mpv had picked its track, so it never actually asked for hardware decoding: HEVC and
+  1080p videos decoded on the CPU. Now each video is judged on its own: hardware decoding is on
+  by default for HEVC and AV1 at any size and every codec from 1080p up, where the graphics card
+  can decode them (the HW badge shows it), and its switch is in the video menu for that video
+  only. Videos it doesn't apply to have no switch, and the setting is gone from Settings
+- HDR → SDR tonemapping uses **mobius** by default; whoever was on the old default (spline)
+  moves to it once
+- **Windows: DVDs no longer lag and freeze when they first load.** libVLC opened all of its
+  ~250 plugins on the first disc, on the window's thread; it now builds its plugin cache once
+  in the background, and starts off that thread. DVDs decode on the CPU (they're standard
+  definition), which also keeps the deinterlacer on the plain path
+- Linux: libVLC's plugin cache in the Flatpak was always stale, so discs started slower than
+  they should; it now matches the installed files
+
 ## 1.6.0 — 2026-10-27
 
 - **DVDs and Blu-rays with their menus.** Open → **Open disc** lists your drives (or pick a

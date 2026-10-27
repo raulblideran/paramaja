@@ -17,7 +17,7 @@ public class PlayerIntegrationTests
             new PlayerSettings { AudioPassthrough = true, Volume = 37 },
             new PlayerSettings { RenderQuality = RenderQuality.Balanced },
             new PlayerSettings { RenderQuality = RenderQuality.Fast, HdrMode = HdrMode.TonemapToSdr },
-            new PlayerSettings { HardwareDecoding = false, Deinterlace = DeinterlaceMode.Off, PreferredAudioLanguages = "jpn",
+            new PlayerSettings { Deinterlace = DeinterlaceMode.Off, PreferredAudioLanguages = "jpn",
                                  PreferredSubtitleLanguages = "eng", HdrDynamicPeak = false },
         };
         foreach (var curve in PlayerSettings.ToneMappingCurves)
@@ -183,6 +183,68 @@ public class PlayerIntegrationTests
         var file = h.Player.Screenshot(includeSubtitles: true);
         PlayerHarness.WaitUntil(() => File.Exists(file) && new FileInfo(file).Length > 0, "screenshot file");
         Assert.True(PngInfo.Read(file).StoredDeflateBlocks);
+    }
+
+    [MpvFact]
+    public void A_cd_rips_cue_sheet_plays_with_its_tracks_as_titled_chapters()
+    {
+        using var h = new PlayerHarness();
+        var cue = TestEnvironment.Media(Path.Combine("cd_rip", "rip.cue"));
+        var url = CueSheet.PlayableUrl(cue);
+        Assert.StartsWith("edl://", url);
+        h.Player.Open(url!, CueSheet.Read(cue).Title);
+        PlayerHarness.WaitUntil(() => h.Player.Chapters.Count == 2, "two chapters");
+        Assert.Equal(["First Song", "Second Song"], h.Player.Chapters.Select(c => c.Title));
+        Assert.Equal(2, h.Player.Chapters[1].Time, 1);
+        PlayerHarness.WaitUntil(() => h.Player.State.Duration > 4.5, "both tracks' length");
+        Assert.Equal("Test Album", h.Player.State.Title);
+    }
+
+    /// <summary>What the player asked of the decoder: hwdec as the decoder is about to start.</summary>
+    private static List<string?> WatchRequestedHwdec(PlayerHarness h)
+    {
+        var requested = new List<string?>();
+        // Hooks run in the order they were added: this one after the player's own decision.
+        h.Player.Mpv.AddHook("on_preloaded", () => requested.Add(h.Player.Mpv.GetString("hwdec")));
+        return requested;
+    }
+
+    [MpvFact]
+    public void Small_videos_decode_in_software_with_no_hardware_switch()
+    {
+        using var h = new PlayerHarness();
+        var requested = WatchRequestedHwdec(h);
+        h.OpenAndWait(TestEnvironment.Media("sdr_h264.mp4")); // 360p H.264
+        Assert.Equal(["no"], requested);
+        Assert.Equal("no", h.Player.Mpv.GetString("hwdec"));
+        Assert.False(h.Player.State.HardwareDecodingApplies);
+        Assert.False(h.Player.State.HardwareDecodingOn);
+    }
+
+    [MpvFact]
+    public void Hevc_asks_the_gpu_and_the_switch_appears_only_if_it_decodes()
+    {
+        using var h = new PlayerHarness();
+        var requested = WatchRequestedHwdec(h);
+        h.OpenAndWait(TestEnvironment.Media("uhd_hevc.mkv"));
+        Assert.Equal(["auto-safe"], requested); // asked for before the first frame, GPU or not
+        PlayerHarness.WaitUntil(() => h.Player.Mpv.GetString("hwdec-current") is { Length: > 0 }, "the decoder's answer");
+        var gpu = h.Player.Mpv.GetString("hwdec-current") != "no";
+        // A GPU that decodes it keeps hardware decoding, with its switch; one that can't (CI) shows none.
+        PlayerHarness.WaitUntil(() => h.Player.State.HardwareDecodingApplies == gpu, $"switch shown = {gpu}");
+        Assert.Equal(gpu, h.Player.State.HardwareDecodingOn);
+        if (!gpu) return;
+
+        h.Player.SetHardwareDecoding(false);
+        Assert.Equal("no", h.Player.Mpv.GetString("hwdec"));
+        Thread.Sleep(500);
+        Assert.True(h.Player.State.HardwareDecodingApplies, "the switch stays, set to off");
+        Assert.False(h.Player.State.HardwareDecodingOn);
+
+        // The next video starts with it on again.
+        h.OpenAndWait(TestEnvironment.Media("uhd_hevc.mkv"));
+        PlayerHarness.WaitUntil(() => h.Player.State.HardwareDecodingOn, "on again for the next video");
+        Assert.Equal("auto-safe", h.Player.Mpv.GetString("hwdec"));
     }
 
     [MpvFact]

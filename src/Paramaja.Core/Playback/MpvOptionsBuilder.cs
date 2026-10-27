@@ -105,11 +105,13 @@ public static class MpvOptionsBuilder
     }
 
     /// <summary>
-    /// Hardware decoding is used for HEVC at any size, and for any codec from 1080p up
-    /// (1920-wide scope films such as 1920×800 included); smaller videos decode in software.
+    /// Whether hardware decoding would help: HEVC and AV1 at any size, and any codec from 1080p
+    /// up (1920-wide scope films such as 1920×800 included). Smaller videos decode in software,
+    /// which is cheap for them and keeps filters such as deinterlacing simple. Whether the GPU
+    /// can actually decode the video is found out when it starts (PlayerService).
     /// </summary>
     public static bool UseHardwareDecoding(string? codec, int? width, int? height) =>
-        codec == "hevc" || width >= 1900 || height >= 1060;
+        codec is "hevc" or "av1" || width >= 1900 || height >= 1060;
 
     /// <summary>
     /// The channel layout to output. Downmixes apply only to the sources they're meant for:

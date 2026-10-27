@@ -37,10 +37,11 @@ public sealed record TrackInfo(
     };
 }
 
-/// <summary>A chapter of the playing video (or of the disc title being played).</summary>
+/// <summary>A chapter of the playing video (or of the disc title being played, or a CD's track).</summary>
+/// <param name="Time">Where it starts; NaN where there's no such time (a CD's tracks).</param>
 public sealed record ChapterInfo(int Index, string Title, double Time)
 {
-    public string Label => $"{Index + 1}. {Title}  ·  {TimeFormat.Format(Time)}";
+    public string Label => double.IsNaN(Time) ? $"{Index + 1}. {Title}" : $"{Index + 1}. {Title}  ·  {TimeFormat.Format(Time)}";
 }
 
 /// <summary>

@@ -40,6 +40,8 @@ public interface IPlayer : IDisposable
 
     void Open(string pathOrUrl, string? displayTitle = null, bool streaming = false);
     void OpenDisc(string root, bool bluray);
+    /// <summary>An Audio CD from its drive; its tracks are the chapters.</summary>
+    void OpenAudioCd(string device);
     void Stop();
     void TogglePause();
     void SetPaused(bool paused);
@@ -65,7 +67,11 @@ public interface IPlayer : IDisposable
     void ApplyRenderQuality();
     double StreamBufferSeconds { get; }
     void ApplyHdr();
-    void ApplyHardwareDecoding();
+    /// <summary>
+    /// Hardware decoding for the playing video only (see <see cref="PlayerState.HardwareDecodingApplies"/>);
+    /// the next video starts with it on again.
+    /// </summary>
+    void SetHardwareDecoding(bool on);
     void ApplySubtitles();
     void ApplyAudio();
     void ApplyStreamQuality();
