@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Builds packaging/vlc/win64/libdeinterlace_plugin.dll: VLC 3.0.24's deinterlace plugin with
 # packaging/vlc/vlc-bwdif.patch (BWDIF), for the Windows build's libVLC. The Flatpak applies the
-# same patch to its own VLC build. Cross-compiled with MinGW-w64 against the msvcrt.dll runtime
-# VideoLAN's libvlccore.dll uses, and linked to that libvlccore.dll (from ./build/fetch-libs.sh).
+# same patch to its own VLC build. Cross-compiled with MinGW-w64 as a release build (no asserts,
+# as VideoLAN builds it) against the msvcrt.dll runtime VideoLAN's libvlccore.dll uses, and linked
+# to that libvlccore.dll (from ./build/fetch-libs.sh).
 # The DLL is committed, so building the Windows zip doesn't need a C compiler:
 #   ./build/build-vlc-bwdif-win.sh
 set -euo pipefail
@@ -62,7 +63,7 @@ H
 D="$SRC/modules/video_filter/deinterlace"
 mkdir -p "$(dirname "$OUT")"
 "$CC" -std=gnu11 -O2 -shared -mcrtdll=msvcrt-os -static-libgcc \
-  -DHAVE_CONFIG_H -D__PLUGIN__ -DDLL_EXPORT -DMODULE_STRING='"deinterlace"' -DMODULE_NAME=deinterlace \
+  -DNDEBUG -DHAVE_CONFIG_H -D__PLUGIN__ -DDLL_EXPORT -DMODULE_STRING='"deinterlace"' -DMODULE_NAME=deinterlace \
   -I"$WORK" -I"$SRC/include" -I"$D" \
   "$D/deinterlace.c" "$D/algo_basic.c" "$D/algo_x.c" "$D/algo_yadif.c" "$D/algo_phosphor.c" \
   "$D/algo_ivtc.c" "$D/common.c" "$D/helpers.c" "$D/merge.c" \
