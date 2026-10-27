@@ -1,4 +1,4 @@
-name: ci
+name: Tests
 # Branch pushes and pull requests only: a release pushes main and its tag together, and
 # the tag's commit is the one main was just tested at. Changes that can't affect the app
 # (docs, the release and cache workflows) don't need a test run.
@@ -27,6 +27,7 @@ concurrency:
 jobs:
   # Time limits a few times the usual run, so a hung step fails fast instead of after 6 hours.
   linux:
+    name: Tests · Linux (engine, playback, UI)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -44,7 +45,9 @@ jobs:
           sudo apt-get $APT install -y --no-install-recommends ffmpeg libmpv2
       - run: ./build/test.sh
 
-  windows-portable:
+  # Tests only: the Windows zip itself is built by the Release workflow.
+  windows:
+    name: Tests · Windows (engine, UI)
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -52,17 +55,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "8.0.x" }
       - uses: dtolnay/rust-toolchain@stable
-      - name: Build torrent engine
+      - name: Torrent engine tests
         working-directory: native/paramaja-torrent
-        run: cargo build --release && cargo test --lib
-      - name: Fetch libmpv
-        shell: bash
-        run: |
-          mkdir -p libs/win-x64
-          cp native/paramaja-torrent/target/release/paramaja_torrent.dll libs/win-x64/
-          curl -fL -o mpv.7z https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261021/mpv-dev-x86_64-20261021-git-e471496c56.7z
-          7z e -y -olibs/win-x64 mpv.7z libmpv-2.dll
-      - run: dotnet test tests/Paramaja.App.Tests --logger GitHubActions
-      - run: dotnet publish src/Paramaja.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=none -o dist/Paramaja
-      - uses: actions/upload-artifact@v4
-        with: { name: Paramaja-portable-win-x64, path: dist/Paramaja }
+        run: cargo test --lib
+      - name: UI and view model tests
+        run: dotnet test tests/Paramaja.App.Tests --logger GitHubActions

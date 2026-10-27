@@ -2,7 +2,7 @@
 # runs on its tag, and a tag can read caches saved on main but not another tag's, so
 # without this every release would compile those libraries from scratch (~18 minutes).
 # Runs only when the manifest changes, plus on demand.
-name: flatpak-cache
+name: Flatpak build cache
 on:
   push:
     branches: [main]
@@ -11,6 +11,7 @@ on:
 
 jobs:
   flatpak:
+    name: Build · Linux Flatpak (cache only)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:

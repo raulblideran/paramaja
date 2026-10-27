@@ -6,13 +6,14 @@
 # the Release is published as soon as the Windows zip is ready (a few minutes), so it can be
 # shared right away, and the Flatpak is attached to it when its longer build finishes.
 # The notes are the version's CHANGELOG.md section (build/release-notes.sh).
-name: release
+name: Release
 on:
   push:
     tags: ["v*"]
 
 jobs:
   check:
+    name: Check version & changelog
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -28,6 +29,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   windows:
+    name: Build · Windows zip
     needs: check
     # Built on Windows: Rust, 7-Zip, CMake and NASM are preinstalled there, so nothing has to
     # come from Ubuntu's package mirror (which stalled for 40+ minutes on two releases).
@@ -48,6 +50,7 @@ jobs:
           if-no-files-found: error
 
   flatpak:
+    name: Build · Linux Flatpak
     needs: check
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -67,6 +70,7 @@ jobs:
 
   # Publishes with the Windows zip only; doesn't wait for the Flatpak.
   release:
+    name: Publish release (with Windows zip)
     needs: [check, windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -88,6 +92,7 @@ jobs:
   # Attaches the Flatpak once built, and takes the "still building" line out of the notes.
   # Runs even if the Flatpak failed, to say so in the notes instead.
   linux:
+    name: Attach Flatpak to release
     needs: [check, release, flatpak]
     if: ${{ !cancelled() && needs.release.result == 'success' }}
     runs-on: ubuntu-24.04
