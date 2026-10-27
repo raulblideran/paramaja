@@ -32,9 +32,12 @@ public static class InputClassifier
     /// </summary>
     private static (InputKind, string) Local(string path)
     {
+        // A raw optical drive (an unmounted disc): DVDs play straight from it.
+        if (IsOpticalDevice(path)) return (InputKind.Dvd, path);
         if (!File.Exists(path) && !Directory.Exists(path)) return (InputKind.None, "");
         var full = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        if (full.Length == 0) full = Path.GetPathRoot(Path.GetFullPath(path)) ?? path;
+        // A drive root keeps its separator: "D:" alone means "the current folder on D:".
+        if (full.Length == 0 || full.EndsWith(':')) full = Path.GetPathRoot(Path.GetFullPath(path)) ?? path;
         if (File.Exists(full))
         {
             var name = Path.GetFileName(full);
@@ -55,6 +58,11 @@ public static class InputClassifier
         if (FindBluray(full) is { } root) return (InputKind.Bluray, root);
         return (InputKind.Folder, full);
     }
+
+    internal static bool IsOpticalDevice(string path) =>
+        !OperatingSystem.IsWindows()
+        && (path.StartsWith("/dev/sr", StringComparison.Ordinal) || path is "/dev/cdrom" or "/dev/dvd")
+        && File.Exists(path);
 
     private static bool IsDvd(string root) =>
         Child(root, "VIDEO_TS") is { } v && Child(v, "VIDEO_TS.IFO", file: true) is not null;

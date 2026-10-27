@@ -112,6 +112,10 @@ public sealed class YtDlp(string appDirectory)
         return new VideoInfo(title, [.. heights]);
     }
 
+    /// <summary>Embedding a thumbnail as cover art needs ffprobe beside ffmpeg; without it, no cover.</summary>
+    public string? BundledFfprobe =>
+        File.Exists(Path.Combine(appDirectory, Exe("ffprobe"))) ? Path.Combine(appDirectory, Exe("ffprobe")) : null;
+
     /// <summary>Merges the separate video and audio streams of a download (YouTube serves HD that way).</summary>
     public string? BundledFfmpeg =>
         File.Exists(Path.Combine(appDirectory, Exe("ffmpeg"))) ? Path.Combine(appDirectory, Exe("ffmpeg")) : null;
@@ -126,6 +130,8 @@ public sealed class YtDlp(string appDirectory)
     {
         var exe = BundledPath ?? throw new InvalidOperationException("yt-dlp isn't bundled with this build");
         Directory.CreateDirectory(folder);
+        var (planned, height) = await PlanAsync(exe, url, folder, maxHeight, ct);
+        var fileName = UniqueFileName(folder, planned, height);
         var printed = Path.Combine(Path.GetTempPath(), $"paramaja-download-{Guid.NewGuid():N}.txt");
         var psi = new ProcessStartInfo(exe)
         {
@@ -134,7 +140,8 @@ public sealed class YtDlp(string appDirectory)
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        foreach (var a in DownloadArguments(url, folder, printed, maxHeight)) psi.ArgumentList.Add(a);
+        // yt-dlp reads -o as a template: a literal % in the title has to be doubled.
+        foreach (var a in DownloadArguments(url, folder, printed, maxHeight, fileName.Replace("%", "%%"))) psi.ArgumentList.Add(a);
 
         using var p = Process.Start(psi) ?? throw new InvalidOperationException("couldn't start yt-dlp");
         var partials = new List<string>();
@@ -177,7 +184,55 @@ public sealed class YtDlp(string appDirectory)
 
     private const string DestinationPrefix = "[download] Destination:";
 
-    internal IEnumerable<string> DownloadArguments(string url, string folder, string printFile, int maxHeight = 0)
+    /// <summary>
+    /// Asks yt-dlp, without downloading, what the file would be called and which resolution it
+    /// would get, so an existing download isn't skipped or overwritten (see UniqueFileName).
+    /// </summary>
+    private async Task<(string FileName, int? Height)> PlanAsync(string exe, string url, string folder, int maxHeight,
+        CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo(exe)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (var a in DownloadArguments(url, folder, "", maxHeight).Where(a => a is not "--print-to-file" and not "after_move:filepath" and not ""))
+            psi.ArgumentList.Add(a);
+        // Insert before "--" and the URL, which come last.
+        var at = psi.ArgumentList.IndexOf("--");
+        foreach (var a in new[] { "-s", "--print", "%(height)s", "--print", "filename" }.Reverse()) psi.ArgumentList.Insert(at, a);
+        using var p = Process.Start(psi) ?? throw new InvalidOperationException("couldn't start yt-dlp");
+        var stderr = p.StandardError.ReadToEndAsync(ct);
+        var lines = (await p.StandardOutput.ReadToEndAsync(ct)).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        await p.WaitForExitAsync(ct);
+        if (p.ExitCode != 0 || lines.Length < 2)
+        {
+            var error = (await stderr).Split('\n').LastOrDefault(l => l.StartsWith("ERROR:", StringComparison.Ordinal));
+            throw new InvalidOperationException(error?["ERROR:".Length..].Trim() ?? $"yt-dlp exited with code {p.ExitCode}");
+        }
+        return (Path.GetFileName(lines[^1]), int.TryParse(lines[^2], out var h) ? h : null);
+    }
+
+    /// <summary>
+    /// The name to save under: yt-dlp's own name if it's free; else with the resolution added
+    /// ("Title [id] 720p.mkv"); and if that exists too, numbered ("Title [id] 720p (1).mkv").
+    /// </summary>
+    internal static string UniqueFileName(string folder, string fileName, int? height)
+    {
+        var ext = Path.GetExtension(fileName);
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        bool Free(string name) => !File.Exists(Path.Combine(folder, name));
+        if (Free(fileName)) return fileName;
+        var withHeight = height is > 0 ? $"{stem} {height}p" : stem;
+        if (Free(withHeight + ext)) return withHeight + ext;
+        for (var n = 1; ; n++)
+            if (Free($"{withHeight} ({n}){ext}")) return $"{withHeight} ({n}){ext}";
+    }
+
+    internal IEnumerable<string> DownloadArguments(string url, string folder, string printFile, int maxHeight = 0,
+        string outputTemplate = "%(title).150B [%(id)s].%(ext)s")
     {
         // A watch link that is also in a playlist means the one video.
         yield return "--no-playlist";
@@ -185,6 +240,16 @@ public sealed class YtDlp(string appDirectory)
         yield return Format(maxHeight);
         yield return "--merge-output-format";
         yield return "mkv";
+        // Title, uploader, date, description and link as tags, and the chapters, written by the
+        // bundled ffmpeg. The thumbnail goes in as JPEG cover art where ffprobe is bundled too.
+        yield return "--embed-metadata";
+        yield return "--embed-chapters";
+        if (BundledFfprobe is not null)
+        {
+            yield return "--embed-thumbnail";
+            yield return "--convert-thumbnails";
+            yield return "jpg";
+        }
         if (BundledFfmpeg is { } ffmpeg) { yield return "--ffmpeg-location"; yield return ffmpeg; }
         if (BundledJsRuntime is { } js) { yield return "--js-runtimes"; yield return "quickjs:" + js; }
         yield return "--newline";
@@ -196,7 +261,7 @@ public sealed class YtDlp(string appDirectory)
         yield return "-P";
         yield return folder;
         yield return "-o";
-        yield return "%(title).150B [%(id)s].%(ext)s";
+        yield return outputTemplate;
         yield return "--";
         yield return url;
     }

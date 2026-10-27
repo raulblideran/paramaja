@@ -513,6 +513,12 @@ public sealed class PlayerService : IPlayer
     /// <summary>Plays another title of the disc (an mpv edition).</summary>
     public void SelectTitle(int id) => _mpv.TrySetProperty("edition", id.ToString(CultureInfo.InvariantCulture));
 
+    // mpv has no disc menu support; discs with menus play through VlcDiscPlayer.
+    public bool HasDiscMenu => false;
+    public bool IsInDiscMenu => false;
+    public void NavigateMenu(MenuNavigation direction) { }
+    public void ShowDiscMenu() { }
+
     // ---- Tracks ---------------------------------------------------------------------------
 
     public void RefreshTracks()

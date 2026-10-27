@@ -4,13 +4,22 @@ using System.Runtime.InteropServices;
 namespace Paramaja.Core.Native;
 
 /// <summary>
-/// Resolves the native libraries (libmpv and paramaja_torrent) from the app folder first, so the
+/// Resolves the native libraries (libmpv, libvlc and paramaja_torrent) from the app folder first, so the
 /// portable build only needs the DLLs sitting next to the exe, then from well-known system paths.
 /// </summary>
 public static class NativeLibraries
 {
     public const string Mpv = "mpv";
     public const string Torrent = "paramaja_torrent";
+    public const string Vlc = "libvlc";
+
+    /// <summary>
+    /// Where libVLC lives: on Windows a "libvlc" folder next to the exe, holding libvlc.dll,
+    /// libvlccore.dll and the plugins folder libVLC looks for beside them. Elsewhere it's a
+    /// system (or Flatpak /app/lib) library, so null: the loader finds it.
+    /// </summary>
+    public static string? VlcDirectory =>
+        OperatingSystem.IsWindows() ? Path.Combine(AppContext.BaseDirectory, "libvlc") : null;
 
     private static int _registered;
 
@@ -31,6 +40,9 @@ public static class NativeLibraries
         Torrent when OperatingSystem.IsWindows() => ["paramaja_torrent.dll"],
         Torrent when OperatingSystem.IsMacOS() => ["libparamaja_torrent.dylib"],
         Torrent => ["libparamaja_torrent.so"],
+        Vlc when OperatingSystem.IsWindows() => [Path.Combine("libvlc", "libvlc.dll"), "libvlc.dll"],
+        Vlc when OperatingSystem.IsMacOS() => ["libvlc.dylib"],
+        Vlc => ["libvlc.so.5", "libvlc.so"],
         _ => [library],
     };
 
@@ -70,7 +82,7 @@ public static class NativeLibraries
 
     private static IntPtr Resolve(string library, Assembly assembly, DllImportSearchPath? searchPath)
     {
-        if (library is not (Mpv or Torrent)) return IntPtr.Zero;
+        if (library is not (Mpv or Torrent or Vlc)) return IntPtr.Zero;
         foreach (var probe in ProbeOrder(library))
         {
             if (probe.StartsWith("dir:"))

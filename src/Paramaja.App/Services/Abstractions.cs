@@ -15,6 +15,8 @@ public interface IDialogService
     Task<string?> AskLinkAsync();
     /// <summary>The downloader window; <paramref name="url"/> prefills it (else the clipboard, if it holds a link).</summary>
     Task ShowDownloaderAsync(string? url);
+    /// <summary>A drive with a disc, or a VIDEO_TS / BDMV folder; null if cancelled.</summary>
+    Task<string?> PickDiscAsync();
     Task<string?> ReadClipboardTextAsync();
     Task ShowSettingsAsync();
     void OpenFolder(string path);

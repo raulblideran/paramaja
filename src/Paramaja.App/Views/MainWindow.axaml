@@ -11,6 +11,8 @@
   <Panel>
     <!-- mpv renders into this native surface -->
     <c:VideoHost x:Name="Video" />
+    <!-- libVLC renders discs (with their menus) into this one; only one surface is shown at a time -->
+    <c:VideoHost x:Name="DiscVideo" />
 
     <!-- Welcome / idle screen (the video surface is collapsed while idle) -->
     <Grid x:Name="Welcome" IsVisible="{Binding IsIdle}" Background="#0B0910">
@@ -37,7 +39,8 @@
             <Button.Flyout>
               <MenuFlyout Placement="BottomEdgeAlignedLeft">
                 <MenuItem Header="Open file…" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
-                <MenuItem Header="Open folder, DVD or Blu-ray…" InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
+                <MenuItem Header="Open folder…" InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
+                <MenuItem Header="Open disc (DVD / Blu-ray)…" Command="{Binding OpenDiscCommand}" />
                 <MenuItem Header="Open link (magnet, YouTube, MEGA, URL)…" InputGesture="Ctrl+U" Command="{Binding OpenLinkCommand}" />
                 <Separator />
                 <MenuItem Header="Download a video…" Command="{Binding OpenDownloaderCommand}" />

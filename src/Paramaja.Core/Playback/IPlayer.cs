@@ -3,7 +3,13 @@ using Paramaja.Core.Settings;
 
 namespace Paramaja.Core.Playback;
 
-/// <summary>What the UI needs from the playback engine (implemented by <see cref="PlayerService"/>).</summary>
+/// <summary>Moves around a DVD or Blu-ray menu.</summary>
+public enum MenuNavigation { Up, Down, Left, Right, Activate }
+
+/// <summary>
+/// What the UI needs from a playback engine: <see cref="PlayerService"/> (mpv) for everything,
+/// and <see cref="VlcDiscPlayer"/> (libVLC) for discs, which have menus mpv can't show.
+/// </summary>
 public interface IPlayer : IDisposable
 {
     PlayerSettings Settings { get; }
@@ -18,6 +24,14 @@ public interface IPlayer : IDisposable
     void GoToChapter(int index);
     void StepChapter(int delta);
     void SelectTitle(int id);
+
+    /// <summary>The disc has menus (DVD, or a Blu-ray with HDMV menus).</summary>
+    bool HasDiscMenu { get; }
+    /// <summary>A disc menu is on screen: the arrow keys and Enter move through it.</summary>
+    bool IsInDiscMenu { get; }
+    void NavigateMenu(MenuNavigation direction);
+    /// <summary>Back to the disc's root (top) menu.</summary>
+    void ShowDiscMenu();
     event Action<string>? KeyPressed;
     event Action? MouseMoved;
     event Action? MouseClicked;

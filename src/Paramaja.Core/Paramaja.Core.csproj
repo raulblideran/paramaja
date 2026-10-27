@@ -11,4 +11,8 @@
     <InternalsVisibleTo Include="Paramaja.Core.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="LibVLCSharp" Version="3.10.1" />
+  </ItemGroup>
+
 </Project>

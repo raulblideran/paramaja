@@ -32,7 +32,8 @@ public partial class App : Application
             var settings = store.Load();
             var vm = new MainViewModel(settings, store, paths,
                 wid => new PlayerService(settings, paths, wid, DebugOptions(paths)),
-                new TorrentService(), new AvaloniaDispatcher());
+                new TorrentService(), new AvaloniaDispatcher(),
+                discPlayerFactory: wid => new VlcDiscPlayer(settings, paths, wid));
 
             var window = new MainWindow { DataContext = vm };
             vm.Dialogs = new DialogService(window, () => vm);

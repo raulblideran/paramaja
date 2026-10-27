@@ -29,6 +29,10 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public void GoToChapter(int index) => Log($"GoToChapter {index}");
     public void StepChapter(int delta) => Log($"StepChapter {delta}");
     public void SelectTitle(int id) => Log($"SelectTitle {id}");
+    public bool HasDiscMenu { get; set; }
+    public bool IsInDiscMenu { get; set; }
+    public void NavigateMenu(MenuNavigation direction) => Log($"NavigateMenu {direction}");
+    public void ShowDiscMenu() => Log("ShowDiscMenu");
     public event Action<string>? KeyPressed;
     public event Action? MouseMoved;
     public event Action? MouseClicked;
@@ -163,6 +167,8 @@ public sealed class FakeDialogs : IDialogService
     public Task<string?> AskLinkAsync() => Task.FromResult(NextLink);
     public List<string?> DownloaderOpenedWith { get; } = [];
     public Task ShowDownloaderAsync(string? url) { DownloaderOpenedWith.Add(url); return Task.CompletedTask; }
+    public string? NextDisc { get; set; }
+    public Task<string?> PickDiscAsync() => Task.FromResult(NextDisc);
     public Task<string?> ReadClipboardTextAsync() => Task.FromResult(Clipboard);
     public Task ShowSettingsAsync() { SettingsShown++; return Task.CompletedTask; }
     public void OpenFolder(string path) => OpenedFolders.Add(path);

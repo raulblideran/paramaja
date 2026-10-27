@@ -14,12 +14,14 @@ public sealed class Rig : IDisposable
     public SettingsStore Store { get; }
     public PlayerSettings Settings { get; }
     public FakePlayer Player { get; }
+    /// <summary>The disc engine (libVLC in the app), made when the first disc opens.</summary>
+    public FakePlayer? DiscPlayer { get; private set; }
     public FakeTorrents Torrents { get; } = new();
     public FakeDialogs Dialogs { get; } = new();
     public MainViewModel Vm { get; }
     public long? AttachedWid { get; private set; }
 
-    public Rig(PlayerSettings? settings = null, bool attach = true, YtDlp? ytdlp = null)
+    public Rig(PlayerSettings? settings = null, bool attach = true, YtDlp? ytdlp = null, bool discEngine = false)
     {
         Directory.CreateDirectory(Root);
         // Downloads go to the test folder, never the real one.
@@ -27,11 +29,13 @@ public sealed class Rig : IDisposable
         Store = new SettingsStore(Paths.SettingsFile);
         Settings = settings ?? new PlayerSettings();
         Player = new FakePlayer(Settings);
-        Vm = new MainViewModel(Settings, Store, Paths, wid => { AttachedWid = wid; return Player; }, Torrents, new ImmediateDispatcher(), ytdlp)
+        Vm = new MainViewModel(Settings, Store, Paths, wid => { AttachedWid = wid; return Player; }, Torrents, new ImmediateDispatcher(), ytdlp,
+            discEngine ? _ => DiscPlayer = new FakePlayer(Settings) : null)
         {
             Dialogs = Dialogs,
         };
         if (attach) Vm.AttachPlayer(42);
+        if (discEngine) Vm.AttachDiscSurface(43);
     }
 
     public string MediaFile(string name = "movie.mkv")

@@ -61,6 +61,8 @@ public sealed class DialogService(Window owner, Func<MainViewModel> vm) : IDialo
         return await new OpenLinkDialog(new OpenLinkDialogViewModel(clip)).ShowDialog<string?>(owner);
     }
 
+    public Task<string?> PickDiscAsync() => new OpenDiscDialog().ShowDialog<string?>(owner);
+
     public async Task ShowDownloaderAsync(string? url)
     {
         var initial = url ?? await ReadClipboardTextAsync();

@@ -189,15 +189,19 @@ public class YtDlpTests
               case "$1" in
                 --print-to-file) print="$3"; shift 2 ;;
                 -P) out="$2"; shift ;;
+                -o) name="$2"; shift ;;
+                -s) dry=1 ;;
               esac
               shift
             done
+            # The dry run: the resolution, then where yt-dlp would save.
+            [ -n "$dry" ] && { echo 1080; echo "$out/clip.mkv"; exit 0; }
             echo "[download] Destination: $out/clip.f137.mp4"
             echo "partial" > "$out/clip.f137.mp4.part"
             echo "PARAMAJA 50|100|10|1|avc1"
             {{(hang ? "sleep 30" : "")}}
-            echo "video" > "$out/clip.mkv"
-            echo "$out/clip.mkv" >> "$print"
+            echo "video" > "$out/$name"
+            echo "$out/$name" >> "$print"
             """.Replace("\r", ""));
         File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         return new YtDlp(dir);
@@ -213,6 +217,44 @@ public class YtDlpTests
         Assert.Equal(Path.Combine(downloads, "clip.mkv"), file);
         Assert.True(File.Exists(file));
         Assert.Equal(50, Assert.Single(seen).Percent);
+    }
+
+    [Fact]
+    public async Task Downloading_the_same_video_again_never_overwrites()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var downloads = TestEnvironment.TempDir();
+        var y = FakeYtDlp(hang: false);
+        var names = new List<string>();
+        for (var i = 0; i < 3; i++) names.Add(Path.GetFileName(await y.DownloadAsync("https://youtu.be/x", downloads)));
+        Assert.Equal(["clip.mkv", "clip 1080p.mkv", "clip 1080p (1).mkv"], names);
+    }
+
+    [Fact]
+    public void Clashing_names_get_the_resolution_then_a_counter()
+    {
+        var dir = TestEnvironment.TempDir();
+        Assert.Equal("Film [id].mkv", YtDlp.UniqueFileName(dir, "Film [id].mkv", 1080));
+        File.WriteAllText(Path.Combine(dir, "Film [id].mkv"), "");
+        Assert.Equal("Film [id] 720p.mkv", YtDlp.UniqueFileName(dir, "Film [id].mkv", 720));
+        File.WriteAllText(Path.Combine(dir, "Film [id] 720p.mkv"), "");
+        Assert.Equal("Film [id] 720p (1).mkv", YtDlp.UniqueFileName(dir, "Film [id].mkv", 720));
+        File.WriteAllText(Path.Combine(dir, "Film [id] 720p (1).mkv"), "");
+        Assert.Equal("Film [id] 720p (2).mkv", YtDlp.UniqueFileName(dir, "Film [id].mkv", 720));
+        Assert.Equal("Film [id] 1080p.mkv", YtDlp.UniqueFileName(dir, "Film [id].mkv", 1080));
+    }
+
+    [Fact]
+    public void Downloads_carry_the_metadata_and_chapters_and_a_cover_where_ffprobe_is_bundled()
+    {
+        var dir = TestEnvironment.TempDir();
+        var y = new YtDlp(dir);
+        var args = y.DownloadArguments("https://youtu.be/x", "/dl", "/tmp/p.txt").ToList();
+        Assert.Contains("--embed-metadata", args);
+        Assert.Contains("--embed-chapters", args);
+        Assert.DoesNotContain("--embed-thumbnail", args); // needs ffprobe, which would fail the download
+        File.WriteAllText(Path.Combine(dir, OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe"), "");
+        Assert.Contains("--embed-thumbnail", y.DownloadArguments("https://youtu.be/x", "/dl", "/tmp/p.txt").ToList());
     }
 
     [Fact]

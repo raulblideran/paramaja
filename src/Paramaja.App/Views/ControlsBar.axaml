@@ -70,6 +70,11 @@
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+          <Button x:Name="DiscMenuButton" Classes="icon" Command="{Binding ShowDiscMenuCommand}" IsVisible="{Binding IsDiscMode}"
+                  ToolTip.Tip="Disc menu (arrow keys and Enter move through it)">
+            <PathIcon Data="{StaticResource IconHome}" />
+          </Button>
+
           <Button x:Name="ChaptersButton" Classes="icon" ToolTip.Tip="Titles &amp; chapters" IsVisible="{Binding HasChapterMenu}">
             <PathIcon Data="{StaticResource IconChapters}" />
             <Button.Flyout>
@@ -239,7 +244,8 @@
             <Button.Flyout>
               <MenuFlyout Placement="TopEdgeAlignedRight">
                 <MenuItem Header="Open file…" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
-                <MenuItem Header="Open folder, DVD or Blu-ray…" InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
+                <MenuItem Header="Open folder…" InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
+                <MenuItem Header="Open disc (DVD / Blu-ray)…" Command="{Binding OpenDiscCommand}" />
                 <MenuItem Header="Open link (magnet, YouTube, MEGA, URL)…" InputGesture="Ctrl+U" Command="{Binding OpenLinkCommand}" />
                 <MenuItem Header="Play from clipboard" InputGesture="Ctrl+V" Command="{Binding PasteAndPlayCommand}" />
                 <MenuItem Header="Download a video…" Command="{Binding OpenDownloaderCommand}" />

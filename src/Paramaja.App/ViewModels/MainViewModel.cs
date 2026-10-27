@@ -35,10 +35,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Raised when the view should toggle (true/false) or leave (false) fullscreen.</summary>
     public event Action<bool?>? FullscreenRequested;
 
+    /// <param name="discPlayerFactory">
+    /// The disc engine (libVLC), made on first use for the window it renders into; null where
+    /// there's none, and discs then play through mpv without their menus.
+    /// </param>
     public MainViewModel(PlayerSettings settings, SettingsStore store, PortablePaths paths,
-        Func<long?, IPlayer> playerFactory, ITorrentService torrents, IUiDispatcher ui, YtDlp? ytdlp = null)
+        Func<long?, IPlayer> playerFactory, ITorrentService torrents, IUiDispatcher ui, YtDlp? ytdlp = null,
+        Func<long, IPlayer>? discPlayerFactory = null)
     {
         _ytdlp = ytdlp ?? new YtDlp(AppContext.BaseDirectory);
+        _discPlayerFactory = discPlayerFactory;
         Settings = settings;
         _store = store;
         _paths = paths;
@@ -124,27 +130,78 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void AttachPlayer(long? windowId)
     {
         if (_player is not null) return;
-        _player = _playerFactory(windowId);
-        _player.StateChanged += name => _ui.Post(() => SyncState(name));
-        _player.TracksChanged += () => _ui.Post(SyncTracks);
-        _player.ChaptersChanged += () => _ui.Post(SyncChapters);
-        _player.KeyPressed += key => _ui.Post(() => HandleKey(key));
-        _player.MouseMoved += () => _ui.Post(NotifyActivity);
-        _player.MouseClicked += () => _ui.Post(() => HandleClick(DateTime.UtcNow));
-        _player.FileLoaded += () => _ui.Post(_health.Reset);
-        _player.RenderProfileChanged += p => _ui.Post(() => RenderProfileText = DescribeProfile(p));
+        _player = _mpvPlayer = _playerFactory(windowId);
+        Wire(_player);
         RenderProfileText = DescribeProfile(_player.RenderProfile);
         if (DisplayIsHdr) _player.SetDisplayHdr(true);
-        _player.EndFile += (reason, error) => _ui.Post(() =>
-        {
-            if (reason == EndFileReason.Error) ShowStatus($"Can't play this: {error}");
-        });
         if (_pendingOpen is { } p)
         {
             _pendingOpen = null;
             _ = OpenInputAsync(p);
         }
     }
+
+    /// <summary>Events count only while their engine is the one playing.</summary>
+    private void Wire(IPlayer player)
+    {
+        void Post(Action action) => _ui.Post(() => { if (ReferenceEquals(player, _player)) action(); });
+        player.StateChanged += name => Post(() => SyncState(name));
+        player.TracksChanged += () => Post(SyncTracks);
+        player.ChaptersChanged += () => Post(SyncChapters);
+        player.KeyPressed += key => Post(() => HandleKey(key));
+        player.MouseMoved += () => Post(NotifyActivity);
+        player.MouseClicked += () => Post(() => HandleClick(DateTime.UtcNow));
+        player.FileLoaded += () => Post(_health.Reset);
+        player.RenderProfileChanged += p => Post(() => RenderProfileText = DescribeProfile(p));
+        player.EndFile += (reason, error) => Post(() =>
+        {
+            if (reason == EndFileReason.Error) ShowStatus($"Can't play this: {error}");
+        });
+    }
+
+    // ---- Engines: mpv for everything, libVLC for discs (their menus) ----------------------------
+
+    private IPlayer? _mpvPlayer;
+    private IPlayer? _discPlayer;
+    private readonly Func<long, IPlayer>? _discPlayerFactory;
+    private long? _discSurface;
+
+    /// <summary>A disc is playing through libVLC: the view shows its video surface instead of mpv's.</summary>
+    [ObservableProperty] private bool _isDiscMode;
+
+    /// <summary>The native window the disc engine renders into, once the view has made it.</summary>
+    public void AttachDiscSurface(long windowId) => _discSurface = windowId;
+
+    /// <summary>The disc engine, made on first use; null if there isn't one (or it failed to load).</summary>
+    private IPlayer? DiscEngine()
+    {
+        if (_discPlayer is not null || _discPlayerFactory is null || _discSurface is not { } surface) return _discPlayer;
+        try
+        {
+            _discPlayer = _discPlayerFactory(surface);
+            Wire(_discPlayer);
+        }
+        catch (Exception e) when (e is DllNotFoundException or InvalidOperationException or TypeInitializationException
+                                      or LibVLCSharp.Shared.VLCException)
+        {
+            ShowStatus("Disc menus aren't available in this build: playing the disc without them.");
+        }
+        return _discPlayer;
+    }
+
+    /// <summary>Hands playback to another engine, stopping the one that was playing.</summary>
+    private void UseEngine(IPlayer next)
+    {
+        if (ReferenceEquals(next, _player)) return;
+        _player?.Stop();
+        _player = next;
+        IsDiscMode = ReferenceEquals(next, _discPlayer);
+        SyncTracks();
+        SyncChapters();
+    }
+
+    /// <summary>Back to the disc's root menu (the Menu button).</summary>
+    [RelayCommand] private void ShowDiscMenu() => _player?.ShowDiscMenu();
 
     private void SyncState(string name)
     {
@@ -283,14 +340,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SetSource(kind is InputKind.Url ? MediaSource.Web : MediaSource.Local, kind is InputKind.Url ? value : null);
         if (kind is InputKind.Dvd or InputKind.Bluray)
         {
-            try { _player.OpenDisc(value, bluray: kind == InputKind.Bluray); }
+            // libVLC shows the disc's menus; without it, mpv plays the main title.
+            UseEngine(DiscEngine() ?? _mpvPlayer!);
+            try { _player!.OpenDisc(value, bluray: kind == InputKind.Bluray); }
             catch (MpvException)
             {
                 ShowStatus(kind == InputKind.Dvd ? "This build can't play DVD folders." : "This build can't play Blu-ray folders.");
                 return;
             }
         }
-        else _player.Open(value, streaming: InputClassifier.IsStreaming(kind));
+        else
+        {
+            UseEngine(_mpvPlayer!);
+            _player!.Open(value, streaming: InputClassifier.IsStreaming(kind));
+        }
         Remember(value);
     }
 
@@ -323,6 +386,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             }
             var file = info.Files.First(f => f.Index == fileIdx);
             SetSource(MediaSource.Torrent);
+            UseEngine(_mpvPlayer!);
             _player!.Open(info.StreamUrl, file.FileName, streaming: true);
             Remember(magnet);
             ShowStatus($"Streaming {file.FileName}");
@@ -362,6 +426,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var info = await _torrents.AddMegaAsync(link, TimeSpan.FromSeconds(30));
             CloseTorrent();
             SetSource(MediaSource.Mega);
+            UseEngine(_mpvPlayer!);
             _player!.Open(info.StreamUrl, info.Name, streaming: true);
             Remember(link);
             ShowStatus($"Streaming {info.Name} from MEGA");
@@ -542,6 +607,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (await Dialogs.PickFolderAsync() is { } f) await OpenInputAsync(f);
     }
 
+    /// <summary>A DVD or Blu-ray, from a drive or a folder, with its menus.</summary>
+    [RelayCommand]
+    private async Task OpenDisc()
+    {
+        if (Dialogs is null) return;
+        if (await Dialogs.PickDiscAsync() is not { } root) return;
+        var kind = InputClassifier.Classify(root).Kind;
+        if (kind is InputKind.Dvd or InputKind.Bluray) await OpenInputAsync(root);
+        else ShowStatus("That isn't a DVD or Blu-ray: look for a folder with VIDEO_TS or BDMV inside.");
+    }
+
     [RelayCommand]
     private async Task OpenLink()
     {
@@ -651,11 +727,28 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Handles a canonical key name (from the app window or forwarded by mpv).</summary>
     public bool HandleKey(string key)
     {
+        // On a disc menu, the arrows and Enter move through it instead of seeking.
+        if (MenuKey(key) is { } nav && _player?.IsInDiscMenu == true)
+        {
+            NotifyActivity();
+            _player.NavigateMenu(nav);
+            return true;
+        }
         if (!ShortcutMap.TryGet(key, out var action)) return false;
         NotifyActivity();
         Execute(action);
         return true;
     }
+
+    private static MenuNavigation? MenuKey(string key) => key switch
+    {
+        "UP" => MenuNavigation.Up,
+        "DOWN" => MenuNavigation.Down,
+        "LEFT" => MenuNavigation.Left,
+        "RIGHT" => MenuNavigation.Right,
+        "ENTER" => MenuNavigation.Activate,
+        _ => null,
+    };
 
     public void Execute(PlayerAction action)
     {
@@ -738,6 +831,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void HandleClick(DateTime utcNow)
     {
         NotifyActivity();
+        // On a disc menu a click presses a button; quick clicks there aren't a double-click.
+        if (_player?.IsInDiscMenu == true) return;
         if (utcNow - _lastClick <= DoubleClickTime)
         {
             _lastClick = DateTime.MinValue; // a third click starts a new pair
@@ -823,7 +918,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _downloadCts?.Cancel();
         try { _downloadTask?.Wait(TimeSpan.FromSeconds(3)); }
         catch (AggregateException) { }
-        _player?.Dispose();
+        _mpvPlayer?.Dispose();
+        _discPlayer?.Dispose();
         _player = null;
         _torrents.Dispose();
         if (Settings.ClearTorrentCacheOnExit) ClearTorrentCache();

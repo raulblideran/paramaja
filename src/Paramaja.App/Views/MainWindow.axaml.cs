@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Video.HandleCreated += h => Vm.AttachPlayer(h);
+        DiscVideo.HandleCreated += h => Vm.AttachDiscSurface(h);
 
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = DragDropEffects.Copy);
@@ -44,6 +45,7 @@ public partial class MainWindow : Window
         };
         Resized += (_, _) => UpdateOverlays();
         Video.LayoutUpdated += (_, _) => UpdateOverlays();
+        DiscVideo.LayoutUpdated += (_, _) => UpdateOverlays();
 
         _tick.Tick += (_, _) =>
         {
@@ -74,7 +76,7 @@ public partial class MainWindow : Window
         if (DataContext is not MainViewModel vm) return;
         vm.PropertyChanged += OnVmPropertyChanged;
         vm.FullscreenRequested += SetFullscreen;
-        ApplyIdle(vm.IsIdle);
+        ApplySurfaces();
     }
 
     protected override void OnOpened(EventArgs e)
@@ -142,8 +144,8 @@ public partial class MainWindow : Window
     {
         switch (e.PropertyName)
         {
-            case nameof(MainViewModel.IsIdle):
-                ApplyIdle(Vm.IsIdle);
+            case nameof(MainViewModel.IsIdle) or nameof(MainViewModel.IsDiscMode):
+                ApplySurfaces();
                 UpdateOverlays();
                 break;
             case nameof(MainViewModel.ControlsVisible):
@@ -153,16 +155,24 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>The surface of the engine that's playing: libVLC's for discs, mpv's otherwise.</summary>
+    private Controls.VideoHost ActiveVideo => Vm.IsDiscMode ? DiscVideo : Video;
+
     /// <summary>
-    /// While idle the native surface is shrunk to nothing so the welcome screen (regular Avalonia
-    /// content, which can't draw over a native window) is visible. The surface itself stays alive.
+    /// Only the playing engine's surface fills the window; the other, and both while idle, are
+    /// shrunk to nothing so the welcome screen (regular Avalonia content, which can't draw over a
+    /// native window) shows. The surfaces themselves stay alive.
     /// </summary>
-    private void ApplyIdle(bool idle)
+    private void ApplySurfaces()
     {
-        Video.Width = idle ? 1 : double.NaN;
-        Video.Height = idle ? 1 : double.NaN;
-        Video.HorizontalAlignment = idle ? Avalonia.Layout.HorizontalAlignment.Left : Avalonia.Layout.HorizontalAlignment.Stretch;
-        Video.VerticalAlignment = idle ? Avalonia.Layout.VerticalAlignment.Top : Avalonia.Layout.VerticalAlignment.Stretch;
+        foreach (var surface in new[] { Video, DiscVideo })
+        {
+            var shown = !Vm.IsIdle && surface == ActiveVideo;
+            surface.Width = shown ? double.NaN : 1;
+            surface.Height = shown ? double.NaN : 1;
+            surface.HorizontalAlignment = shown ? Avalonia.Layout.HorizontalAlignment.Stretch : Avalonia.Layout.HorizontalAlignment.Left;
+            surface.VerticalAlignment = shown ? Avalonia.Layout.VerticalAlignment.Stretch : Avalonia.Layout.VerticalAlignment.Top;
+        }
     }
 
     private void UpdateOverlays()
@@ -171,7 +181,7 @@ public partial class MainWindow : Window
         var fullscreen = WindowState == WindowState.FullScreen;
         var appActive = IsActive || _top.IsActive || _bottom.IsActive;
         var visible = vm.ControlsVisible && !vm.IsIdle && WindowState != WindowState.Minimized && IsVisible
-                      && Video.Bounds.Width > 100
+                      && ActiveVideo.Bounds.Width > 100
                       && (!OverlayPlacement.HideWhileInactive || appActive || vm.IsPointerOverControls);
 
         var topmost = OverlayPlacement.ShouldBeTopmost(fullscreen, appActive);
@@ -179,7 +189,7 @@ public partial class MainWindow : Window
         if (_bottom.Topmost != topmost) _bottom.Topmost = topmost;
 
         var area = visible
-            ? OverlayPlacement.PlayerArea(Video.PointToScreen(new Point(0, 0)), Video.Bounds.Size, RenderScaling,
+            ? OverlayPlacement.PlayerArea(ActiveVideo.PointToScreen(new Point(0, 0)), ActiveVideo.Bounds.Size, RenderScaling,
                 Screens.ScreenFromWindow(this)?.Bounds, fullscreen)
             : default;
         if (visible)

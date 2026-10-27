@@ -22,12 +22,15 @@ public class DownloaderTests
                 -f) fmt="$2"; shift ;;
                 --print-to-file) print="$3"; shift 2 ;;
                 -P) out="$2"; shift ;;
+                -o) name="$2"; shift ;;
+                -s) dry=1 ;;
               esac
               shift
             done
+            [ -n "$dry" ] && { echo 1080; echo "$out/clip.mkv"; exit 0; }
             echo "PARAMAJA 100|100|10|0|avc1"
-            echo "$fmt" > "$out/clip.mkv"
-            echo "$out/clip.mkv" >> "$print"
+            echo "$fmt" > "$out/$name"
+            echo "$out/$name" >> "$print"
             """.Replace("\r", ""));
         File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         return new YtDlp(dir);
