@@ -29,6 +29,19 @@ public class DiscEngineTests
     }
 
     [Fact]
+    public async Task A_disc_opened_at_startup_waits_for_the_disc_surface()
+    {
+        using var r = new Rig(attach: false, discEngine: true);
+        var disc = DvdFolder();
+        await r.Vm.OpenInputAsync(disc);   // command line: before any surface exists
+        r.Vm.AttachPlayer(42);             // mpv's surface first…
+        r.Vm.AttachDiscSurface(43);        // …then the disc surface: now it opens, with menus
+        Assert.True(r.Vm.IsDiscMode);
+        Assert.Contains($"OpenDisc dvd {disc}", r.DiscPlayer!.Calls);
+        Assert.DoesNotContain(r.Player.Calls, c => c.StartsWith("OpenDisc"));
+    }
+
+    [Fact]
     public async Task Without_a_disc_engine_discs_still_play_through_mpv()
     {
         using var r = new Rig();

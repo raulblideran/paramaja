@@ -35,7 +35,7 @@ public sealed class Rig : IDisposable
             Dialogs = Dialogs,
         };
         if (attach) Vm.AttachPlayer(42);
-        if (discEngine) Vm.AttachDiscSurface(43);
+        if (discEngine && attach) Vm.AttachDiscSurface(43);
     }
 
     public string MediaFile(string name = "movie.mkv")

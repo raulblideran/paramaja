@@ -134,11 +134,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Wire(_player);
         RenderProfileText = DescribeProfile(_player.RenderProfile);
         if (DisplayIsHdr) _player.SetDisplayHdr(true);
-        if (_pendingOpen is { } p)
-        {
-            _pendingOpen = null;
-            _ = OpenInputAsync(p);
-        }
+        OpenPendingWhenReady();
+    }
+
+    /// <summary>
+    /// Something opened at startup (command line, file association) waits until every video
+    /// surface exists: a disc opened before the disc engine's surface would fall back to mpv
+    /// and lose its menus.
+    /// </summary>
+    private void OpenPendingWhenReady()
+    {
+        if (_player is null || (_discPlayerFactory is not null && _discSurface is null)) return;
+        if (_pendingOpen is not { } p) return;
+        _pendingOpen = null;
+        _ = OpenInputAsync(p);
     }
 
     /// <summary>Events count only while their engine is the one playing.</summary>
@@ -170,7 +179,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isDiscMode;
 
     /// <summary>The native window the disc engine renders into, once the view has made it.</summary>
-    public void AttachDiscSurface(long windowId) => _discSurface = windowId;
+    public void AttachDiscSurface(long windowId)
+    {
+        _discSurface = windowId;
+        OpenPendingWhenReady();
+    }
 
     /// <summary>The disc engine, made on first use; null if there isn't one (or it failed to load).</summary>
     private IPlayer? DiscEngine()
@@ -322,7 +335,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             if (!string.IsNullOrWhiteSpace(input)) ShowStatus("That isn't a file, link or magnet I can open.");
             return;
         }
-        if (_player is null)
+        if (_player is null || (_discPlayerFactory is not null && _discSurface is null))
         {
             _pendingOpen = value;
             return;

@@ -3,6 +3,20 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.6.0 — 2026-10-27
+
+- **DVDs and Blu-rays with their menus.** Open → **Open disc** lists your drives (or pick a
+  VIDEO_TS / BDMV folder) and plays the disc with its own menus, through libVLC. Click the
+  menu buttons or use the arrow keys and Enter. The new **Disc menu** button returns to the
+  root menu at any time, and Titles & chapters jumps to any title or chapter
+- Store-bought DVDs play (libdvdcss is included). Encrypted Blu-rays (AACS) and Blu-ray Java
+  (BD-J) menus aren't supported; those discs fall back to titles and chapters where possible
+- Linux: physical DVD and Blu-ray drives work in the Flatpak
+- Downloads keep their **metadata**: title, uploader, date, description and chapters, plus the
+  thumbnail as cover art
+- Downloading the same video again never overwrites or skips it: the resolution is added to
+  the name, and a counter if that exists too (`… 720p (1).mkv`)
+
 ## 1.5.0 — 2026-10-27
 
 - **Downloader:** a Download button (welcome screen, the Open menus, and the top bar while a
