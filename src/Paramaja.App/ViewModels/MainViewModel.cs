@@ -78,6 +78,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _displayIsHdr;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(CanDownload))] private bool _isDownloading;
     [ObservableProperty] private string _downloadStatus = "";
+    [ObservableProperty] private string? _lastDownloadedFile;
 
     public string PositionText => TimeFormat.Format(Position, Duration >= 3600);
     public string DurationText => TimeFormat.Format(Duration);
@@ -163,12 +164,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case "demuxer-cache-time": UpdateBuffered(s); break;
             case "hwdec-current": DecoderBadge = s.IsHardwareDecoding ? $"HW · {s.HwdecCurrent}" : "SW"; break;
             case "video-params/gamma" or "video-params/primaries": UpdateHdrBadge(); break;
-            case "video-format": OnPropertyChanged(nameof(IsHevcVideo)); break;
+            case "video-format": OnPropertyChanged(nameof(HardwareDecodingApplies)); break;
             case "chapter": MarkCurrentChapter(); break;
-            case "video-params/h" or "video-params/w": ResolutionBadge = ResolutionLabel(s.VideoWidth, s.VideoHeight); break;
+            case "video-params/h" or "video-params/w":
+                ResolutionBadge = ResolutionLabel(s.VideoWidth, s.VideoHeight);
+                OnPropertyChanged(nameof(HardwareDecodingApplies));
+                break;
             case "audio-params/channel-count" or "audio-out-params/channel-count":
                 UpdateAudioBadge();
                 OnPropertyChanged(nameof(IsSurroundAudio));
+                OnPropertyChanged(nameof(IsStereoAudio));
                 break;
         }
     }
@@ -179,11 +184,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>The playing video is HDR: only then does the HDR / tonemapping menu apply.</summary>
     public bool IsHdrVideo => _player?.State.IsHdr == true;
 
-    /// <summary>5.1, 7.1 and the like: only then is there anything to downmix.</summary>
+    /// <summary>5.1, 7.1 and the like: only then is there anything to downmix to stereo.</summary>
     public bool IsSurroundAudio => _player?.State.SourceChannels > 2;
 
-    /// <summary>Hardware decoding is used for HEVC only, so its switch only matters for HEVC.</summary>
-    public bool IsHevcVideo => _player?.State.VideoFormat == "hevc";
+    /// <summary>Only a stereo source can be downmixed to mono.</summary>
+    public bool IsStereoAudio => _player?.State.SourceChannels == 2;
+
+    /// <summary>HEVC, or anything from 1080p up: only then does the hardware decoding switch matter.</summary>
+    public bool HardwareDecodingApplies => _player?.State is { } s
+        && MpvOptionsBuilder.UseHardwareDecoding(s.VideoFormat, s.VideoWidth, s.VideoHeight);
 
     internal void UpdateHdrBadge()
     {
@@ -436,21 +445,40 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>The playing video came from a web page yt-dlp can save (YouTube and the like).</summary>
     public bool CanDownload => _webUrl is not null && HasYtDlp && !IsDownloading && !IsIdle;
 
-    /// <summary>Saves the playing web video, best quality, to the Downloads folder.</summary>
+    /// <summary>The downloader, prefilled with the playing web video's link.</summary>
     [RelayCommand]
-    private async Task Download()
+    private Task Download() => Dialogs?.ShowDownloaderAsync(_webUrl) ?? Task.CompletedTask;
+
+    /// <summary>The downloader, with an empty box (or a link from the clipboard).</summary>
+    [RelayCommand]
+    private async Task OpenDownloader()
     {
-        if (_webUrl is not { } url || IsDownloading) return;
+        if (Dialogs is null) return;
+        if (!HasYtDlp) { ShowStatus("Downloading needs yt-dlp, which isn't bundled with this build."); return; }
+        await Dialogs.ShowDownloaderAsync(null);
+    }
+
+    internal YtDlp YtDlp => _ytdlp;
+    public string DownloadsFolderName => Path.GetFileName(_paths.Downloads.TrimEnd(Path.DirectorySeparatorChar));
+
+    /// <summary>
+    /// Saves a page's video to the Downloads folder: the best video up to
+    /// <paramref name="maxHeight"/> (0 for the best of all) merged with the best audio.
+    /// </summary>
+    public async Task StartDownloadAsync(string url, int maxHeight = 0)
+    {
+        if (IsDownloading) return;
         using var cts = _downloadCts = new CancellationTokenSource();
         IsDownloading = true;
         DownloadStatus = "Starting download…";
         try
         {
             var task = Task.Run(() => _ytdlp.DownloadAsync(url, _paths.Downloads,
-                p => _ui.Post(() => { if (IsDownloading) DownloadStatus = p.ToString(); }), cts.Token));
+                p => _ui.Post(() => { if (IsDownloading) DownloadStatus = p.ToString(); }), cts.Token, maxHeight));
             _downloadTask = task;
             var file = await task;
-            ShowStatus($"Saved to {Path.GetFileName(_paths.Downloads.TrimEnd(Path.DirectorySeparatorChar))}: {Path.GetFileName(file)}");
+            LastDownloadedFile = file;
+            ShowStatus($"Saved to {DownloadsFolderName}: {Path.GetFileName(file)}");
         }
         catch (OperationCanceledException) { ShowStatus("Download cancelled."); }
         catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
@@ -663,8 +691,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case PlayerAction.CycleAudioTrack: p?.CycleTrack(TrackType.Audio); break;
             case PlayerAction.CycleSubtitleTrack: p?.CycleTrack(TrackType.Subtitle); break;
             case PlayerAction.ToggleSubtitles: p?.ToggleSubtitleVisibility(); break;
-            case PlayerAction.SubtitleDelayUp: p?.AdjustSubtitleDelay(0.1); break;
-            case PlayerAction.SubtitleDelayDown: p?.AdjustSubtitleDelay(-0.1); break;
+            case PlayerAction.SubtitleDelayUp: ShiftSubtitles(0.1); break;
+            case PlayerAction.SubtitleDelayDown: ShiftSubtitles(-0.1); break;
             case PlayerAction.OpenFile: _ = OpenFile(); break;
             case PlayerAction.OpenFolder: _ = OpenFolder(); break;
             case PlayerAction.OpenLink: _ = OpenLink(); break;
@@ -673,6 +701,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case PlayerAction.CopyDiagnostics: _ = CopyDiagnostics(); break;
         }
     }
+
+    /// <summary>Shows the total shift after every press, e.g. "Subtitles +0.1s", then "+0.2s".</summary>
+    [RelayCommand]
+    private void ShiftSubtitles(double seconds)
+    {
+        if (_player is null) return;
+        Osd($"Subtitles {FormatShift(_player.AdjustSubtitleDelay(seconds))}");
+    }
+
+    internal static string FormatShift(double seconds) =>
+        seconds == 0 ? "0.0s" : seconds.ToString("+0.0#;-0.0#", System.Globalization.CultureInfo.InvariantCulture) + "s";
 
     private void CycleDeinterlace()
     {

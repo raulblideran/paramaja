@@ -139,6 +139,20 @@ public sealed class MpvClient : IDisposable
     public void ObserveLong(string name) => Observe(name, MpvFormat.Int64);
     public void ObserveString(string name) => Observe(name, MpvFormat.String);
 
+    private readonly Dictionary<ulong, Action> _hooks = [];
+
+    /// <summary>
+    /// Runs <paramref name="handler"/> (on the event thread) at an mpv hook point such as
+    /// "on_preloaded"; mpv waits for it to finish, so properties set there apply before mpv
+    /// carries on (e.g. before the decoders start).
+    /// </summary>
+    public void AddHook(string name, Action handler)
+    {
+        var id = Interlocked.Increment(ref _nextObserveId);
+        _hooks[id] = handler;
+        Check(MpvNative.mpv_hook_add(Handle, id, name, 0), $"hook {name}");
+    }
+
     private void Observe(string name, MpvFormat format)
     {
         var id = Interlocked.Increment(ref _nextObserveId);
@@ -192,6 +206,17 @@ public sealed class MpvClient : IDisposable
                 for (var i = 0; i < msg.NumArgs; i++)
                     args[i] = Marshal.PtrToStringUTF8(Marshal.ReadIntPtr(msg.Args, i * IntPtr.Size)) ?? "";
                 ClientMessage?.Invoke(args);
+                break;
+            case MpvEventId.Hook:
+                var hook = Marshal.PtrToStructure<MpvEventHook>(ev.Data);
+                try
+                {
+                    if (_hooks.TryGetValue(ev.ReplyUserdata, out var handler)) handler();
+                }
+                finally
+                {
+                    MpvNative.mpv_hook_continue(_handle, hook.Id); // mpv waits until this
+                }
                 break;
             case MpvEventId.LogMessage:
                 var log = Marshal.PtrToStructure<MpvEventLogMessage>(ev.Data);

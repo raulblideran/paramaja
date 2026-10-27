@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
 
 namespace Paramaja.Core.Playback;
 
@@ -50,6 +51,67 @@ public sealed class YtDlp(string appDirectory)
     public string? BundledJsRuntime =>
         File.Exists(Path.Combine(appDirectory, Exe("qjs"))) ? Path.Combine(appDirectory, Exe("qjs")) : null;
 
+    /// <summary>
+    /// yt-dlp's format choice: the best video up to <paramref name="maxHeight"/> (any height
+    /// for 0) plus the best audio, falling back to the best overall if nothing is that small.
+    /// </summary>
+    public static string Format(int maxHeight) => maxHeight > 0
+        ? $"bv*[height<={maxHeight}]+ba/b[height<={maxHeight}]/bv*+ba/b"
+        : "bv*+ba/b";
+
+    /// <summary>A video's title and the resolutions it's offered in, highest first.</summary>
+    public sealed record VideoInfo(string Title, IReadOnlyList<int> Heights);
+
+    /// <summary>Asks yt-dlp (<c>-J</c>) which resolutions a page's video comes in, without downloading it.</summary>
+    public async Task<VideoInfo> GetInfoAsync(string url, CancellationToken ct = default)
+    {
+        var exe = BundledPath ?? throw new InvalidOperationException("yt-dlp isn't bundled with this build");
+        var psi = new ProcessStartInfo(exe)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (var a in new[] { "-J", "--no-playlist" }) psi.ArgumentList.Add(a);
+        if (BundledJsRuntime is { } js) { psi.ArgumentList.Add("--js-runtimes"); psi.ArgumentList.Add("quickjs:" + js); }
+        psi.ArgumentList.Add("--");
+        psi.ArgumentList.Add(url);
+        using var p = Process.Start(psi) ?? throw new InvalidOperationException("couldn't start yt-dlp");
+        var stderr = p.StandardError.ReadToEndAsync(ct);
+        var json = await p.StandardOutput.ReadToEndAsync(ct);
+        await p.WaitForExitAsync(ct);
+        if (p.ExitCode != 0)
+        {
+            var error = (await stderr).Split('\n').LastOrDefault(l => l.StartsWith("ERROR:", StringComparison.Ordinal));
+            throw new InvalidOperationException(error?["ERROR:".Length..].Trim() ?? $"yt-dlp exited with code {p.ExitCode}");
+        }
+        return ParseInfo(json);
+    }
+
+    internal static VideoInfo ParseInfo(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var title = root.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString()! : "";
+        var heights = new SortedSet<int>(Comparer<int>.Create((a, b) => b.CompareTo(a)));
+        if (root.TryGetProperty("formats", out var formats) && formats.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var f in formats.EnumerateArray())
+            {
+                // Audio-only formats have vcodec "none"; storyboards and the like have no height.
+                var video = !f.TryGetProperty("vcodec", out var vc) || vc.ValueKind != JsonValueKind.String || vc.GetString() != "none";
+                if (video && f.TryGetProperty("height", out var h) && h.ValueKind == JsonValueKind.Number && h.GetInt32() > 0)
+                    heights.Add(h.GetInt32());
+            }
+        }
+        else if (root.TryGetProperty("height", out var h) && h.ValueKind == JsonValueKind.Number && h.GetInt32() > 0)
+        {
+            heights.Add(h.GetInt32()); // a site with a single file
+        }
+        return new VideoInfo(title, [.. heights]);
+    }
+
     /// <summary>Merges the separate video and audio streams of a download (YouTube serves HD that way).</summary>
     public string? BundledFfmpeg =>
         File.Exists(Path.Combine(appDirectory, Exe("ffmpeg"))) ? Path.Combine(appDirectory, Exe("ffmpeg")) : null;
@@ -58,8 +120,9 @@ public sealed class YtDlp(string appDirectory)
     /// Downloads the best video and audio of a page into <paramref name="folder"/>, merged into
     /// one MKV. Returns the file's path. Cancelling stops yt-dlp and deletes its partial files.
     /// </summary>
+    /// <param name="maxHeight">The highest video resolution wanted (e.g. 1080); 0 for the best.</param>
     public async Task<string> DownloadAsync(string url, string folder, Action<DownloadProgress>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default, int maxHeight = 0)
     {
         var exe = BundledPath ?? throw new InvalidOperationException("yt-dlp isn't bundled with this build");
         Directory.CreateDirectory(folder);
@@ -71,7 +134,7 @@ public sealed class YtDlp(string appDirectory)
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        foreach (var a in DownloadArguments(url, folder, printed)) psi.ArgumentList.Add(a);
+        foreach (var a in DownloadArguments(url, folder, printed, maxHeight)) psi.ArgumentList.Add(a);
 
         using var p = Process.Start(psi) ?? throw new InvalidOperationException("couldn't start yt-dlp");
         var partials = new List<string>();
@@ -114,12 +177,12 @@ public sealed class YtDlp(string appDirectory)
 
     private const string DestinationPrefix = "[download] Destination:";
 
-    internal IEnumerable<string> DownloadArguments(string url, string folder, string printFile)
+    internal IEnumerable<string> DownloadArguments(string url, string folder, string printFile, int maxHeight = 0)
     {
         // A watch link that is also in a playlist means the one video.
         yield return "--no-playlist";
         yield return "-f";
-        yield return "bv*+ba/b";
+        yield return Format(maxHeight);
         yield return "--merge-output-format";
         yield return "mkv";
         if (BundledFfmpeg is { } ffmpeg) { yield return "--ffmpeg-location"; yield return ffmpeg; }

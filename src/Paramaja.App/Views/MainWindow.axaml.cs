@@ -205,7 +205,8 @@ public partial class MainWindow : Window
     {
         var fs = on ?? WindowState != WindowState.FullScreen;
         if (!fs && WindowState != WindowState.FullScreen) return;
-        WindowState = fs ? WindowState.FullScreen : WindowState.Normal;
+        // Leaving fullscreen goes back to a maximized window, not a small one.
+        WindowState = fs ? WindowState.FullScreen : WindowState.Maximized;
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)

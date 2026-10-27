@@ -32,6 +32,7 @@ internal enum MpvEventId
     PlaybackRestart = 21,
     PropertyChange = 22,
     QueueOverflow = 24,
+    Hook = 25,
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -63,6 +64,13 @@ internal struct MpvEventClientMessage
 {
     public int NumArgs;
     public IntPtr Args;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct MpvEventHook
+{
+    public IntPtr Name;
+    public ulong Id;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -110,6 +118,12 @@ internal static partial class MpvNative
 
     [LibraryImport(NativeLibraries.Mpv, StringMarshalling = StringMarshalling.Utf8)]
     public static partial int mpv_request_log_messages(IntPtr ctx, string minLevel);
+
+    [LibraryImport(NativeLibraries.Mpv, StringMarshalling = StringMarshalling.Utf8)]
+    public static partial int mpv_hook_add(IntPtr ctx, ulong replyUserdata, string name, int priority);
+
+    [LibraryImport(NativeLibraries.Mpv)]
+    public static partial int mpv_hook_continue(IntPtr ctx, ulong id);
 
     [LibraryImport(NativeLibraries.Mpv)]
     public static partial IntPtr mpv_wait_event(IntPtr ctx, double timeout);

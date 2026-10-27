@@ -172,7 +172,7 @@ public class RenderingIntegrationTests
     [MpvFact]
     public void Auto_switches_to_balanced_for_a_4k_video_and_back_for_smaller_ones()
     {
-        using var h = new PlayerHarness();
+        using var h = new PlayerHarness(new PlayerSettings { RenderQuality = RenderQuality.Auto });
         h.OpenAndWait(TestEnvironment.Media("uhd_hevc.mkv"));
         PlayerHarness.WaitUntil(() => h.Player.RenderProfile == RenderProfile.Balanced, "balanced for 4K");
         Assert.Equal("bilinear", h.Player.Mpv.GetString("cscale"));

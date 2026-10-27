@@ -1,0 +1,47 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Paramaja.App.ViewModels"
+        x:Class="Paramaja.App.Views.DownloadDialog"
+        x:DataType="vm:DownloadDialogViewModel"
+        Title="Download a video" Icon="/Assets/paramaja.ico"
+        Width="620" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner" Background="#15111A">
+  <StackPanel Margin="24" Spacing="12">
+    <StackPanel Orientation="Horizontal" Spacing="10">
+      <PathIcon Data="{StaticResource IconDownload}" Width="22" Height="22" Foreground="{StaticResource ParamajaAccentBright}" />
+      <TextBlock Text="Download a video" FontSize="20" FontWeight="SemiBold" />
+    </StackPanel>
+    <TextBlock Classes="muted" TextWrapping="Wrap"
+               Text="Paste a YouTube (or other site) link, pick a quality, and it's saved to your Downloads folder with the best audio merged in." />
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+      <TextBox x:Name="Input" Text="{Binding Url}" Watermark="https://youtube.com/watch?v=…" AcceptsReturn="False" />
+      <Button Grid.Column="1" Classes="ghost" Content="Get qualities" Command="{Binding CheckCommand}" />
+    </Grid>
+    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsChecking}" />
+    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap"
+               IsVisible="{Binding Title, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding Qualities.Count}">
+      <TextBlock Text="Video quality" VerticalAlignment="Center" />
+      <ComboBox x:Name="Quality" Width="220" ItemsSource="{Binding Qualities}" SelectedItem="{Binding SelectedQuality}" />
+      <TextBlock Classes="muted" FontSize="12" Text="+ best audio" VerticalAlignment="Center" />
+    </StackPanel>
+    <TextBlock Text="{Binding Message}" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource ParamajaAccentBright}"
+               IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+    <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding Main.IsDownloading}">
+      <TextBlock Text="{Binding Main.DownloadStatus}" VerticalAlignment="Center" Foreground="{StaticResource ParamajaLeaf}" />
+      <Button Classes="ghost" Content="Cancel download" Command="{Binding Main.CancelDownloadCommand}" />
+    </StackPanel>
+    <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding Main.IsDownloading}"
+               Text="You can close this window: the download carries on, with its progress at the top of the player." />
+    <TextBlock Text="{Binding Main.StatusMessage}" FontSize="12" TextWrapping="Wrap" Classes="muted" />
+
+    <Grid ColumnDefinitions="Auto,*,Auto">
+      <Button Classes="ghost" Content="Open downloads folder" Command="{Binding Main.OpenDownloadsFolderCommand}" />
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
+        <Button Classes="ghost" Content="Close" Click="OnClose" IsCancel="True" />
+        <Button Classes="accent" Content="Download" Command="{Binding StartCommand}" IsDefault="True" />
+      </StackPanel>
+    </Grid>
+  </StackPanel>
+</Window>

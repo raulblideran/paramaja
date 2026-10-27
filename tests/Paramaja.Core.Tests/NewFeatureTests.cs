@@ -134,6 +134,36 @@ public class YtDlpTests
     }
 
     [Fact]
+    public void Qualities_are_read_from_yt_dlps_format_list()
+    {
+        // Trimmed from real yt-dlp -J output: audio-only and storyboard formats are skipped.
+        const string json = """
+            { "title": "Big Buck Bunny", "formats": [
+              { "format_id": "sb0", "vcodec": "none", "height": 45 },
+              { "format_id": "251", "vcodec": "none", "acodec": "opus" },
+              { "format_id": "160", "vcodec": "avc1", "height": 144 },
+              { "format_id": "399", "vcodec": "av01", "height": 1080 },
+              { "format_id": "137", "vcodec": "avc1", "height": 1080 },
+              { "format_id": "401", "vcodec": "av01", "height": 2160 },
+              { "format_id": "18", "vcodec": "avc1", "height": null } ] }
+            """;
+        var info = YtDlp.ParseInfo(json);
+        Assert.Equal("Big Buck Bunny", info.Title);
+        Assert.Equal([2160, 1080, 144], info.Heights);
+        // A site that offers one file has no format list.
+        Assert.Equal([720], YtDlp.ParseInfo("""{ "title": "x", "height": 720 }""").Heights);
+    }
+
+    [Theory]
+    [InlineData(0, "bv*+ba/b")]
+    [InlineData(720, "bv*[height<=720]+ba/b[height<=720]/bv*+ba/b")]
+    public void Download_takes_the_chosen_quality(int maxHeight, string format)
+    {
+        var args = new YtDlp(TestEnvironment.TempDir()).DownloadArguments("https://youtu.be/x", "/dl", "/tmp/p.txt", maxHeight).ToList();
+        Assert.Equal(format, args[args.IndexOf("-f") + 1]);
+    }
+
+    [Fact]
     public void Download_merges_best_video_and_audio_with_the_bundled_tools()
     {
         var dir = TestEnvironment.TempDir();

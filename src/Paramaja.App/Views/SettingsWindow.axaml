@@ -45,20 +45,31 @@
                      Text="Uses BWDIF, a motion-adaptive deinterlacer that outputs one frame per field (50i becomes 50p)." />
 
           <TextBlock Classes="section" Text="Decoding" />
-          <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration for HEVC (D3D11 / VA-API)" OffContent="Software decoding" />
+          <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration (D3D11 / VA-API)" OffContent="Software decoding" />
           <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                     Text="Only HEVC (H.265) is hardware-decoded; H.264, AV1 and other codecs always decode in software." />
+                     Text="Used for HEVC (H.265) at any size and for every codec from 1080p up; smaller videos decode in software." />
           <Expander x:Name="RenderingAdvanced" Header="Advanced: rendering quality" HorizontalAlignment="Stretch">
             <StackPanel Spacing="8">
               <ComboBox SelectedIndex="{Binding RenderQualityIndex}" Width="420" HorizontalAlignment="Left">
-                <ComboBoxItem Content="Auto — High below 4K, Balanced for 4K (default)" />
+                <ComboBoxItem Content="Auto — High below 4K, Balanced for 4K" />
                 <ComboBoxItem Content="High — best scaling, needs a strong GPU for 4K" />
-                <ComboBoxItem Content="Balanced — nearly as sharp, far lighter" />
+                <ComboBoxItem Content="Balanced — nearly as sharp, far lighter (default)" />
                 <ComboBoxItem Content="Fast — lightest, for laptops and older GPUs" />
               </ComboBox>
               <TextBlock Text="{Binding RenderProfileText}" Classes="muted" FontSize="12" />
               <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
                          Text="Scaling a 4K picture costs about five times as much as 1080p. If 4K stutters while 1080p is fine, the GPU is running out of time: Balanced or Fast fixes it. Auto also switches to Fast by itself if frames keep dropping." />
+              <TextBlock Classes="section" Text="Playback timing" />
+              <ComboBox SelectedIndex="{Binding DisplayFpsIndex}" Width="420" HorizontalAlignment="Left">
+                <ComboBoxItem Content="60 Hz (default)" />
+                <ComboBoxItem Content="Auto — the rate the monitor reports" />
+                <ComboBoxItem Content="50 Hz" />
+                <ComboBoxItem Content="75 Hz" />
+                <ComboBoxItem Content="120 Hz" />
+                <ComboBoxItem Content="144 Hz" />
+              </ComboBox>
+              <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                         Text="The refresh rate playback is timed for. If video stutters on one monitor but not another, try matching this to that monitor's refresh rate, or Auto." />
             </StackPanel>
           </Expander>
         </StackPanel>
@@ -69,9 +80,14 @@
       <StackPanel Margin="16,0" Spacing="8">
         <TextBlock Classes="section" Text="Surround" />
         <ToggleSwitch IsChecked="{Binding DownmixToStereo}" OnContent="Downmix 5.1 / 7.1 to stereo" OffContent="Output original channels (default)" />
+        <TextBlock Classes="section" Text="Stereo" />
+        <ToggleSwitch IsChecked="{Binding DownmixToMono}" OnContent="Downmix stereo to mono" OffContent="Output original channels (default)" />
+        <TextBlock Classes="section" Text="Volume" />
+        <ToggleSwitch IsChecked="{Binding NormalizeAudio}" OnContent="Normalize volume (evens out loud and quiet parts)" OffContent="Original dynamics (default)" />
+        <TextBlock Classes="section" Text="Receiver" />
         <ToggleSwitch IsChecked="{Binding AudioPassthrough}" OnContent="Passthrough Dolby / DTS to an AV receiver" OffContent="Decode audio in the player (default)" />
         <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                   Text="Off by default. Volume normalisation is always disabled — no ReplayGain, no loudness filters, no downmix normalisation." />
+                   Text="All off by default: the audio plays as-is. Each downmix applies only to the sources it's for (stereo to 5.1 / 7.1, mono to stereo). No ReplayGain or downmix normalisation is ever applied." />
         <TextBlock Classes="section" Text="Preferred audio languages" />
         <TextBox Text="{Binding PreferredAudioLanguages}" Watermark="e.g. jpn,eng" Width="320" HorizontalAlignment="Left" />
       </StackPanel>
@@ -111,7 +127,19 @@
         <Button Content="Open screenshots folder" Command="{Binding OpenScreenshotsFolderCommand}" />
         <TextBlock Classes="section" Text="YouTube &amp; other sites" />
         <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                   Text="Links from YouTube and ~1800 other sites play through yt-dlp. While one plays, the download button at the top saves it in the best quality to your Downloads folder. Sites change often; if one stops working, update it." />
+                   Text="Links from YouTube and ~1800 other sites play through yt-dlp. Sites change often; if one stops working, update it." />
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <TextBlock Text="Streaming quality" VerticalAlignment="Center" />
+          <ComboBox SelectedIndex="{Binding StreamQualityIndex}" Width="220">
+            <ComboBoxItem Content="Best available (default)" />
+            <ComboBoxItem Content="Up to 2160p (4K)" />
+            <ComboBoxItem Content="Up to 1440p" />
+            <ComboBoxItem Content="Up to 1080p" />
+            <ComboBoxItem Content="Up to 720p" />
+            <ComboBoxItem Content="Up to 480p" />
+            <ComboBoxItem Content="Up to 360p" />
+          </ComboBox>
+        </StackPanel>
         <StackPanel Orientation="Horizontal" Spacing="10">
           <Button Content="Update YouTube support" Command="{Binding UpdateYtDlpCommand}" IsEnabled="{Binding HasYtDlp}" />
           <Button Content="Open downloads folder" Command="{Binding OpenDownloadsFolderCommand}" />

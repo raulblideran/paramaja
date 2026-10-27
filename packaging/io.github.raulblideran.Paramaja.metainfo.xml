@@ -74,6 +74,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.5.0" date="2026-10-27">
+      <description>
+        <p>Downloader with quality choice, streaming quality, Open link button, volume normalization, mono downmix, 60 Hz playback timing, Balanced rendering by default</p>
+      </description>
+    </release>
     <release version="1.4.0" date="2026-10-26">
       <description>
         <p>Titles and chapters menu; menus show only the options the playing video can use; HEVC-only hardware decoding; double-click fullscreen on Windows</p>

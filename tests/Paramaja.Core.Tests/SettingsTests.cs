@@ -4,12 +4,27 @@ namespace Paramaja.Core.Tests;
 
 public class SettingsTests
 {
+    [Theory]
+    [InlineData("{ \"renderQuality\": \"Auto\" }", RenderQuality.Balanced)]                        // old default: moved once
+    [InlineData("{ \"renderQuality\": \"High\" }", RenderQuality.High)]                            // picked by hand: kept
+    [InlineData("{ \"settingsVersion\": 2, \"renderQuality\": \"Auto\" }", RenderQuality.Auto)]  // picked Auto after the move: kept
+    public void Old_auto_rendering_moves_to_balanced_once(string json, RenderQuality expected)
+    {
+        var store = new SettingsStore(Path.Combine(TestEnvironment.TempDir(), "settings.json"));
+        File.WriteAllText(store.FilePath, json);
+        var s = store.Load();
+        Assert.Equal(expected, s.RenderQuality);
+        Assert.Equal(PlayerSettings.CurrentVersion, s.SettingsVersion);
+    }
+
     [Fact]
     public void Missing_file_gives_defaults()
     {
         var s = new SettingsStore(Path.Combine(TestEnvironment.TempDir(), "settings.json")).Load();
         Assert.False(s.DownmixToStereo);
         Assert.Equal(HdrMode.Auto, s.HdrMode);
+        Assert.Equal(RenderQuality.Balanced, s.RenderQuality);
+        Assert.Equal(60, s.DisplayFps);
         Assert.Equal(100, s.Volume);
     }
 

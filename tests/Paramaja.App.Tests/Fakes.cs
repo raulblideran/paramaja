@@ -60,6 +60,8 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public void ToggleMute() => Log("ToggleMute");
     public void ShowText(string text, int durationMs = 1500) => Log($"ShowText {text}");
     public void SetCursorHidden(bool hidden) => Log($"SetCursorHidden {hidden}");
+    public void ApplyStreamQuality() => Log($"ApplyStreamQuality {Settings.StreamMaxHeight}");
+    public void ApplyDisplayFps() => Log($"ApplyDisplayFps {Settings.DisplayFps}");
     public void ToggleStats() => Log("ToggleStats");
     public string Screenshot(bool includeSubtitles) { Log($"Screenshot {includeSubtitles}"); return "/tmp/shot.png"; }
     public void SetDownmix(bool stereo) => Log($"SetDownmix {stereo}");
@@ -90,7 +92,12 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public void CycleTrack(TrackType type) => Log($"CycleTrack {type}");
     public void AddSubtitle(string path) => Log($"AddSubtitle {path}");
     public void ToggleSubtitleVisibility() => Log("ToggleSubtitleVisibility");
-    public void AdjustSubtitleDelay(double seconds) => Log($"AdjustSubtitleDelay {seconds}");
+    public double SubtitleDelay { get; private set; }
+    public double AdjustSubtitleDelay(double seconds)
+    {
+        Log($"AdjustSubtitleDelay {seconds}");
+        return SubtitleDelay = Math.Round(SubtitleDelay + seconds, 3);
+    }
     public void Dispose() => Disposed = true;
 }
 
@@ -154,6 +161,8 @@ public sealed class FakeDialogs : IDialogService
     public Task<string?> PickFolderAsync() => Task.FromResult(NextFolder);
     public Task<string?> PickSubtitleFileAsync() => Task.FromResult(NextSubtitle);
     public Task<string?> AskLinkAsync() => Task.FromResult(NextLink);
+    public List<string?> DownloaderOpenedWith { get; } = [];
+    public Task ShowDownloaderAsync(string? url) { DownloaderOpenedWith.Add(url); return Task.CompletedTask; }
     public Task<string?> ReadClipboardTextAsync() => Task.FromResult(Clipboard);
     public Task ShowSettingsAsync() { SettingsShown++; return Task.CompletedTask; }
     public void OpenFolder(string path) => OpenedFolders.Add(path);

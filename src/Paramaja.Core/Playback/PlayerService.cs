@@ -43,7 +43,7 @@ public sealed class PlayerService : IPlayer
         _paths = paths;
         _paths.EnsureCreated();
         _mpv = new MpvClient();
-        _hwdec = settings.HardwareDecoding ? "auto-safe" : "no";
+        _hwdec = "no"; // decided per file, once its codec and size are known
         RenderProfile = MpvOptionsBuilder.InitialProfile(settings.RenderQuality);
         foreach (var (k, v) in MpvOptionsBuilder.Build(settings, paths, windowId))
         {
@@ -54,6 +54,9 @@ public sealed class PlayerService : IPlayer
         Wire();
         _mpv.Initialize();
         Observe();
+        // Tracks are chosen but the decoders haven't started: deciding here avoids restarting
+        // the decoder a moment into playback (which raced with interlace detection).
+        _mpv.AddHook("on_preloaded", DecideHardwareDecoding);
         BindKeys();
     }
 
@@ -146,7 +149,10 @@ public sealed class PlayerService : IPlayer
                     if (Settings.Deinterlace == DeinterlaceMode.Auto) ApplyDeinterlace();
                 }
                 break;
-            case "audio-params/channel-count": s.SourceChannels = ToInt(value); break;
+            case "audio-params/channel-count":
+                s.SourceChannels = ToInt(value);
+                ApplyAudioChannels(); // the downmixes depend on what the source has
+                break;
             case "audio-out-params/channel-count": s.OutputChannels = ToInt(value); break;
             case "video-params/w": s.VideoWidth = ToInt(value); break;
             case "video-params/h":
@@ -296,7 +302,27 @@ public sealed class PlayerService : IPlayer
         DisplayIsHdr = isHdr;
         ApplyHdr();
     }
-    public void ApplyAudio() => ApplyGroup(MpvOptionsBuilder.Audio(Settings));
+    public void ApplyAudio()
+    {
+        ApplyGroup(MpvOptionsBuilder.Audio(Settings, State.SourceChannels));
+        _audioChannels = MpvOptionsBuilder.AudioChannels(Settings, State.SourceChannels);
+    }
+
+    private string? _audioChannels;
+
+    /// <summary>Re-picks the output layout when the source's channel count becomes known.</summary>
+    private void ApplyAudioChannels()
+    {
+        var channels = MpvOptionsBuilder.AudioChannels(Settings, State.SourceChannels);
+        if (channels == _audioChannels) return;
+        if (_mpv.TrySetProperty("audio-channels", channels)) _audioChannels = channels;
+    }
+
+    /// <summary>Applies to the next web link opened.</summary>
+    public void ApplyStreamQuality() => _mpv.TrySetProperty("ytdl-format", YtDlp.Format(Settings.StreamMaxHeight));
+
+    public void ApplyDisplayFps() =>
+        _mpv.TrySetProperty("display-fps-override", Settings.DisplayFps.ToString(CultureInfo.InvariantCulture));
     private bool _streaming;
     private int _stalls;
 
@@ -402,9 +428,21 @@ public sealed class PlayerService : IPlayer
         StateChanged?.Invoke("deinterlace-active");
     }
 
+    /// <summary>Whether this file gets hardware decoding (see MpvOptionsBuilder.UseHardwareDecoding).</summary>
+    private bool _hardwareWanted;
+
+    private void DecideHardwareDecoding()
+    {
+        _hardwareWanted = MpvOptionsBuilder.UseHardwareDecoding(
+            _mpv.GetString("current-tracks/video/codec"),
+            ToInt(_mpv.GetLong("current-tracks/video/demux-w")),
+            ToInt(_mpv.GetLong("current-tracks/video/demux-h")));
+        ApplyHardwareDecoding();
+    }
+
     private void SetHwdec(bool copyBack)
     {
-        var mode = !Settings.HardwareDecoding ? "no" : copyBack ? "auto-copy-safe" : "auto-safe";
+        var mode = !Settings.HardwareDecoding || !_hardwareWanted ? "no" : copyBack ? "auto-copy-safe" : "auto-safe";
         if (mode == _hwdec) return;
         try { _mpv.SetProperty("hwdec", mode); _hwdec = mode; }
         catch (MpvException) { }
@@ -528,8 +566,12 @@ public sealed class PlayerService : IPlayer
     }
 
     public void ToggleSubtitleVisibility() => _mpv.TryCommand("cycle", "sub-visibility");
-    public void AdjustSubtitleDelay(double seconds) =>
+    /// <summary>Shifts subtitle timing; returns the total shift now in effect, in seconds.</summary>
+    public double AdjustSubtitleDelay(double seconds)
+    {
         _mpv.TryCommand("add", "sub-delay", seconds.ToString(CultureInfo.InvariantCulture));
+        return Math.Round(_mpv.GetDouble("sub-delay") ?? 0, 3);
+    }
 
     public void Dispose() => _mpv.Dispose();
 }

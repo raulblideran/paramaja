@@ -54,9 +54,11 @@ public interface IPlayer : IDisposable
     void ApplyHardwareDecoding();
     void ApplySubtitles();
     void ApplyAudio();
+    void ApplyStreamQuality();
+    void ApplyDisplayFps();
     void SelectTrack(TrackType type, int? id);
     void CycleTrack(TrackType type);
     void AddSubtitle(string path);
     void ToggleSubtitleVisibility();
-    void AdjustSubtitleDelay(double seconds);
+    double AdjustSubtitleDelay(double seconds);
 }

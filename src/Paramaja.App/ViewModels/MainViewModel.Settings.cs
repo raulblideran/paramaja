@@ -31,6 +31,63 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Stereo sources only; mono and surround sources are left as they are.</summary>
+    public bool DownmixToMono
+    {
+        get => Settings.DownmixToMono;
+        set
+        {
+            if (Settings.DownmixToMono == value) return;
+            Settings.DownmixToMono = value;
+            OnPropertyChanged();
+            Changed(() => _player?.ApplyAudio(), value ? "Downmix to mono: on" : "Downmix to mono: off");
+        }
+    }
+
+    public bool NormalizeAudio
+    {
+        get => Settings.NormalizeAudio;
+        set
+        {
+            if (Settings.NormalizeAudio == value) return;
+            Settings.NormalizeAudio = value;
+            OnPropertyChanged();
+            Changed(() => _player?.ApplyAudio(), value ? "Volume normalization: on" : "Volume normalization: off");
+        }
+    }
+
+    /// <summary>Choices for the stream quality list, highest first; 0 is "best available".</summary>
+    public static readonly int[] StreamHeights = [0, 2160, 1440, 1080, 720, 480, 360];
+
+    public int StreamQualityIndex
+    {
+        get => Math.Max(0, Array.IndexOf(StreamHeights, Settings.StreamMaxHeight));
+        set
+        {
+            var h = StreamHeights[Math.Clamp(value, 0, StreamHeights.Length - 1)];
+            if (Settings.StreamMaxHeight == h) return;
+            Settings.StreamMaxHeight = h;
+            OnPropertyChanged();
+            Changed(() => _player?.ApplyStreamQuality());
+        }
+    }
+
+    /// <summary>Choices for playback timing: 60 Hz (default), the monitor's own rate (0), or a fixed rate.</summary>
+    public static readonly double[] DisplayRates = [60, 0, 50, 75, 120, 144];
+
+    public int DisplayFpsIndex
+    {
+        get => Math.Max(0, Array.IndexOf(DisplayRates, Settings.DisplayFps));
+        set
+        {
+            var fps = DisplayRates[Math.Clamp(value, 0, DisplayRates.Length - 1)];
+            if (Settings.DisplayFps == fps) return;
+            Settings.DisplayFps = fps;
+            OnPropertyChanged();
+            Changed(() => _player?.ApplyDisplayFps());
+        }
+    }
+
     /// <summary>Dolby/DTS bitstreams to an AV receiver, untouched. Off by default.</summary>
     public bool AudioPassthrough
     {

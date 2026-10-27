@@ -36,7 +36,8 @@ public class OptionsBuilderTests
     [Fact]
     public void Hdr_tonemaps_to_sdr_by_default_with_gpu_next()
     {
-        var o = Build(new PlayerSettings());
+        // High is the profile with every HDR feature on; Balanced (the default) drops recovery.
+        var o = Build(new PlayerSettings { RenderQuality = RenderQuality.High });
         Assert.Equal("gpu-next", o["vo"]);
         Assert.Equal("no", o["target-colorspace-hint"]);
         Assert.Equal("spline", o["tone-mapping"]);
@@ -46,11 +47,56 @@ public class OptionsBuilderTests
     }
 
     [Fact]
-    public void Only_hevc_is_hardware_decoded()
+    public void Rendering_is_balanced_by_default()
     {
-        Assert.Equal("hevc", Build(new PlayerSettings())["hwdec-codecs"]);
-        Assert.Equal("no", Build(new PlayerSettings { HardwareDecoding = false })["hwdec"]);
+        Assert.Equal(RenderQuality.Balanced, new PlayerSettings().RenderQuality);
+        Assert.Equal("0", Build(new PlayerSettings())["hdr-contrast-recovery"]);
     }
+
+    [Theory]
+    [InlineData("hevc", 1280, 720, true)]    // HEVC at any size
+    [InlineData("hevc", 640, 360, true)]
+    [InlineData("h264", 1920, 1080, true)]   // any codec from 1080p up
+    [InlineData("av1", 3840, 2160, true)]
+    [InlineData("h264", 1920, 800, true)]    // scope 1080p
+    [InlineData("h264", 1280, 720, false)]   // smaller non-HEVC: software
+    [InlineData("vp9", 854, 480, false)]
+    [InlineData(null, null, null, false)]
+    public void Hardware_decoding_is_for_hevc_and_1080p_up(string? codec, int? w, int? h, bool hardware) =>
+        Assert.Equal(hardware, MpvOptionsBuilder.UseHardwareDecoding(codec, w, h));
+
+    [Fact]
+    public void Playback_is_timed_for_60_hz_by_default()
+    {
+        Assert.Equal("60", Build(new PlayerSettings())["display-fps-override"]);
+        Assert.Equal("0", Build(new PlayerSettings { DisplayFps = 0 })["display-fps-override"]);
+    }
+
+    [Theory]
+    [InlineData(false, false, false, 6, "auto")]
+    [InlineData(true, false, false, 6, "stereo")]   // stereo downmix: surround only
+    [InlineData(true, false, false, 2, "auto")]
+    [InlineData(false, true, false, 2, "mono")]     // mono downmix: stereo only
+    [InlineData(false, true, false, 6, "auto")]
+    [InlineData(false, true, false, 1, "auto")]
+    [InlineData(true, true, true, 2, "auto")]       // passthrough leaves the bitstream alone
+    public void Downmixes_apply_only_to_their_sources(bool stereo, bool mono, bool passthrough, int channels, string expected) =>
+        Assert.Equal(expected, MpvOptionsBuilder.AudioChannels(
+            new PlayerSettings { DownmixToStereo = stereo, DownmixToMono = mono, AudioPassthrough = passthrough }, channels));
+
+    [Fact]
+    public void Normalization_is_off_by_default_and_never_on_a_bitstream()
+    {
+        Assert.Equal("", Build(new PlayerSettings())["af"]);
+        Assert.Contains("dynaudnorm", Build(new PlayerSettings { NormalizeAudio = true })["af"]);
+        Assert.Equal("", Build(new PlayerSettings { NormalizeAudio = true, AudioPassthrough = true })["af"]);
+    }
+
+    [Theory]
+    [InlineData(0, "bv*+ba/b")]
+    [InlineData(1080, "bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b")]
+    public void Stream_quality_caps_the_resolution(int maxHeight, string format) =>
+        Assert.Equal(format, Build(new PlayerSettings { StreamMaxHeight = maxHeight })["ytdl-format"]);
 
     [Fact]
     public void Hdr_passthrough_hints_the_display()
@@ -120,7 +166,7 @@ public class OptionsBuilderTests
         Dictionary<string, string> Opts() =>
             MpvOptionsBuilder.Ytdl(new YtDlp(dir)).ToDictionary(kv => kv.Key, kv => kv.Value);
 
-        Assert.Equal(new Dictionary<string, string> { ["ytdl"] = "yes" }, Opts());
+        Assert.Equal(new Dictionary<string, string> { ["ytdl"] = "yes", ["ytdl-format"] = "bv*+ba/b" }, Opts());
 
         File.WriteAllText(Path.Combine(dir, "yt-dlp" + exe), "");
         File.WriteAllText(Path.Combine(dir, "qjs" + exe), "");
@@ -146,11 +192,9 @@ public class OptionsBuilderTests
     }
 
     [Fact]
-    public void Hardware_decoding_toggle()
-    {
-        Assert.Equal("auto-safe", Build(new PlayerSettings())["hwdec"]);
-        Assert.Equal("no", Build(new PlayerSettings { HardwareDecoding = false })["hwdec"]);
-    }
+    public void Hardware_decoding_is_decided_per_file_not_at_startup() =>
+        // PlayerService switches it on per file, once codec and size are known.
+        Assert.Equal("no", Build(new PlayerSettings())["hwdec"]);
 
     [Fact]
     public void Screenshots_are_uncompressed_png_in_the_portable_folder()
@@ -199,7 +243,7 @@ public class OptionsBuilderTests
         try
         {
             Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
-            var o = Build(new PlayerSettings { SubtitleScale = 1.5, HdrContrastRecovery = 0.25 });
+            var o = Build(new PlayerSettings { SubtitleScale = 1.5, HdrContrastRecovery = 0.25, RenderQuality = RenderQuality.High });
             Assert.Equal("1.5", o["sub-scale"]);
             Assert.Equal("0.25", o["hdr-contrast-recovery"]);
         }

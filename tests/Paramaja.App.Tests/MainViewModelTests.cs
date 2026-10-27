@@ -19,14 +19,15 @@ public sealed class Rig : IDisposable
     public MainViewModel Vm { get; }
     public long? AttachedWid { get; private set; }
 
-    public Rig(PlayerSettings? settings = null, bool attach = true)
+    public Rig(PlayerSettings? settings = null, bool attach = true, YtDlp? ytdlp = null)
     {
         Directory.CreateDirectory(Root);
-        Paths = new PortablePaths(Root);
+        // Downloads go to the test folder, never the real one.
+        Paths = new PortablePaths(Root) { Downloads = Path.Combine(Root, "Downloads") };
         Store = new SettingsStore(Paths.SettingsFile);
         Settings = settings ?? new PlayerSettings();
         Player = new FakePlayer(Settings);
-        Vm = new MainViewModel(Settings, Store, Paths, wid => { AttachedWid = wid; return Player; }, Torrents, new ImmediateDispatcher())
+        Vm = new MainViewModel(Settings, Store, Paths, wid => { AttachedWid = wid; return Player; }, Torrents, new ImmediateDispatcher(), ytdlp)
         {
             Dialogs = Dialogs,
         };
@@ -169,18 +170,65 @@ public class KeyboardTests
     }
 
     [Theory]
-    [InlineData("hevc", true)]
-    [InlineData("h264", false)]
-    [InlineData("av1", false)]
-    public void Hardware_decoding_switch_shows_only_for_hevc(string codec, bool shown)
+    [InlineData("hevc", 1280, 720, true)]
+    [InlineData("h264", 1920, 1080, true)]
+    [InlineData("h264", 1280, 720, false)]
+    [InlineData("av1", 854, 480, false)]
+    public void Hardware_decoding_switch_shows_for_hevc_and_1080p_up(string codec, int w, int h, bool shown)
     {
         using var r = new Rig();
         var changed = new List<string?>();
         r.Vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
         r.Player.State.VideoFormat = codec;
+        r.Player.State.VideoWidth = w;
+        r.Player.State.VideoHeight = h;
         r.Player.RaiseState("video-format");
-        Assert.Equal(shown, r.Vm.IsHevcVideo);
-        Assert.Contains(nameof(MainViewModel.IsHevcVideo), changed);
+        r.Player.RaiseState("video-params/h");
+        Assert.Equal(shown, r.Vm.HardwareDecodingApplies);
+        Assert.Contains(nameof(MainViewModel.HardwareDecodingApplies), changed);
+    }
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    [InlineData(6, false)]
+    public void Mono_downmix_shows_only_for_stereo(int channels, bool shown)
+    {
+        using var r = new Rig();
+        r.Player.State.SourceChannels = channels;
+        r.Player.RaiseState("audio-params/channel-count");
+        Assert.Equal(shown, r.Vm.IsStereoAudio);
+    }
+
+    [Fact]
+    public void Subtitle_shifts_show_the_total_on_screen()
+    {
+        using var r = new Rig();
+        r.Vm.HandleKey("x");
+        Assert.Contains("ShowText Subtitles +0.1s", r.Player.Calls);
+        r.Vm.HandleKey("x");
+        Assert.Contains("ShowText Subtitles +0.2s", r.Player.Calls);
+        r.Vm.HandleKey("z");
+        r.Vm.HandleKey("z");
+        r.Vm.HandleKey("z");
+        Assert.Contains("ShowText Subtitles -0.1s", r.Player.Calls);
+    }
+
+    [Fact]
+    public void New_audio_and_stream_settings_apply_and_save()
+    {
+        using var r = new Rig();
+        r.Vm.DownmixToMono = true;
+        r.Vm.NormalizeAudio = true;
+        r.Vm.StreamQualityIndex = 3; // up to 1080p
+        r.Vm.DisplayFpsIndex = 1;    // Auto
+        var saved = r.Store.Load();
+        Assert.True(saved.DownmixToMono);
+        Assert.True(saved.NormalizeAudio);
+        Assert.Equal(1080, saved.StreamMaxHeight);
+        Assert.Equal(0, saved.DisplayFps);
+        Assert.Contains("ApplyStreamQuality 1080", r.Player.Calls);
+        Assert.Contains("ApplyDisplayFps 0", r.Player.Calls);
     }
 
     [Fact]

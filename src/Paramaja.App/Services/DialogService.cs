@@ -61,6 +61,12 @@ public sealed class DialogService(Window owner, Func<MainViewModel> vm) : IDialo
         return await new OpenLinkDialog(new OpenLinkDialogViewModel(clip)).ShowDialog<string?>(owner);
     }
 
+    public async Task ShowDownloaderAsync(string? url)
+    {
+        var initial = url ?? await ReadClipboardTextAsync();
+        await new DownloadDialog { DataContext = new DownloadDialogViewModel(vm(), initial) }.ShowDialog(owner);
+    }
+
     public async Task<string?> ReadClipboardTextAsync() =>
         owner.Clipboard is { } c ? await c.TryGetTextAsync() : null;
 

@@ -13,6 +13,8 @@ public interface IDialogService
     Task<string?> PickFolderAsync();
     Task<string?> PickSubtitleFileAsync();
     Task<string?> AskLinkAsync();
+    /// <summary>The downloader window; <paramref name="url"/> prefills it (else the clipboard, if it holds a link).</summary>
+    Task ShowDownloaderAsync(string? url);
     Task<string?> ReadClipboardTextAsync();
     Task ShowSettingsAsync();
     void OpenFolder(string path);

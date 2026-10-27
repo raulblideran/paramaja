@@ -3,6 +3,24 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.5.0 — 2026-10-27
+
+- **Downloader:** a Download button (welcome screen, the Open menus, and the top bar while a
+  web video plays). Paste a link, pick a quality from the ones the site offers (2160p, 1080p,
+  720p…), and it's saved to Downloads with the best audio merged in
+- **Streaming quality** for YouTube and other sites: Settings → Playback, from best available
+  down to 360p
+- Separate **Open link** button with its own icon, on the welcome screen and in the controls
+- Subtitle timing (Z / X) shows the total shift on screen with every press: "+0.1s", "+0.2s"…
+- Hardware acceleration is on for HEVC at any size and for every codec from 1080p up
+- Playback is timed for a 60 Hz display by default, which fixes stutter on monitors that report
+  odd refresh rates. Settings → Video → Advanced has Auto and other rates
+- Rendering is **Balanced** by default; whoever was on Auto moves to Balanced once. Only Auto
+  switches to Fast by itself when frames keep dropping
+- **Volume normalization** switch (off by default) in the audio menu and Settings
+- **Mono downmix** for stereo sources only; the stereo downmix still applies to 5.1 / 7.1 only
+- Leaving fullscreen goes back to a maximized window
+
 ## 1.4.0 — 2026-10-26
 
 - **Titles & chapters** menu: jump to any chapter, or switch a DVD's or Blu-ray's title

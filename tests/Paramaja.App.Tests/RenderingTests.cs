@@ -25,7 +25,7 @@ public class RenderingTests
     [Fact]
     public void Auto_falls_back_to_fast_when_frames_keep_dropping()
     {
-        using var r = new Rig();
+        using var r = new Rig(new PlayerSettings { RenderQuality = RenderQuality.Auto });
         r.Vm.IsIdle = false;
         Play(r, seconds: 8, dropsPerSecond: 4);
         Assert.Contains("FallBackToFastRendering", r.Player.Calls);
@@ -37,7 +37,7 @@ public class RenderingTests
     [Fact]
     public void Smooth_playback_keeps_the_profile()
     {
-        using var r = new Rig();
+        using var r = new Rig(new PlayerSettings { RenderQuality = RenderQuality.Auto });
         r.Vm.IsIdle = false;
         Play(r, seconds: 20, dropsPerSecond: 0);
         Assert.DoesNotContain("FallBackToFastRendering", r.Player.Calls);
@@ -55,7 +55,7 @@ public class RenderingTests
     [Fact]
     public void Falls_back_only_once()
     {
-        using var r = new Rig();
+        using var r = new Rig(new PlayerSettings { RenderQuality = RenderQuality.Auto });
         r.Vm.IsIdle = false;
         Play(r, seconds: 8, dropsPerSecond: 4);
         Play(r, seconds: 8, dropsPerSecond: 4, DateTime.UtcNow.AddMinutes(1));
@@ -66,17 +66,17 @@ public class RenderingTests
     public void Rendering_setting_applies_and_persists()
     {
         using var r = new Rig();
-        Assert.Equal(0, r.Vm.RenderQualityIndex);
-        r.Vm.RenderQualityIndex = 2;
-        Assert.Equal(RenderQuality.Balanced, r.Settings.RenderQuality);
-        Assert.Contains("ApplyRenderQuality Balanced", r.Player.Calls);
-        Assert.Equal(RenderQuality.Balanced, r.Store.Load().RenderQuality);
+        Assert.Equal(2, r.Vm.RenderQualityIndex); // Balanced by default
+        r.Vm.RenderQualityIndex = 3;
+        Assert.Equal(RenderQuality.Fast, r.Settings.RenderQuality);
+        Assert.Contains("ApplyRenderQuality Fast", r.Player.Calls);
+        Assert.Equal(RenderQuality.Fast, r.Store.Load().RenderQuality);
     }
 
     [Fact]
     public async Task Diagnostics_are_copied_with_a_verdict_and_no_file_names()
     {
-        using var r = new Rig();
+        using var r = new Rig(new PlayerSettings { RenderQuality = RenderQuality.Auto });
         r.Vm.IsIdle = false;
         r.Player.State.Title = "Secret.Movie.2160p.mkv";
         r.Player.State.VideoFormat = "hevc";
@@ -103,7 +103,7 @@ public class RenderingTests
         var t0 = DateTime.UtcNow;
         for (var i = 0; i <= 8; i++) health.Add(new HealthSample(t0.AddSeconds(i), true, false, i * 5L, 0, 0, null, 2, null, 0));
         var state = new PlayerState { VideoFormat = "hevc", VideoWidth = 3840, VideoHeight = 2160, HwdecCurrent = "d3d11va" };
-        var report = DiagnosticsReport.Build(state, new PlayerSettings(), RenderProfile.High, health, MediaSource.Local, "",
+        var report = DiagnosticsReport.Build(state, new PlayerSettings { RenderQuality = RenderQuality.Auto }, RenderProfile.High, health, MediaSource.Local, "",
             os: "Windows 11", cpu: "Some CPU", gpus: ["Intel(R) UHD Graphics 620 (driver 31.0)"], memory: "8 GB");
         Assert.Contains("GPU: Intel(R) UHD Graphics 620", report);
         Assert.Contains("graphics card can't keep up", report);

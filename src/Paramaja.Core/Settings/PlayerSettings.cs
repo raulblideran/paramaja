@@ -45,12 +45,25 @@ public enum RenderQuality
 
 public sealed class PlayerSettings
 {
+    /// <summary>Bumped when a default changes for existing users too (see <see cref="Normalize"/>).</summary>
+    public const int CurrentVersion = 2;
+
+    /// <summary>The settings.json format; 0 for files written before versioning.</summary>
+    public int SettingsVersion { get; set; }
+
     public static readonly string[] ToneMappingCurves =
         ["spline", "bt.2446a", "bt.2390", "st2094-40", "hable", "mobius", "reinhard", "clip", "auto"];
 
     // Video
     public bool HardwareDecoding { get; set; } = true;
-    public RenderQuality RenderQuality { get; set; } = RenderQuality.Auto;
+    /// <summary>
+    /// The display refresh rate playback is timed for, in Hz; 0 trusts what the monitor reports.
+    /// 60 by default: monitors that report odd or mismatched rates made playback stutter.
+    /// </summary>
+    public double DisplayFps { get; set; } = 60;
+    /// <summary>Highest resolution streamed from YouTube and other sites (e.g. 1080); 0 for the best.</summary>
+    public int StreamMaxHeight { get; set; }
+    public RenderQuality RenderQuality { get; set; } = RenderQuality.Balanced;
     public HdrMode HdrMode { get; set; } = HdrMode.Auto;
     public string ToneMapping { get; set; } = "spline";
     /// <summary>Measure each frame's brightness so tonemapping adapts scene by scene.</summary>
@@ -61,7 +74,12 @@ public sealed class PlayerSettings
     public DeinterlaceMode Deinterlace { get; set; } = DeinterlaceMode.Auto;
 
     // Audio — never normalised; downmix is strictly opt-in.
+    /// <summary>Applies to surround sources only (5.1, 7.1…).</summary>
     public bool DownmixToStereo { get; set; }
+    /// <summary>Applies to stereo sources only.</summary>
+    public bool DownmixToMono { get; set; }
+    /// <summary>Evens out loud and quiet passages (dynamic normalization). Off by default.</summary>
+    public bool NormalizeAudio { get; set; }
     /// <summary>Send Dolby/DTS bitstreams untouched to an AV receiver (WASAPI exclusive on Windows).</summary>
     public bool AudioPassthrough { get; set; }
     /// <summary>Slider position, 0-150. Logarithmic: see <see cref="Playback.VolumeCurve"/>.</summary>
@@ -105,12 +123,17 @@ public sealed class PlayerSettings
     /// <summary>Clamps values that may have been hand-edited into nonsense.</summary>
     public void Normalize()
     {
+        // 1.5.0 made Balanced the default; whoever was on the old default (Auto) moves too.
+        if (SettingsVersion < 2 && RenderQuality == RenderQuality.Auto) RenderQuality = RenderQuality.Balanced;
+        SettingsVersion = CurrentVersion;
         if (!ToneMappingCurves.Contains(ToneMapping)) ToneMapping = "spline";
         HdrContrastRecovery = Math.Clamp(HdrContrastRecovery, 0, 2);
         Volume = Math.Clamp(Volume, 0, 150);
         if (AudioPassthrough) DownmixToStereo = false;
         SubtitleScale = Math.Clamp(SubtitleScale, 0.25, 4);
         SeekSeconds = Math.Clamp(SeekSeconds, 1, 600);
+        DisplayFps = DisplayFps is 0 ? 0 : Math.Clamp(DisplayFps, 23, 500);
+        StreamMaxHeight = Math.Clamp(StreamMaxHeight, 0, 4320);
         LongSeekSeconds = Math.Clamp(LongSeekSeconds, 1, 3600);
         TorrentMetadataTimeoutSeconds = Math.Clamp(TorrentMetadataTimeoutSeconds, 10, 600);
         TorrentListenPort = Math.Clamp(TorrentListenPort, 0, 65535);

@@ -39,8 +39,24 @@
                 <MenuItem Header="Open file…" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
                 <MenuItem Header="Open folder, DVD or Blu-ray…" InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
                 <MenuItem Header="Open link (magnet, YouTube, MEGA, URL)…" InputGesture="Ctrl+U" Command="{Binding OpenLinkCommand}" />
+                <Separator />
+                <MenuItem Header="Download a video…" Command="{Binding OpenDownloaderCommand}" />
               </MenuFlyout>
             </Button.Flyout>
+          </Button>
+          <Button x:Name="OpenLinkButton" Classes="ghost" Command="{Binding OpenLinkCommand}"
+                  ToolTip.Tip="Magnet, YouTube, MEGA or any video URL (Ctrl+U)">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <PathIcon Data="{StaticResource IconLink}" Width="16" Height="16" />
+              <TextBlock Text="Open link" />
+            </StackPanel>
+          </Button>
+          <Button x:Name="DownloaderButton" Classes="ghost" Command="{Binding OpenDownloaderCommand}"
+                  ToolTip.Tip="Download a YouTube (or other site) video in the quality you choose">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <PathIcon Data="{StaticResource IconDownload}" Width="16" Height="16" />
+              <TextBlock Text="Download" />
+            </StackPanel>
           </Button>
           <Button Classes="ghost" Command="{Binding PasteAndPlayCommand}">
             <StackPanel Orientation="Horizontal" Spacing="8">

@@ -14,7 +14,7 @@ public static class MpvOptionsBuilder
     {
         var o = new List<KeyValuePair<string, string>>();
         o.AddRange(Core(paths, windowId));
-        o.AddRange(Ytdl(ytdlp ?? new YtDlp(AppContext.BaseDirectory)));
+        o.AddRange(Ytdl(ytdlp ?? new YtDlp(AppContext.BaseDirectory), s.StreamMaxHeight));
         o.AddRange(Video(s));
         o.AddRange(Scaling(InitialProfile(s.RenderQuality)));
         o.AddRange(Hdr(s, InitialProfile(s.RenderQuality)));
@@ -30,7 +30,7 @@ public static class MpvOptionsBuilder
     /// Nice-to-haves that older libmpv builds don't know (directory-filter-types is mpv 0.38+).
     /// A distro's libmpv may be older than the bundled one, and playback shouldn't fail over these.
     /// </summary>
-    public static readonly IReadOnlySet<string> OptionalOptions = new HashSet<string> { "directory-filter-types" };
+    public static readonly IReadOnlySet<string> OptionalOptions = new HashSet<string> { "directory-filter-types", "display-fps-override" };
 
     private static KeyValuePair<string, string> P(string k, string v) => new(k, v);
     private static string F(double d) => d.ToString("0.###", CultureInfo.InvariantCulture);
@@ -77,9 +77,10 @@ public static class MpvOptionsBuilder
     }
 
     /// <summary>YouTube and other sites: mpv's ytdl hook hands page URLs to yt-dlp.</summary>
-    public static IEnumerable<KeyValuePair<string, string>> Ytdl(YtDlp ytdlp)
+    public static IEnumerable<KeyValuePair<string, string>> Ytdl(YtDlp ytdlp, int streamMaxHeight = 0)
     {
         yield return P("ytdl", "yes");
+        yield return P("ytdl-format", YtDlp.Format(streamMaxHeight));
         if (ytdlp.BundledPath is { } exe) yield return P("script-opts", $"ytdl_hook-ytdl_path={Quote(exe)}");
         // YouTube needs a JavaScript runtime; yt-dlp only enables Deno on its own.
         if (ytdlp.BundledJsRuntime is { } js) yield return P("ytdl-raw-options", $"js-runtimes={Quote("quickjs:" + js)}");
@@ -96,12 +97,32 @@ public static class MpvOptionsBuilder
         yield return P("vo", "gpu-next");
         // D3D11 on Windows gives zero-copy d3d11va decode for 4K HEVC/AV1.
         yield return P("gpu-api", OperatingSystem.IsWindows() ? "d3d11" : "auto");
-        yield return P("hwdec", s.HardwareDecoding ? "auto-safe" : "no");
-        // Only HEVC is hardware-decoded; every other codec decodes in software.
-        yield return P("hwdec-codecs", "hevc");
+        // Off until a file loads: PlayerService decides per file (see UseHardwareDecoding).
+        yield return P("hwdec", "no");
+        yield return P("display-fps-override", F(s.DisplayFps));
         yield return P("interpolation", "no");
         yield return P("deband", "no");
     }
+
+    /// <summary>
+    /// Hardware decoding is used for HEVC at any size, and for any codec from 1080p up
+    /// (1920-wide scope films such as 1920×800 included); smaller videos decode in software.
+    /// </summary>
+    public static bool UseHardwareDecoding(string? codec, int? width, int? height) =>
+        codec == "hevc" || width >= 1900 || height >= 1060;
+
+    /// <summary>
+    /// The channel layout to output. Downmixes apply only to the sources they're meant for:
+    /// stereo to surround, mono to stereo. Passthrough leaves the bitstream alone.
+    /// </summary>
+    public static string AudioChannels(PlayerSettings s, int? sourceChannels) =>
+        s.AudioPassthrough ? "auto"
+        : s.DownmixToStereo && sourceChannels is null or > 2 ? "stereo"
+        : s.DownmixToMono && sourceChannels == 2 ? "mono"
+        : "auto";
+
+    /// <summary>ffmpeg's dynamic normalizer, with a short window so it reacts within a couple of seconds.</summary>
+    public const string NormalizeFilter = "lavfi=[dynaudnorm=f=250:g=15:p=0.9]";
 
     /// <summary>Videos at least this tall count as 4K for Auto rendering (covers 3840×1600 scope too).</summary>
     public const int UhdHeight = 1500;
@@ -177,18 +198,19 @@ public static class MpvOptionsBuilder
     /// <summary>BWDIF, motion adaptive, one frame per field (50i → 50p).</summary>
     public const string DeinterlaceFilter = $"{DeinterlaceLabel}:bwdif=mode=send_field";
 
-    public static IEnumerable<KeyValuePair<string, string>> Audio(PlayerSettings s)
+    public static IEnumerable<KeyValuePair<string, string>> Audio(PlayerSettings s, int? sourceChannels = null)
     {
         // Downmix only when the user asks; otherwise output the source channel layout.
-        yield return P("audio-channels", s.DownmixToStereo && !s.AudioPassthrough ? "stereo" : "auto");
+        yield return P("audio-channels", AudioChannels(s, sourceChannels));
         // Passthrough hands Dolby/DTS bitstreams to the receiver untouched. On Windows that
         // needs WASAPI exclusive mode, which also bypasses the system mixer.
         yield return P("audio-spdif", s.AudioPassthrough ? "ac3,eac3,dts,dts-hd,truehd" : "");
         if (OperatingSystem.IsWindows()) yield return P("audio-exclusive", s.AudioPassthrough ? "yes" : "no");
-        // Never normalise: no downmix normalisation, no ReplayGain, no loudness filters.
+        // Only the user's normalization switch changes loudness: no downmix normalisation, no
+        // ReplayGain. A bitstream sent to a receiver can't be filtered.
         yield return P("audio-normalize-downmix", "no");
         yield return P("replaygain", "no");
-        yield return P("af", "");
+        yield return P("af", s.NormalizeAudio && !s.AudioPassthrough ? NormalizeFilter : "");
         yield return P("volume-max", "150");
         yield return P("volume", F(VolumeCurve.ToMpv(s.Volume)));
         yield return P("mute", s.Muted ? "yes" : "no");
