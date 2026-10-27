@@ -36,13 +36,21 @@ jobs:
         with: { dotnet-version: "8.0.x" }
       - uses: dtolnay/rust-toolchain@stable
       # Only what the tests use: ffmpeg makes the fixtures, libmpv2 plays them. Skipping
-      # recommends and the man-db index rebuild keeps the install quick. The mirror has
-      # stalled mid-download before: a 30 s stall aborts that download and retries it.
-      - run: |
+      # recommends and the man-db index rebuild keeps the install quick. GitHub's Ubuntu
+      # mirror has stalled mid-download for 15+ minutes (trickling, so apt's own timeouts
+      # don't fire): give it 4 minutes, then switch to Ubuntu's main archive and try again.
+      - name: Install ffmpeg and libmpv
+        run: |
           sudo rm -f /var/lib/man-db/auto-update
-          APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30"
-          sudo apt-get $APT update
-          sudo apt-get $APT install -y --no-install-recommends ffmpeg libmpv2
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
+          install() { sudo timeout 240 apt-get $APT install -y --no-install-recommends ffmpeg libmpv2; }
+          sudo timeout 120 apt-get $APT update
+          if ! install; then
+            echo "::warning::GitHub's Ubuntu mirror stalled; retrying from archive.ubuntu.com"
+            echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+            sudo apt-get $APT update
+            install
+          fi
       - run: ./build/test.sh
 
   # Tests only: the Windows zip itself is built by the Release workflow.
