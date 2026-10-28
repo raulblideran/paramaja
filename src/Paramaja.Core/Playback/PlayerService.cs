@@ -443,7 +443,7 @@ public sealed class PlayerService : IPlayer
         string V(string property) => _mpv.GetString(property) is { Length: > 0 } v ? v : "n/a";
         return
         [
-            new("Engine", $"mpv {V("mpv-version")}, {V("ffmpeg-version")}"),
+            new("Versions", $"{V("mpv-version")}, FFmpeg {V("ffmpeg-version")}"),
             new("Video output", $"{V("current-vo")}, {V("current-gpu-context")}, gpu-api {V("gpu-api")}, d3d11-adapter {V("d3d11-adapter")}"),
             new("Video codec", $"{V("video-codec")}, profile {V("current-tracks/video/codec-profile")}"),
             new("Pixel format", $"{V("video-params/pixelformat")} (hardware {V("video-params/hw-pixelformat")})"),

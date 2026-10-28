@@ -69,7 +69,7 @@ public static class PlaybackLog
             sb.AppendLine();
             sb.AppendLine("Nothing is playing: play the video, then create the log while it plays (or right after).");
         }
-        sb.AppendLine($"Engine: {input.Engine}");
+        sb.AppendLine($"Played by: {input.Engine}");
         foreach (var (key, value) in input.Details) sb.AppendLine($"{key}: {value}");
         var adapters = input.Adapters ?? GpuAdapters.List();
         if (OperatingSystem.IsWindows() || adapters.Count > 0)

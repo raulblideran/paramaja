@@ -72,7 +72,7 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public void ApplyTiming() => Log($"ApplyTiming {Settings.SyncToDisplay} {Settings.DisplayFps}");
     public List<string> Messages { get; } = [];
     public IReadOnlyList<string> RecentMessages() => Messages;
-    public IReadOnlyList<KeyValuePair<string, string>> Details() => [new("Engine", "fake")];
+    public IReadOnlyList<KeyValuePair<string, string>> Details() => [new("Versions", "fake")];
     public void ToggleStats() => Log("ToggleStats");
     public string Screenshot(bool includeSubtitles) { Log($"Screenshot {includeSubtitles}"); return "/tmp/shot.png"; }
     public void SetDownmix(bool stereo) => Log($"SetDownmix {stereo}");

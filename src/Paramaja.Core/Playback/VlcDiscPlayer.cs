@@ -863,7 +863,7 @@ public sealed partial class VlcDiscPlayer : IPlayer
         var stats = Statistics();
         return
         [
-            new("Engine", $"libVLC {_vlc.Version}"),
+            new("Versions", $"libVLC {_vlc.Version}"),
             new("Deinterlacer", HasBwdif ? "Paramaja's BWDIF" : "libVLC's yadif2x (this libVLC has no BWDIF)"),
             new("Interlaced", _interlaced ? $"yes (flagged), deinterlacing {(_deinterlaceOff ? "switched off" : "on")}" : "no"),
             new("Hardware decoding", _mp.EnableHardwareDecoding ? "on" : "off"),

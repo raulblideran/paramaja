@@ -1126,7 +1126,7 @@ public class EngineStateTests
         Assert.Matches(@"paramaja-\d{8}-\d{6}\.log$", file);
         var log = File.ReadAllText(file);
         Assert.Contains("HEVC 3840x2160", log);
-        Assert.Contains("Engine: mpv", log);
+        Assert.Contains("Played by: mpv", log);
         Assert.Contains("frame timing: audio clock", log);
         Assert.Contains("143.9", log);                     // the refresh rate mpv measured
         Assert.Contains("Frames: dropped 8", log);         // 5 samples, 2 more each second
