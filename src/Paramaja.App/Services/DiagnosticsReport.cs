@@ -26,13 +26,16 @@ public static class DiagnosticsReport
         sb.AppendLine();
 
         sb.AppendLine($"Source: {source}");
-        sb.AppendLine($"Video: {state.VideoFormat ?? "?"} {state.VideoWidth}x{state.VideoHeight}, " +
-                      $"{(state.IsHdr ? $"HDR ({state.Transfer})" : "SDR")}, {state.ContainerFps:0.###} fps");
+        var codec = CodecLabels.Describe(state.VideoFormat);
+        sb.AppendLine($"Video: {(codec.Length > 0 ? codec : "?")} {state.VideoWidth}x{state.VideoHeight}, " +
+                      $"{(state.IsHdr ? $"HDR ({state.Transfer})" : "SDR")}, {state.ContainerFps:0.###} fps, " +
+                      (state.SourceInterlaced ? $"interlaced ({(state.InterlaceDetectedBy == PlayerState.ByPicture ? "seen in the picture" : "flagged")})" : "progressive"));
         sb.AppendLine($"Decoding: {(state.IsHardwareDecoding ? $"hardware ({state.HwdecCurrent})" : "software (CPU)")}" +
                       (!state.HardwareDecodingApplies ? ", hardware decoding doesn't apply to this video"
                           : state.HardwareDecodingOn ? "" : ", hardware decoding switched off for this video"));
         sb.AppendLine($"Rendering: {profile?.ToString() ?? "?"} (setting: {settings.RenderQuality}), output {state.OutputFps:0.##} fps, VO {state.CurrentVo}");
-        sb.AppendLine($"HDR: {settings.HdrMode}, curve {settings.ToneMapping}; deinterlace {state.DeinterlaceFilter ?? "off"}");
+        sb.AppendLine($"HDR: {settings.HdrMode}, curve {settings.ToneMapping}; deinterlace {state.DeinterlaceFilter ?? "off"}; " +
+                      $"frame timing {(settings.SyncToDisplay ? "display" : "audio clock")}");
         sb.AppendLine($"Audio: {state.SourceChannels}ch → {state.OutputChannels}ch, passthrough {(settings.AudioPassthrough ? "on" : "off")}");
         sb.AppendLine();
 

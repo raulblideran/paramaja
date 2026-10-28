@@ -17,60 +17,16 @@
             <ComboBoxItem Content="Always pass HDR through to the display" />
           </ComboBox>
           <TextBlock Text="{Binding HdrStatusText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
-          <Expander x:Name="TonemapAdvanced" Header="Advanced: tonemapping" IsVisible="{Binding HdrTonemap}"
-                    HorizontalAlignment="Stretch">
-            <StackPanel Spacing="8">
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Text="Tonemapping curve" VerticalAlignment="Center" />
-                <ComboBox Grid.Column="1" Width="160" ItemsSource="{Binding ToneMappingCurves}" SelectedItem="{Binding ToneMapping}" />
-              </Grid>
-              <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                         Text="mobius: default, keeps colours exact and softens only the highlights · spline: balanced · bt.2446a: brighter, closer to PotPlayer · bt.2390: the ITU reference curve · hable: filmic" />
-              <ToggleSwitch IsChecked="{Binding HdrDynamicPeak}"
-                            OnContent="Scene-adaptive brightness (measures each frame)" OffContent="Use the disc's static metadata" />
-              <StackPanel>
-                <TextBlock Text="{Binding HdrContrastRecovery, StringFormat='Highlight detail recovery: {0:0.00}'}" />
-                <Slider Minimum="0" Maximum="1" Value="{Binding HdrContrastRecovery}" />
-              </StackPanel>
-            </StackPanel>
-          </Expander>
 
           <TextBlock Classes="section" Text="Deinterlacing" />
-          <ComboBox SelectedIndex="{Binding DeinterlaceIndex}" Width="320">
-            <ComboBoxItem Content="Auto — only interlaced content" />
-            <ComboBoxItem Content="Always on" />
-            <ComboBoxItem Content="Off" />
-          </ComboBox>
           <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                     Text="Uses BWDIF, a motion-adaptive deinterlacer that outputs one frame per field (50i becomes 50p)." />
+                     Text="Automatic, for interlaced videos only: those flagged as interlaced, and videos the CPU decodes whose picture shows it (tape captures without flags). They're deinterlaced with BWDIF, a motion-adaptive deinterlacer that makes one frame of each field (50i becomes 50p). The video menu has its switch while one plays, for that video." />
 
           <TextBlock Classes="section" Text="Decoding" />
           <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
                      Text="Hardware acceleration is decided for each video: it's on for HEVC (H.265) and AV1 at any size and for every codec from 1080p up, where your graphics card can decode them. Its switch then appears in the video menu, for that video. Smaller videos decode in software and have no switch." />
-          <Expander x:Name="RenderingAdvanced" Header="Advanced: rendering quality" HorizontalAlignment="Stretch">
-            <StackPanel Spacing="8">
-              <ComboBox SelectedIndex="{Binding RenderQualityIndex}" Width="420" HorizontalAlignment="Left">
-                <ComboBoxItem Content="Auto — High below 4K, Balanced for 4K" />
-                <ComboBoxItem Content="High — best scaling, needs a strong GPU for 4K" />
-                <ComboBoxItem Content="Balanced — nearly as sharp, far lighter (default)" />
-                <ComboBoxItem Content="Fast — lightest, for laptops and older GPUs" />
-              </ComboBox>
-              <TextBlock Text="{Binding RenderProfileText}" Classes="muted" FontSize="12" />
-              <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                         Text="Scaling a 4K picture costs about five times as much as 1080p. If 4K stutters while 1080p is fine, the GPU is running out of time: Balanced or Fast fixes it. Auto also switches to Fast by itself if frames keep dropping." />
-              <TextBlock Classes="section" Text="Playback timing" />
-              <ComboBox SelectedIndex="{Binding DisplayFpsIndex}" Width="420" HorizontalAlignment="Left">
-                <ComboBoxItem Content="60 Hz (default)" />
-                <ComboBoxItem Content="Auto — the rate the monitor reports" />
-                <ComboBoxItem Content="50 Hz" />
-                <ComboBoxItem Content="75 Hz" />
-                <ComboBoxItem Content="120 Hz" />
-                <ComboBoxItem Content="144 Hz" />
-              </ComboBox>
-              <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                         Text="The refresh rate playback is timed for. If video stutters on one monitor but not another, try matching this to that monitor's refresh rate, or Auto." />
-            </StackPanel>
-          </Expander>
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="Rendering quality, frame timing and tonemapping are in the Developer tab." />
         </StackPanel>
       </ScrollViewer>
     </TabItem>
@@ -79,14 +35,12 @@
       <StackPanel Margin="16,0" Spacing="8">
         <TextBlock Classes="section" Text="Surround" />
         <ToggleSwitch IsChecked="{Binding DownmixToStereo}" OnContent="Downmix 5.1 / 7.1 to stereo" OffContent="Output original channels (default)" />
-        <TextBlock Classes="section" Text="Stereo" />
-        <ToggleSwitch IsChecked="{Binding DownmixToMono}" OnContent="Downmix stereo to mono" OffContent="Output original channels (default)" />
         <TextBlock Classes="section" Text="Volume" />
         <ToggleSwitch IsChecked="{Binding NormalizeAudio}" OnContent="Normalize volume (evens out loud and quiet parts)" OffContent="Original dynamics (default)" />
         <TextBlock Classes="section" Text="Receiver" />
         <ToggleSwitch IsChecked="{Binding AudioPassthrough}" OnContent="Passthrough Dolby / DTS to an AV receiver" OffContent="Decode audio in the player (default)" />
         <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                   Text="All off by default: the audio plays as-is. Each downmix applies only to the sources it's for (stereo to 5.1 / 7.1, mono to stereo). No ReplayGain or downmix normalisation is ever applied." />
+                   Text="All off by default: the audio plays as-is. The downmix applies only to 5.1 / 7.1 sources. Where a video has several audio tracks, a stereo one plays by default; for a stereo source, the audio menu can play just its left or right channel. No ReplayGain or downmix normalisation is ever applied." />
         <TextBlock Classes="section" Text="Preferred audio languages" />
         <TextBox Text="{Binding PreferredAudioLanguages}" Watermark="e.g. jpn,eng" Width="320" HorizontalAlignment="Left" />
       </StackPanel>
@@ -147,6 +101,78 @@
       </StackPanel>
     </TabItem>
 
+    <TabItem x:Name="DeveloperTab" Header="Developer">
+      <ScrollViewer>
+        <StackPanel Margin="16,0" Spacing="8">
+          <TextBlock Classes="section" Text="Troubleshooting" />
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="Play the video that lags (or the clip to benchmark), then create a log: it has every second's playback statistics since the video started (frames dropped and late, GPU time per frame, CPU use, refresh rates), the machine and how the video is played. Send it to whoever is helping." />
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Button x:Name="CreateLogButton" Content="Create log" Command="{Binding CreateLogCommand}" Classes="accent" />
+            <Button Content="Open logs folder" Command="{Binding OpenLogsFolderCommand}" />
+          </StackPanel>
+          <TextBlock Text="{Binding LogStatus}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Button Content="Statistics overlay (I)" Command="{Binding ToggleStatsCommand}" />
+            <Button Content="Copy diagnostics (Ctrl+I)" Command="{Binding CopyDiagnosticsCommand}"
+                    ToolTip.Tip="While the problem video is playing: copies the machine, the video and why it's struggling" />
+          </StackPanel>
+
+          <TextBlock Classes="section" Text="Rendering quality" />
+          <ComboBox x:Name="RenderQuality" SelectedIndex="{Binding RenderQualityIndex}" Width="420" HorizontalAlignment="Left">
+            <ComboBoxItem Content="Auto — High below 4K, Balanced for 4K" />
+            <ComboBoxItem Content="High — best scaling, needs a strong GPU for 4K" />
+            <ComboBoxItem Content="Balanced — nearly as sharp, far lighter (default)" />
+            <ComboBoxItem Content="Fast — lightest, for laptops and older GPUs" />
+          </ComboBox>
+          <TextBlock Text="{Binding RenderProfileText}" Classes="muted" FontSize="12" />
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="Scaling a 4K picture costs about five times as much as 1080p. If 4K stutters while 1080p is fine, the GPU is running out of time: Balanced or Fast fixes it. Auto also switches to Fast by itself if frames keep dropping." />
+
+          <TextBlock Classes="section" Text="Frame timing" />
+          <ToggleSwitch x:Name="SyncToDisplay" IsChecked="{Binding SyncToDisplay}"
+                        OnContent="Sync to the display's refresh (display-resample)" OffContent="Audio clock (default)" />
+          <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding SyncToDisplay}">
+            <TextBlock Text="Refresh rate" VerticalAlignment="Center" />
+            <ComboBox SelectedIndex="{Binding DisplayFpsIndex}" Width="300">
+              <ComboBoxItem Content="The monitor's own (default)" />
+              <ComboBoxItem Content="60 Hz" />
+              <ComboBoxItem Content="50 Hz" />
+              <ComboBoxItem Content="75 Hz" />
+              <ComboBoxItem Content="120 Hz" />
+              <ComboBoxItem Content="144 Hz" />
+            </ComboBox>
+          </StackPanel>
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="Frames are timed by the audio clock, as mpv does by default, which no monitor can upset. Syncing to the display can be a touch smoother where the monitor's rate suits the video, but needs that rate right: with a wrong one it stutters." />
+
+          <StackPanel Spacing="8" IsVisible="{Binding IsWindows}">
+            <TextBlock Classes="section" Text="Graphics card" />
+            <ToggleSwitch IsChecked="{Binding PreferHighPerformanceGpu}"
+                          OnContent="Use the high-performance GPU on laptops with two (default)" OffContent="Use the GPU Windows chooses" />
+            <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                       Text="Laptops with built-in and gaming graphics give apps the power-saving one by default, which may be too slow for 1080p and 4K at a high refresh rate. Applies from the next start." />
+          </StackPanel>
+
+          <TextBlock Classes="section" Text="Tonemapping (HDR to SDR)" />
+          <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="10">
+            <TextBlock Text="Tonemapping curve" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" Width="160" ItemsSource="{Binding ToneMappingCurves}" SelectedItem="{Binding ToneMapping}" />
+          </Grid>
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="mobius: default, keeps colours exact and softens only the highlights · spline: balanced · bt.2446a: brighter, closer to PotPlayer · bt.2390: the ITU reference curve · hable: filmic" />
+          <ToggleSwitch IsChecked="{Binding HdrDynamicPeak}"
+                        OnContent="Scene-adaptive brightness (measures each frame)" OffContent="Use the disc's static metadata" />
+          <StackPanel>
+            <TextBlock Text="{Binding HdrContrastRecovery, StringFormat='Highlight detail recovery: {0:0.00}'}" />
+            <Slider Minimum="0" Maximum="1" Value="{Binding HdrContrastRecovery}" Width="320" HorizontalAlignment="Left" />
+          </StackPanel>
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="These apply while HDR video is tonemapped to SDR (see HDR in the Video tab)." />
+        </StackPanel>
+      </ScrollViewer>
+    </TabItem>
+
     <TabItem Header="About">
       <StackPanel Margin="16,0" Spacing="8">
         <StackPanel Orientation="Horizontal" Spacing="14" Margin="0,8,0,0">
@@ -158,8 +184,6 @@
         </StackPanel>
         <StackPanel Orientation="Horizontal" Spacing="10">
           <Button Content="Copy version" Click="OnCopyVersion" />
-          <Button Content="Copy diagnostics (Ctrl+I)" Command="{Binding CopyDiagnosticsCommand}"
-                  ToolTip.Tip="While the problem video is playing: copies the machine, the video and why it's struggling" />
         </StackPanel>
         <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
                    Text="When reporting a problem, include the version above: the part in brackets is the exact build." />

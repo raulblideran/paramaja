@@ -14,9 +14,14 @@ public partial class App : Application
 {
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
-    /// <summary>Set PARAMAJA_DEBUG=1 to get a verbose mpv log in the app's logs folder.</summary>
-    private static IEnumerable<KeyValuePair<string, string>> DebugOptions(PortablePaths paths)
+    /// <summary>
+    /// The high-performance GPU on laptops with two (Windows), and with PARAMAJA_DEBUG=1 a
+    /// verbose mpv log in the app's logs folder.
+    /// </summary>
+    private static IEnumerable<KeyValuePair<string, string>> ExtraOptions(PlayerSettings settings, PortablePaths paths)
     {
+        if (OperatingSystem.IsWindows() && settings.PreferHighPerformanceGpu && GpuAdapters.PreferredD3D11Adapter() is { } adapter)
+            yield return new("d3d11-adapter", adapter);
         if (Environment.GetEnvironmentVariable("PARAMAJA_DEBUG") != "1") yield break;
         Directory.CreateDirectory(paths.Logs);
         yield return new("log-file", Path.Combine(paths.Logs, "mpv.log"));
@@ -31,7 +36,7 @@ public partial class App : Application
             var store = new SettingsStore(paths.SettingsFile);
             var settings = store.Load();
             var vm = new MainViewModel(settings, store, paths,
-                wid => new PlayerService(settings, paths, wid, DebugOptions(paths)),
+                wid => new PlayerService(settings, paths, wid, ExtraOptions(settings, paths)),
                 new TorrentService(), new AvaloniaDispatcher(),
                 discPlayerFactory: wid => new VlcDiscPlayer(settings, paths, wid));
 

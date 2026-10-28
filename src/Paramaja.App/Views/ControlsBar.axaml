@@ -54,6 +54,10 @@
           <Border Classes="badge hdr" IsVisible="{Binding HdrBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
             <TextBlock Text="{Binding HdrBadge}" />
           </Border>
+          <Border x:Name="CodecBadge" Classes="badge" ToolTip.Tip="{Binding CodecTip}"
+                  IsVisible="{Binding CodecBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding CodecBadge}" />
+          </Border>
           <Border Classes="badge" IsVisible="{Binding ResolutionBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
             <TextBlock Text="{Binding ResolutionBadge}" />
           </Border>
@@ -64,7 +68,7 @@
             <TextBlock Text="{Binding AudioBadge}" />
           </Border>
           <Border Classes="badge" IsVisible="{Binding DeinterlaceBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                  ToolTip.Tip="Deinterlacing">
+                  ToolTip.Tip="{Binding DeinterlaceTip}">
             <TextBlock Text="{Binding DeinterlaceBadge}" />
           </Border>
         </StackPanel>
@@ -160,9 +164,12 @@
                                   OffContent="Original channels (default)" />
                   </StackPanel>
                   <StackPanel x:Name="StereoOptions" Spacing="4" IsVisible="{Binding IsStereoAudio}">
-                    <TextBlock Classes="section" Text="Stereo" />
-                    <ToggleSwitch IsChecked="{Binding DownmixToMono}" OnContent="Downmix to mono"
-                                  OffContent="Original channels (default)" />
+                    <TextBlock Classes="section" Text="Stereo channels (this video)" />
+                    <ComboBox x:Name="StereoChannel" SelectedIndex="{Binding StereoChannelIndex}" HorizontalAlignment="Stretch">
+                      <ComboBoxItem Content="Both channels (default)" />
+                      <ComboBoxItem Content="Left channel only" />
+                      <ComboBoxItem Content="Right channel only" />
+                    </ComboBox>
                   </StackPanel>
                   <TextBlock Classes="section" Text="Volume" />
                   <ToggleSwitch IsChecked="{Binding NormalizeAudio}" OnContent="Normalize volume (evens out loud and quiet parts)"
@@ -170,7 +177,7 @@
                   <ToggleSwitch IsChecked="{Binding AudioPassthrough}" OnContent="Passthrough to AV receiver"
                                 OffContent="Decode here (default)" />
                   <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                             Text="The original audio stream plays as-is unless you choose a downmix or normalization. Passthrough sends Dolby/DTS untouched to a receiver (and can't be normalized)." />
+                             Text="The original audio stream plays as-is unless you choose a downmix, one channel or normalization. A stereo track is picked by default where there is one. Passthrough sends Dolby/DTS untouched to a receiver (and can't be normalized)." />
                 </StackPanel>
               </Flyout>
             </Button.Flyout>
@@ -189,43 +196,20 @@
                     <ComboBoxItem Content="Always pass HDR through" />
                   </ComboBox>
                   <TextBlock Text="{Binding HdrStatusText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                  <Expander Header="Advanced: tonemapping" IsVisible="{Binding HdrTonemap}" HorizontalAlignment="Stretch">
-                    <StackPanel Spacing="6">
-                      <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="Tonemapping curve" VerticalAlignment="Center" />
-                        <ComboBox Grid.Column="1" Width="140" ItemsSource="{Binding ToneMappingCurves}" SelectedItem="{Binding ToneMapping}" />
-                      </Grid>
-                      <ToggleSwitch IsChecked="{Binding HdrDynamicPeak}"
-                                    OnContent="Scene-adaptive brightness" OffContent="Static brightness (metadata)" />
-                    </StackPanel>
-                  </Expander>
                   </StackPanel>
-                  <TextBlock Classes="section" Text="Deinterlacing" />
-                  <ComboBox SelectedIndex="{Binding DeinterlaceIndex}" HorizontalAlignment="Stretch">
-                    <ComboBoxItem Content="Auto — only interlaced content" />
-                    <ComboBoxItem Content="Always on" />
-                    <ComboBoxItem Content="Off" />
-                  </ComboBox>
+                  <StackPanel x:Name="DeinterlaceOptions" Spacing="6" IsVisible="{Binding IsInterlacedVideo}">
+                    <TextBlock Classes="section" Text="Deinterlacing" />
+                    <ToggleSwitch IsChecked="{Binding Deinterlacing}" OnContent="BWDIF deinterlacing (default)"
+                                  OffContent="Off (this video)" />
+                    <TextBlock Text="{Binding DeinterlaceTip}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                  </StackPanel>
                   <StackPanel x:Name="HardwareOptions" Spacing="6" IsVisible="{Binding HardwareDecodingApplies}">
                     <TextBlock Classes="section" Text="Decoding" />
                     <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration (default)"
                                   OffContent="Software decoding (this video)" />
                   </StackPanel>
-                  <Expander Header="Advanced: rendering quality" HorizontalAlignment="Stretch">
-                    <StackPanel Spacing="6">
-                      <ComboBox SelectedIndex="{Binding RenderQualityIndex}" HorizontalAlignment="Stretch">
-                        <ComboBoxItem Content="Auto — High below 4K, Balanced for 4K" />
-                        <ComboBoxItem Content="High — best scaling, needs a strong GPU for 4K" />
-                        <ComboBoxItem Content="Balanced — nearly as sharp, far lighter (default)" />
-                        <ComboBoxItem Content="Fast — lightest, for laptops and older GPUs" />
-                      </ComboBox>
-                      <TextBlock Text="{Binding RenderProfileText}" Classes="muted" FontSize="12" />
-                    </StackPanel>
-                  </Expander>
-                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                    <Button Content="Statistics (I)" Command="{Binding ToggleStatsCommand}" />
-                    <Button Content="Copy diagnostics" Command="{Binding CopyDiagnosticsCommand}" />
-                  </StackPanel>
+                  <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                             Text="Rendering, tonemapping and the troubleshooting tools are in Settings → Developer." />
                 </StackPanel>
               </Flyout>
             </Button.Flyout>

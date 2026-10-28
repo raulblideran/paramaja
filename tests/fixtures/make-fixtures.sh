@@ -23,6 +23,20 @@ ff() { ffmpeg -hide_banner -loglevel error -y "$@"; }
   -vf "tinterlace=interleave_top,fieldorder=tff" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -flags +ilme+ildct \
   -x264-params tff=1 "$OUT/interlaced_1080i.ts"
 
+# Interlaced pictures in frames without interlace flags (as tape captures are often saved), and
+# plain progressive video of the same size: the picture check (idet) must tell them apart.
+[ -f "$OUT/unflagged_576i.mp4" ] || ff -f lavfi -i testsrc=size=720x576:rate=50:duration=6 \
+  -vf "tinterlace=mode=interleave_top,setfield=prog" -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$OUT/unflagged_576i.mp4"
+[ -f "$OUT/progressive_576.mp4" ] || ff -f lavfi -i testsrc=size=720x576:rate=25:duration=6 \
+  -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$OUT/progressive_576.mp4"
+
+# Two audio tracks, 5.1 first (and the default), stereo second: the stereo one plays by default
+[ -f "$OUT/two_audio.mkv" ] || ff -f lavfi -i testsrc=size=320x240:rate=25:duration=3 \
+  -f lavfi -i "sine=frequency=300:duration=3" -f lavfi -i "sine=frequency=700:duration=3" \
+  -filter_complex "[1:a]aformat=channel_layouts=5.1[s];[2:a]aformat=channel_layouts=stereo[t]" \
+  -map 0:v -map "[s]" -map "[t]" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a ac3 \
+  -disposition:a:0 default -disposition:a:1 0 "$OUT/two_audio.mkv"
+
 # 5.1 and 7.1 audio
 [ -f "$OUT/audio_51.mkv" ] || ff -f lavfi -i testsrc=size=320x240:rate=25:duration=2 \
   -f lavfi -i "sine=frequency=300:duration=2" -filter_complex "[1:a]aformat=channel_layouts=5.1[a]" \

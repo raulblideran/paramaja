@@ -71,21 +71,6 @@
         </StackPanel>
         <TextBlock Text="{Binding StatusMessage}" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
                    Foreground="{StaticResource ParamajaAccentBright}" />
-
-        <StackPanel IsVisible="{Binding RecentItems.Count}" Margin="0,16,0,0" Spacing="2">
-          <TextBlock Classes="section" Text="Recent" HorizontalAlignment="Center" />
-          <ItemsControl ItemsSource="{Binding RecentItems}" MaxHeight="220">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="x:String">
-                <Button Classes="icon" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" CornerRadius="6"
-                        Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenRecentCommand}"
-                        CommandParameter="{Binding}">
-                  <TextBlock Text="{Binding}" TextTrimming="PrefixCharacterEllipsis" FontSize="12" MaxWidth="540" />
-                </Button>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </StackPanel>
       </StackPanel>
     </Grid>
   </Panel>

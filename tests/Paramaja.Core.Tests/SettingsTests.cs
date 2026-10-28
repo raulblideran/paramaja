@@ -24,7 +24,9 @@ public class SettingsTests
         Assert.False(s.DownmixToStereo);
         Assert.Equal(HdrMode.Auto, s.HdrMode);
         Assert.Equal(RenderQuality.Balanced, s.RenderQuality);
-        Assert.Equal(60, s.DisplayFps);
+        Assert.False(s.SyncToDisplay);
+        Assert.Equal(0, s.DisplayFps);
+        Assert.True(s.PreferHighPerformanceGpu);
         Assert.Equal(100, s.Volume);
     }
 
@@ -37,20 +39,22 @@ public class SettingsTests
             DownmixToStereo = true,
             HdrMode = HdrMode.Passthrough,
             ToneMapping = "bt.2446a",
-            Deinterlace = DeinterlaceMode.Off,
+            SyncToDisplay = true,
+            DisplayFps = 144,
+            PreferHighPerformanceGpu = false,
             Volume = 77,
             ClearTorrentCacheOnExit = false,
         };
-        s.AddRecent("a.mkv");
         store.Save(s);
         var loaded = store.Load();
         Assert.True(loaded.DownmixToStereo);
         Assert.Equal(HdrMode.Passthrough, loaded.HdrMode);
         Assert.Equal("bt.2446a", loaded.ToneMapping);
-        Assert.Equal(DeinterlaceMode.Off, loaded.Deinterlace);
+        Assert.True(loaded.SyncToDisplay);
+        Assert.Equal(144, loaded.DisplayFps);
+        Assert.False(loaded.PreferHighPerformanceGpu);
         Assert.Equal(77, loaded.Volume);
         Assert.False(loaded.ClearTorrentCacheOnExit);
-        Assert.Equal(["a.mkv"], loaded.RecentItems);
     }
 
     [Fact]
@@ -83,7 +87,36 @@ public class SettingsTests
         Assert.Equal("mobius", s.ToneMapping);
         Assert.Equal(1, s.SeekSeconds);
         Assert.Equal(4, s.SubtitleScale);
-        Assert.NotNull(s.RecentItems);
+    }
+
+    [Fact]
+    public void Settings_that_are_gone_are_dropped_with_the_watch_history()
+    {
+        // 1.7.0 kept a deinterlace mode, a mono downmix and the recently played list.
+        var store = new SettingsStore(Path.Combine(TestEnvironment.TempDir(), "settings.json"));
+        File.WriteAllText(store.FilePath, """
+            { "settingsVersion": 3, "deinterlace": "On", "downmixToMono": true, "volume": 60,
+              "recentItems": [ "/videos/secret.mkv", "magnet:?xt=urn:btih:abc" ] }
+            """);
+        var s = store.Load();
+        Assert.Equal(60, s.Volume);
+        store.Save(s);
+        var json = File.ReadAllText(store.FilePath);
+        foreach (var gone in new[] { "deinterlace", "downmixToMono", "recentItems", "secret.mkv", "magnet" })
+            Assert.DoesNotContain(gone, json);
+    }
+
+    [Theory]
+    [InlineData("{ \"settingsVersion\": 3, \"displayFps\": 60 }", 0)]   // 1.7.0's default: the monitor's own now
+    [InlineData("{ \"settingsVersion\": 3, \"displayFps\": 144 }", 144)] // picked by hand: kept
+    [InlineData("{ \"settingsVersion\": 4, \"displayFps\": 60 }", 60)]   // picked after the move: kept
+    public void Display_sync_is_opt_in_and_the_old_60_hz_default_moves_to_the_monitors_rate(string json, double fps)
+    {
+        var store = new SettingsStore(Path.Combine(TestEnvironment.TempDir(), "settings.json"));
+        File.WriteAllText(store.FilePath, json);
+        var s = store.Load();
+        Assert.False(s.SyncToDisplay);
+        Assert.Equal(fps, s.DisplayFps);
     }
 
     [Fact]
@@ -118,17 +151,6 @@ public class SettingsTests
         store.Save(new PlayerSettings());
         store.Save(new PlayerSettings { Volume = 50 });
         Assert.Equal(["settings.json"], Directory.GetFiles(dir).Select(Path.GetFileName));
-    }
-
-    [Fact]
-    public void Recent_items_are_deduplicated_most_recent_first_and_capped()
-    {
-        var s = new PlayerSettings();
-        for (var i = 0; i < 20; i++) s.AddRecent($"file{i}");
-        s.AddRecent("file10");
-        Assert.Equal(PlayerSettings.MaxRecentItems, s.RecentItems.Count);
-        Assert.Equal("file10", s.RecentItems[0]);
-        Assert.Single(s.RecentItems, "file10");
     }
 
     [Fact]

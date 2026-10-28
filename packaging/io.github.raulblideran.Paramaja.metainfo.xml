@@ -74,6 +74,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.8.0" date="2026-10-28">
+      <description>
+        <p>Deinterlacing only for interlaced videos, smoother playback on laptops, Developer tab and logs</p>
+      </description>
+    </release>
     <release version="1.7.0" date="2026-10-27">
       <description>
         <p>Simpler Open menus with Open Link and Download Video as their own buttons; downloads list their qualities as soon as a link is pasted, and can save the audio only. DVDs and Blu-rays deinterlace with BWDIF like files do. Audio CDs and CD rips with a cue sheet play, with tracks as chapters. Hardware acceleration is decided for each video, mobius is the default tonemapping curve, and DVDs no longer lag on Windows when they first load.</p>

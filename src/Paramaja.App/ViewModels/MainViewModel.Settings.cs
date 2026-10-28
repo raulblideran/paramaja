@@ -31,16 +31,25 @@ public sealed partial class MainViewModel
         }
     }
 
-    /// <summary>Stereo sources only; mono and surround sources are left as they are.</summary>
-    public bool DownmixToMono
+    /// <summary>
+    /// The audio menu's choice for a stereo source: 0 both channels (default), 1 the left one,
+    /// 2 the right one, on both speakers. For the playing video only.
+    /// </summary>
+    public int StereoChannelIndex
     {
-        get => Settings.DownmixToMono;
+        get => (int)(_player?.State.StereoChannel ?? StereoChannel.Both);
         set
         {
-            if (Settings.DownmixToMono == value) return;
-            Settings.DownmixToMono = value;
+            var channel = (StereoChannel)Math.Clamp(value, 0, 2);
+            if (_player is null || _player.State.StereoChannel == channel) return;
+            _player.SetStereoChannel(channel);
             OnPropertyChanged();
-            Changed(() => _player?.ApplyAudio(), value ? "Downmix to mono: on" : "Downmix to mono: off");
+            Osd(channel switch
+            {
+                StereoChannel.Left => "Left channel only (on both speakers)",
+                StereoChannel.Right => "Right channel only (on both speakers)",
+                _ => "Both channels",
+            });
         }
     }
 
@@ -72,8 +81,24 @@ public sealed partial class MainViewModel
         }
     }
 
-    /// <summary>Choices for playback timing: 60 Hz (default), the monitor's own rate (0), or a fixed rate.</summary>
-    public static readonly double[] DisplayRates = [60, 0, 50, 75, 120, 144];
+    /// <summary>
+    /// Times frames to the display's refresh instead of the audio clock (Developer tab). Off by
+    /// default: with a refresh rate mpv gets wrong it stutters.
+    /// </summary>
+    public bool SyncToDisplay
+    {
+        get => Settings.SyncToDisplay;
+        set
+        {
+            if (Settings.SyncToDisplay == value) return;
+            Settings.SyncToDisplay = value;
+            OnPropertyChanged();
+            Changed(() => _player?.ApplyTiming());
+        }
+    }
+
+    /// <summary>The refresh rate display sync times frames for: the monitor's own (0, default) or a fixed one.</summary>
+    public static readonly double[] DisplayRates = [0, 60, 50, 75, 120, 144];
 
     public int DisplayFpsIndex
     {
@@ -84,9 +109,25 @@ public sealed partial class MainViewModel
             if (Settings.DisplayFps == fps) return;
             Settings.DisplayFps = fps;
             OnPropertyChanged();
-            Changed(() => _player?.ApplyDisplayFps());
+            Changed(() => _player?.ApplyTiming());
         }
     }
+
+    /// <summary>Windows laptops with two GPUs: play on the high-performance one. From the next start.</summary>
+    public bool PreferHighPerformanceGpu
+    {
+        get => Settings.PreferHighPerformanceGpu;
+        set
+        {
+            if (Settings.PreferHighPerformanceGpu == value) return;
+            Settings.PreferHighPerformanceGpu = value;
+            OnPropertyChanged();
+            SaveSettings();
+            ShowStatus("The GPU choice applies the next time Paramaja starts.");
+        }
+    }
+
+    public static bool IsWindows => OperatingSystem.IsWindows();
 
     /// <summary>Dolby/DTS bitstreams to an AV receiver, untouched. Off by default.</summary>
     public bool AudioPassthrough
@@ -187,16 +228,19 @@ public sealed partial class MainViewModel
         }
     }
 
-    public DeinterlaceMode Deinterlace
+    /// <summary>
+    /// The video menu's switch, there only while <see cref="IsInterlacedVideo"/>. It's on for
+    /// every interlaced video; switching it off lasts for the playing video only.
+    /// </summary>
+    public bool Deinterlacing
     {
-        get => Settings.Deinterlace;
+        get => _player?.State.DeinterlacingOn != false;
         set
         {
-            if (Settings.Deinterlace == value) return;
-            Settings.Deinterlace = value;
+            if (_player is null || !IsInterlacedVideo || value == Deinterlacing) return;
+            _player.SetDeinterlacing(value);
             OnPropertyChanged();
-            OnPropertyChanged(nameof(DeinterlaceIndex));
-            Changed(() => _player?.SetDeinterlace(value));
+            Osd(value ? "Deinterlacing: BWDIF" : "Deinterlacing: off for this video");
         }
     }
 
@@ -213,13 +257,6 @@ public sealed partial class MainViewModel
             Changed(() => _player?.ApplyRenderQuality());
             if (_player is not null) RenderProfileText = DescribeProfile(_player.RenderProfile);
         }
-    }
-
-    /// <summary>ComboBox-friendly view of <see cref="Deinterlace"/> (Auto / On / Off).</summary>
-    public int DeinterlaceIndex
-    {
-        get => (int)Deinterlace;
-        set => Deinterlace = (DeinterlaceMode)Math.Clamp(value, 0, 2);
     }
 
     /// <summary>

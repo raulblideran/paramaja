@@ -182,7 +182,7 @@ public partial class MainWindow : Window
         var appActive = IsActive || _top.IsActive || _bottom.IsActive;
         var visible = vm.ControlsVisible && !vm.IsIdle && WindowState != WindowState.Minimized && IsVisible
                       && ActiveVideo.Bounds.Width > 100
-                      && (!OverlayPlacement.HideWhileInactive || appActive || vm.IsPointerOverControls);
+                      && (!OverlayPlacement.HideWhileInactive || appActive || vm.IsPointerOverControls || vm.IsMenuOpen);
 
         var topmost = OverlayPlacement.ShouldBeTopmost(fullscreen, appActive);
         if (_top.Topmost != topmost) _top.Topmost = topmost;
@@ -197,6 +197,12 @@ public partial class MainWindow : Window
             _top.Width = _bottom.Width = area.Width / RenderScaling;
             _top.Height = TopBar.BarHeight;
             _bottom.Height = ControlsBar.BarHeight;
+        }
+        if (!visible)
+        {
+            // An open menu would otherwise stay behind, alone, or follow its bar off screen.
+            _top.CloseMenus();
+            _bottom.CloseMenus();
         }
         if (!visible && !OverlayPlacement.ParkInsteadOfHiding)
         {

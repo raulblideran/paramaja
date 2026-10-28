@@ -3,6 +3,52 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.8.0 — 2026-10-28
+
+- **Deinterlacing only where the video is interlaced.** The deinterlace badge showed for
+  progressive videos too: discs reported it whatever they held, and it stayed up when a file
+  played after a disc. Now each video is judged on its own:
+  - Files: by their frames' interlace flags. Videos the CPU decodes are also checked by their
+    picture (FFmpeg's idet), so tape captures saved without flags (MJPEG or lossless AVIs,
+    some FLVs) get BWDIF too. Progressive video is left alone.
+  - Discs: by libVLC's own detection.
+
+  While an interlaced video plays, the video menu has an **on / off** switch for it (D flips it).
+  Progressive videos have no switch. The Auto / On / Off setting is gone.
+- **Smoother playback at 1080p and up on laptops.** This targets lag seen in High and Balanced
+  on a Windows laptop with two GPUs and a high-refresh monitor:
+  - Every profile now times frames by the audio clock, as Fast already did. The fixed 60 Hz
+    display timing could clash with a 120–165 Hz monitor. Syncing to the display is now an
+    option in Settings → Developer.
+  - On laptops with two GPUs, playback and hardware decoding run on the high-performance one,
+    instead of the power-saving one Windows hands out (Settings → Developer).
+  - The controls bar no longer redraws with every video frame.
+
+  If it still lags, play the video and use **Settings → Developer → Create log**, then send the
+  file from the logs folder.
+- **Stereo by default:** where a video or disc has several audio tracks (a concert disc's
+  stereo mix beside 5.1 and DTS), the stereo one plays, within your preferred language if you
+  set one
+- **Left or right channel:** for a stereo source, the audio menu can play just its left or right
+  channel on both speakers, for that video. The mono downmix is gone
+- **Codec badge** in the controls: H.264, HEVC, AV1, MPEG-2… (the decoder's full name on hover)
+- **Developer tab** in Settings: rendering quality, frame timing, tonemapping and the GPU choice
+  moved there from the video menu and Settings → Video, with the troubleshooting tools
+  (statistics overlay, Copy diagnostics, Create log)
+- **Create log:** saves to the logs folder everything recorded since the playing video started:
+  - every second's statistics: frames dropped and late, GPU time per frame, CPU use,
+    refresh rates
+  - the machine and its GPUs and displays
+  - how the video is played, and the player's latest messages
+
+  For benchmarking, or for whoever is helping
+- The play / pause button no longer shows "play" while a video plays (after a disc, or a missed
+  event)
+- Menus no longer jump to the top-left corner of the screen when the pointer rests on them:
+  the controls stay up while one of their menus is open
+- The **Recent** list is gone from the welcome screen, and the app no longer keeps a history of
+  what was played (the old list is dropped from settings.json)
+
 ## 1.7.0 — 2026-10-27
 
 - **Simpler menus.** The Open menu holds **Open file**, **Open folder** and **Open Disc**;

@@ -76,11 +76,13 @@ public class HeadlessUiTests
         var w = new SettingsWindow { DataContext = r.Vm };
         w.Show();
         var tabs = w.GetLogicalDescendants().OfType<TabItem>().Select(t => t.Header as string).ToList();
-        Assert.Equal(["Video", "Audio", "Subtitles", "Torrents", "Playback", "About", "Shortcuts"], tabs);
+        Assert.Equal(["Video", "Audio", "Subtitles", "Torrents", "Playback", "Developer", "About", "Shortcuts"], tabs);
 
         w.GetLogicalDescendants().OfType<TabControl>().Single().SelectedIndex = 1;
         Dispatch();
-        var toggle = w.GetVisualDescendants().OfType<ToggleSwitch>().First(t => (t.OnContent as string)?.Contains("Downmix") == true);
+        var switches = w.GetVisualDescendants().OfType<ToggleSwitch>().ToList();
+        Assert.DoesNotContain(switches, t => (t.OnContent as string)?.Contains("mono", StringComparison.OrdinalIgnoreCase) == true);
+        var toggle = switches.First(t => (t.OnContent as string)?.Contains("Downmix") == true);
         toggle.IsChecked = true;
         Assert.True(r.Settings.DownmixToStereo);
         Assert.Contains("SetDownmix True", r.Player.Calls);
@@ -102,21 +104,95 @@ public class HeadlessUiTests
     }
 
     [AvaloniaFact]
-    public void Tonemapping_and_rendering_are_advanced_and_tonemapping_hides_on_an_hdr_display()
+    public void Advanced_options_live_in_the_developer_tab_only()
     {
         using var r = new Rig();
         var w = new SettingsWindow { DataContext = r.Vm };
         w.Show();
         Dispatch();
-        var tonemap = w.FindControl<Expander>("TonemapAdvanced")!;
-        var rendering = w.FindControl<Expander>("RenderingAdvanced")!;
-        Assert.True(tonemap.IsVisible);
-        Assert.False(tonemap.IsExpanded);
-        Assert.False(rendering.IsExpanded);
-        r.Vm.DisplayIsHdr = true;
+        Assert.Empty(w.GetLogicalDescendants().OfType<Expander>()); // no "Advanced" sections left anywhere
+        var tabs = w.GetLogicalDescendants().OfType<TabControl>().Single();
+        tabs.SelectedItem = w.FindControl<TabItem>("DeveloperTab");
         Dispatch();
-        Assert.False(tonemap.IsVisible);
-        Assert.True(rendering.IsVisible);
+        Assert.Equal(2, w.FindControl<ComboBox>("RenderQuality")!.SelectedIndex); // Balanced
+        var sync = w.FindControl<ToggleSwitch>("SyncToDisplay")!;
+        Assert.False(sync.IsChecked);
+        sync.IsChecked = true;
+        Assert.True(r.Settings.SyncToDisplay);
+        Assert.Contains(w.GetVisualDescendants().OfType<ComboBox>(), c => ReferenceEquals(c.ItemsSource, r.Vm.ToneMappingCurves));
+        var texts = w.GetVisualDescendants().OfType<Button>().Select(b => b.Content as string).ToList();
+        Assert.Contains("Copy diagnostics (Ctrl+I)", texts);
+        Assert.Contains("Statistics overlay (I)", texts);
+
+        w.FindControl<Button>("CreateLogButton")!.Command!.Execute(null);
+        Assert.NotNull(r.Vm.LastLogFile);
+        Assert.True(File.Exists(r.Vm.LastLogFile));
+        Assert.StartsWith(r.Paths.Logs, r.Vm.LastLogFile);
+        w.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_menus_have_no_advanced_or_mono_options_and_show_deinterlacing_for_interlaced_video_only()
+    {
+        using var r = new Rig();
+        r.Vm.IsIdle = false;
+        var bar = new ControlsBar { DataContext = r.Vm, Width = 1280 };
+        bar.Show();
+        var video = bar.GetVisualDescendants().OfType<Button>().First(b => (ToolTip.GetTip(b) as string)?.StartsWith("Video") == true);
+        video.Flyout!.ShowAt(video);
+        Dispatch();
+        Assert.True(r.Vm.IsMenuOpen, "an open menu keeps the bars up");
+        var deinterlace = bar.FindControl<StackPanel>("DeinterlaceOptions")!;
+        Assert.False(deinterlace.IsVisible);
+        Assert.Empty(deinterlace.GetLogicalDescendants().OfType<ComboBox>()); // on / off only
+        r.Player.State.SourceInterlaced = true;
+        r.Player.State.DeinterlaceActive = true;
+        r.Player.State.DeinterlaceFilter = "BWDIF";
+        r.Player.RaiseState("deinterlace-active");
+        Dispatch();
+        Assert.True(deinterlace.IsVisible);
+        var toggle = deinterlace.GetLogicalDescendants().OfType<ToggleSwitch>().Single();
+        Assert.True(toggle.IsChecked);
+        toggle.IsChecked = false;
+        Assert.Contains("SetDeinterlacing False", r.Player.Calls);
+        Assert.Empty(((Control)video.Flyout.GetType().GetProperty("Content")!.GetValue(video.Flyout)!).GetLogicalDescendants().OfType<Expander>());
+        video.Flyout.Hide();
+        Dispatch();
+        Assert.False(r.Vm.IsMenuOpen);
+
+        var audio = bar.GetVisualDescendants().OfType<Button>().First(b => (ToolTip.GetTip(b) as string) == "Audio");
+        audio.Flyout!.ShowAt(audio);
+        Dispatch();
+        r.Player.State.SourceChannels = 2;
+        r.Player.RaiseState("audio-params/channel-count");
+        Dispatch();
+        var stereo = bar.FindControl<StackPanel>("StereoOptions")!;
+        Assert.True(stereo.IsVisible);
+        Assert.Empty(stereo.GetLogicalDescendants().OfType<ToggleSwitch>()); // no mono downmix
+        var channels = bar.FindControl<ComboBox>("StereoChannel")!;
+        Assert.Equal(["Both channels (default)", "Left channel only", "Right channel only"],
+            channels.Items.OfType<ComboBoxItem>().Select(i => i.Content as string));
+        channels.SelectedIndex = 2;
+        Assert.Contains("SetStereoChannel Right", r.Player.Calls);
+        audio.Flyout.Hide();
+        bar.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_codec_shows_as_a_badge()
+    {
+        using var r = new Rig();
+        r.Vm.IsIdle = false;
+        var bar = new ControlsBar { DataContext = r.Vm, Width = 1280 };
+        bar.Show();
+        var badge = bar.FindControl<Border>("CodecBadge")!;
+        Assert.False(badge.IsVisible);
+        r.Player.State.VideoFormat = "h264";
+        r.Player.RaiseState("video-format");
+        Dispatch();
+        Assert.True(badge.IsVisible);
+        Assert.Equal("H.264", badge.GetLogicalDescendants().OfType<TextBlock>().Single().Text);
+        bar.Close();
     }
 
     [AvaloniaFact]
@@ -145,6 +221,8 @@ public class HeadlessUiTests
         w.Show();
         var welcome = w.FindControl<Grid>("Welcome")!;
         Assert.True(welcome.IsVisible);
+        Assert.DoesNotContain(welcome.GetLogicalDescendants().OfType<TextBlock>(), t => t.Text == "Recent");
+        Assert.Empty(welcome.GetLogicalDescendants().OfType<ItemsControl>());
         r.Vm.IsIdle = false;
         Assert.False(welcome.IsVisible);
         w.Close();

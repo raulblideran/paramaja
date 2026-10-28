@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Paramaja.App.Services;
@@ -25,6 +26,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private (int X, int Y)? _lastPointer;
     private readonly YtDlp _ytdlp;
     private readonly PlaybackHealth _health = new();
+    private readonly PlaybackRecorder _recorder = new();
     private MediaSource _source = MediaSource.None;
     [ObservableProperty] private string _renderProfileText = "";
 
@@ -51,7 +53,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _playerFactory = playerFactory;
         _torrents = torrents;
         _ui = ui;
-        RecentItems = new ObservableCollection<string>(settings.RecentItems);
     }
 
     // ---- Observable state -----------------------------------------------------------------
@@ -70,6 +71,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _mediaTitle = "";
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private string _hdrBadge = "";
+    [ObservableProperty] private string _codecBadge = "";
+    /// <summary>The decoder's own description of the codec, e.g. "hevc (HEVC (High Efficiency Video Coding))".</summary>
+    [ObservableProperty] private string _codecTip = "";
     [ObservableProperty] private string _decoderBadge = "";
     [ObservableProperty] private string _resolutionBadge = "";
     [ObservableProperty] private string _audioBadge = "";
@@ -77,6 +81,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isResolving;
     [ObservableProperty] private string _bufferingText = "";
     [ObservableProperty] private string _deinterlaceBadge = "";
+    [ObservableProperty] private string _deinterlaceTip = "";
     [ObservableProperty] private string _ytDlpStatus = "";
     [ObservableProperty] private string _torrentStatus = "";
     [ObservableProperty] private TorrentFileItem? _selectedTorrentFile;
@@ -106,7 +111,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public bool HasChapters => Chapters.Count > 1;
     public bool HasDiscTitles => DiscTitles.Count > 1;
     public bool HasChapterMenu => HasChapters || HasDiscTitles;
-    public ObservableCollection<string> RecentItems { get; }
     public IReadOnlyList<string> ToneMappingCurves => PlayerSettings.ToneMappingCurves;
     public IReadOnlyList<(string Keys, PlayerAction Action)> Shortcuts { get; } = ShortcutMap.Describe().ToList();
 
@@ -163,7 +167,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         player.KeyPressed += key => Post(() => HandleKey(key));
         player.MouseMoved += () => Post(NotifyActivity);
         player.MouseClicked += () => Post(() => HandleClick(DateTime.UtcNow));
-        player.FileLoaded += () => Post(_health.Reset);
+        player.FileLoaded += () => Post(() =>
+        {
+            _health.Reset();
+            _recorder.Reset();
+        });
         player.RenderProfileChanged += p => Post(() => RenderProfileText = DescribeProfile(p));
         player.EndFile += (reason, error) => Post(() =>
         {
@@ -232,9 +240,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (!IsDiscMode) CanShowDiscMenu = false;
         SyncTracks();
         SyncChapters();
-        OnPropertyChanged(nameof(HardwareDecodingApplies));
-        OnPropertyChanged(nameof(HardwareDecoding));
+        SyncAllState();
     }
+
+    /// <summary>
+    /// Everything shown comes from the engine now playing. Each engine only reports changes,
+    /// so without this a disc's "paused" or deinterlacing badge stayed up for the next file.
+    /// (Idle isn't taken over: the engine reports it itself as it opens, and taking it a moment
+    /// early would flash the welcome screen.)
+    /// </summary>
+    private void SyncAllState()
+    {
+        foreach (var name in EngineStateNames) SyncState(name);
+        ShowPosition(force: true);
+    }
+
+    private static readonly string[] EngineStateNames =
+    [
+        "duration", "pause", "mute", "volume", "paused-for-cache", "media-title", "deinterlace-active",
+        "hwdec-current", "video-params/gamma", "hardware-decoding", "chapter", "video-params/w",
+        "audio-params/channel-count", "video-format", "video-codec", "stereo-channel",
+    ];
 
     /// <summary>Back to the disc's root menu (the Menu button).</summary>
     [RelayCommand] private void ShowDiscMenu() => _player?.ShowDiscMenu();
@@ -245,16 +271,24 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var s = _player.State;
         switch (name)
         {
-            case "time-pos": Position = s.Position; UpdateBuffered(s); break;
+            case "time-pos" or "demuxer-cache-time": ShowPosition(); break;
             case "duration": Duration = s.Duration; break;
-            case "pause": IsPaused = s.IsPaused; if (IsPaused) NotifyActivity(); break;
+            case "pause":
+                IsPaused = s.IsPaused;
+                ShowPosition(force: true);
+                if (IsPaused) NotifyActivity();
+                break;
             case "mute": IsMuted = s.IsMuted; break;
             case "volume": Volume = s.Volume; break;
-            case "deinterlace-active": DeinterlaceBadge = s.DeinterlaceActive ? s.DeinterlaceFilter ?? "" : ""; break;
+            case "deinterlace-active": UpdateDeinterlace(s); break;
             case "paused-for-cache": IsBuffering = s.IsBuffering; break;
             case "idle-active": IsIdle = s.IsIdle; OnPropertyChanged(nameof(CanDownload)); break;
             case "media-title": MediaTitle = s.Title ?? ""; break;
-            case "demuxer-cache-time": UpdateBuffered(s); break;
+            case "video-format" or "video-codec":
+                CodecBadge = CodecLabels.Describe(s.VideoFormat);
+                CodecTip = string.IsNullOrEmpty(s.VideoCodec) ? CodecBadge : s.VideoCodec;
+                break;
+            case "stereo-channel": OnPropertyChanged(nameof(StereoChannelIndex)); break;
             case "hwdec-current": DecoderBadge = s.IsHardwareDecoding ? $"HW · {s.HwdecCurrent}" : "SW"; break;
             case "video-params/gamma" or "video-params/primaries": UpdateHdrBadge(); break;
             case "hardware-decoding":
@@ -274,13 +308,48 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void UpdateBuffered(PlayerState s) =>
         BufferedUntil = s.CacheTime is { } c ? Math.Min(Duration, Math.Max(c, s.Position)) : s.Position;
 
+    /// <summary>How often the position shown (time and seek bar) may change while the controls are up.</summary>
+    public static readonly TimeSpan PositionInterval = TimeSpan.FromMilliseconds(200);
+    private DateTime _positionShownAt = DateTime.MinValue;
+
+    /// <summary>
+    /// mpv reports the position with every frame. Each change re-lays out and re-renders the
+    /// overlay bars (on Windows they're never hidden, only parked off-screen), so it's shown at
+    /// most 5 times a second while the controls are up and not at all while they're hidden; a
+    /// jump (a seek) shows at once.
+    /// </summary>
+    private void ShowPosition(bool force = false)
+    {
+        if (_player is null) return;
+        var s = _player.State;
+        var now = DateTime.UtcNow;
+        var jumped = Math.Abs(s.Position - Position) >= 1.5;
+        if (!force && !jumped && (!ControlsVisible || now - _positionShownAt < PositionInterval)) return;
+        _positionShownAt = now;
+        Position = s.Position;
+        UpdateBuffered(s);
+    }
+
+    /// <summary>The playing video is interlaced: only then is there a deinterlacing switch.</summary>
+    public bool IsInterlacedVideo => _player?.State.SourceInterlaced == true;
+
+    private void UpdateDeinterlace(PlayerState s)
+    {
+        DeinterlaceBadge = !s.SourceInterlaced ? "" : s.DeinterlaceActive ? s.DeinterlaceFilter ?? "BWDIF" : "Interlaced";
+        DeinterlaceTip = !s.SourceInterlaced ? ""
+            : (s.InterlaceDetectedBy == PlayerState.ByPicture ? "Interlaced: seen in the picture (the video isn't flagged)" : "Interlaced: flagged by the video")
+              + (s.DeinterlaceActive ? $". {s.DeinterlaceFilter} makes a frame of each field." : ". Deinterlacing is off for this video.");
+        OnPropertyChanged(nameof(IsInterlacedVideo));
+        OnPropertyChanged(nameof(Deinterlacing));
+    }
+
     /// <summary>The playing video is HDR: only then does the HDR / tonemapping menu apply.</summary>
     public bool IsHdrVideo => _player?.State.IsHdr == true;
 
     /// <summary>5.1, 7.1 and the like: only then is there anything to downmix to stereo.</summary>
     public bool IsSurroundAudio => _player?.State.SourceChannels > 2;
 
-    /// <summary>Only a stereo source can be downmixed to mono.</summary>
+    /// <summary>A stereo source: only then can one of its channels play on both speakers.</summary>
     public bool IsStereoAudio => _player?.State.SourceChannels == 2;
 
     /// <summary>
@@ -413,7 +482,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             UseEngine(_mpvPlayer!);
             _player!.Open(value, streaming: InputClassifier.IsStreaming(kind));
         }
-        Remember(value);
     }
 
     private async Task OpenMagnetAsync(string magnet)
@@ -447,7 +515,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             SetSource(MediaSource.Torrent);
             UseEngine(_mpvPlayer!);
             _player!.Open(info.StreamUrl, file.FileName, streaming: true);
-            Remember(magnet);
             ShowStatus($"Streaming {file.FileName}");
         }
         catch (TorrentException e)
@@ -487,7 +554,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             SetSource(MediaSource.Mega);
             UseEngine(_mpvPlayer!);
             _player!.Open(info.StreamUrl, info.Name, streaming: true);
-            Remember(link);
             ShowStatus($"Streaming {info.Name} from MEGA");
         }
         catch (TorrentException e)
@@ -543,13 +609,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 : $"↓ {s.DownloadMiBps:0.0} MiB/s · {s.PeersLive} peers · {pct:0}% downloaded";
         }
         catch (TorrentException) { }
-    }
-
-    private void Remember(string item)
-    {
-        Settings.AddRecent(item);
-        Replace(RecentItems, Settings.RecentItems);
-        SaveSettings();
     }
 
     private string? _webUrl;
@@ -698,8 +757,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         else await OpenInputAsync(text);
     }
 
-    [RelayCommand] private Task OpenRecent(string item) => OpenInputAsync(item);
-
     [RelayCommand]
     private async Task LoadSubtitle()
     {
@@ -738,7 +795,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void RefreshHealth()
     {
         if (_player is null || IsIdle) return;
-        _health.Add(_player.SampleHealth());
+        var (cpu, memory) = ProcessUsage();
+        var sample = _player.SampleHealth() with { CpuPercent = cpu, MemoryMb = memory };
+        _health.Add(sample);
+        _recorder.Add(sample);
         if (Settings.RenderQuality == RenderQuality.Auto && _player.RenderProfile != RenderProfile.Fast && _health.RenderingStruggling)
         {
             _player.FallBackToFastRendering();
@@ -747,6 +807,57 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _player.ShowText(msg, 5000);
             ShowStatus(msg);
         }
+    }
+
+    private (TimeSpan Cpu, DateTime At)? _lastCpu;
+
+    /// <summary>The app's CPU use since the last reading (100 = one core busy) and its memory.</summary>
+    private (double? Cpu, double Memory) ProcessUsage()
+    {
+        using var process = Process.GetCurrentProcess();
+        var (cpu, now) = (process.TotalProcessorTime, DateTime.UtcNow);
+        double? percent = _lastCpu is { } last && now > last.At ? (cpu - last.Cpu).TotalSeconds / (now - last.At).TotalSeconds * 100 : null;
+        _lastCpu = (cpu, now);
+        return (percent is { } p ? Math.Round(p, 1) : null, Math.Round(process.WorkingSet64 / 1048576.0));
+    }
+
+    // ---- Create Log --------------------------------------------------------------------------
+
+    [ObservableProperty] private string _logStatus = "";
+    [ObservableProperty] private string? _lastLogFile;
+
+    /// <summary>
+    /// Saves what's been recorded since the playing video started (every second's playback
+    /// statistics, the machine, the video and how it's played, the engine's messages) to a file in
+    /// the logs folder, for benchmarking and for whoever is helping.
+    /// </summary>
+    [RelayCommand]
+    private void CreateLog()
+    {
+        try
+        {
+            var file = PlaybackLog.Write(_paths.Logs, BuildLog(), DateTime.Now);
+            LastLogFile = file;
+            LogStatus = $"Saved {Path.GetFileName(file)} in the logs folder";
+            ShowStatus($"Log saved: {Path.GetFileName(file)}");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            LogStatus = $"Couldn't save the log: {e.Message}";
+        }
+    }
+
+    internal string BuildLog() => PlaybackLog.Build(new PlaybackLogInput(
+        _player is null || IsIdle ? null : _player.State, Settings, _player?.RenderProfile, _health, _recorder.Samples,
+        _source, TorrentStatus, IsDiscMode ? "libVLC (disc)" : "mpv",
+        _player is null || IsIdle ? [] : _player.Details(), _player?.RecentMessages() ?? [], DateTime.Now));
+
+    [RelayCommand]
+    private void OpenLogsFolder()
+    {
+        try { Directory.CreateDirectory(_paths.Logs); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        Dialogs?.OpenFolder(_paths.Logs);
     }
 
     public string BuildDiagnostics() => _player is null
@@ -835,7 +946,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case PlayerAction.ExitFullscreen: FullscreenRequested?.Invoke(false); break;
             case PlayerAction.Screenshot: Screenshot(false); break;
             case PlayerAction.ScreenshotWithSubtitles: Screenshot(true); break;
-            case PlayerAction.ToggleDeinterlace: CycleDeinterlace(); break;
+            case PlayerAction.ToggleDeinterlace: ToggleDeinterlacing(); break;
             case PlayerAction.ToggleStats: p?.ToggleStats(); break;
             case PlayerAction.ToggleHdrMode:
                 HdrPassthrough = !HdrPassthrough;
@@ -870,15 +981,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     internal static string FormatShift(double seconds) =>
         seconds == 0 ? "0.0s" : seconds.ToString("+0.0#;-0.0#", System.Globalization.CultureInfo.InvariantCulture) + "s";
 
-    private void CycleDeinterlace()
+    /// <summary>D: the deinterlacing switch, for an interlaced video; others have nothing to deinterlace.</summary>
+    private void ToggleDeinterlacing()
     {
-        Deinterlace = Deinterlace switch
-        {
-            DeinterlaceMode.Auto => DeinterlaceMode.On,
-            DeinterlaceMode.On => DeinterlaceMode.Off,
-            _ => DeinterlaceMode.Auto,
-        };
-        Osd($"Deinterlace: {Deinterlace}");
+        if (IsInterlacedVideo) Deinterlacing = !Deinterlacing;
+        else Osd("This video isn't interlaced: nothing to deinterlace");
     }
 
     private void Osd(string text) => _player?.ShowText(text);
@@ -905,7 +1012,31 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         else _lastClick = utcNow;
     }
 
-    partial void OnControlsVisibleChanged(bool value) => _player?.SetCursorHidden(!value);
+    partial void OnControlsVisibleChanged(bool value)
+    {
+        _player?.SetCursorHidden(!value);
+        if (value) ShowPosition(force: true); // it isn't kept current while they're hidden
+    }
+
+    // A menu of the bars is open: the bars stay up. They used to hide (Linux) or move off screen
+    // (Windows) under a menu the pointer rested on, and the menu followed them to the corner.
+    private int _openMenus;
+    public bool IsMenuOpen => _openMenus > 0;
+
+    public void MenuOpened()
+    {
+        _openMenus++;
+        OnPropertyChanged(nameof(IsMenuOpen));
+        NotifyActivity();
+    }
+
+    public void MenuClosed()
+    {
+        if (_openMenus == 0) return;
+        _openMenus--;
+        OnPropertyChanged(nameof(IsMenuOpen));
+        NotifyActivity();
+    }
 
     public void NotifyActivity()
     {
@@ -917,7 +1048,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void TickAutoHide(DateTime utcNow)
     {
         UpdateBufferingText(utcNow);
-        var keepVisible = IsIdle || IsPaused || IsPointerOverControls || IsResolving || IsBuffering;
+        ReconcilePause();
+        if (ControlsVisible && _player is { } p && p.State.Position != Position) ShowPosition();
+        var keepVisible = IsIdle || IsPaused || IsPointerOverControls || IsResolving || IsBuffering || IsMenuOpen;
         if (keepVisible) { ControlsVisible = true; return; }
         if (utcNow - _lastActivity > ControlsHideDelay) ControlsVisible = false;
     }
@@ -931,6 +1064,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var moved = _lastPointer is { } last && last != (x, y);
         _lastPointer = (x, y);
         if (moved && insideWindow) NotifyActivity();
+    }
+
+    /// <summary>
+    /// The play / pause button goes by the engine's events; a missed or stray one (an engine
+    /// switch, a disc's still frame) left it showing "play" while the video played. The engine is
+    /// asked directly a few times a second.
+    /// </summary>
+    private void ReconcilePause()
+    {
+        if (_player is null || IsIdle || _player.QueryPaused() is not { } paused || paused == IsPaused) return;
+        IsPaused = paused;
     }
 
     public static readonly TimeSpan QuipInterval = TimeSpan.FromSeconds(3);

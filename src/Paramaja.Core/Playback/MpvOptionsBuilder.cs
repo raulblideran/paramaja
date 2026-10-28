@@ -16,9 +16,10 @@ public static class MpvOptionsBuilder
         o.AddRange(Core(paths, windowId));
         o.AddRange(Ytdl(ytdlp ?? new YtDlp(AppContext.BaseDirectory), s.StreamMaxHeight));
         o.AddRange(Video(s));
+        o.AddRange(Timing(s));
         o.AddRange(Scaling(InitialProfile(s.RenderQuality)));
         o.AddRange(Hdr(s, InitialProfile(s.RenderQuality)));
-        o.AddRange(Deinterlace(s));
+        o.AddRange(Deinterlace());
         o.AddRange(Audio(s));
         o.AddRange(Subtitles(s));
         o.AddRange(Screenshots(paths));
@@ -27,10 +28,12 @@ public static class MpvOptionsBuilder
     }
 
     /// <summary>
-    /// Nice-to-haves that older libmpv builds don't know (directory-filter-types is mpv 0.38+).
-    /// A distro's libmpv may be older than the bundled one, and playback shouldn't fail over these.
+    /// Nice-to-haves that older libmpv builds don't know (directory-filter-types is mpv 0.38+),
+    /// or that only some builds have (d3d11-adapter is Windows only). A distro's libmpv may be
+    /// older than the bundled one, and playback shouldn't fail over these.
     /// </summary>
-    public static readonly IReadOnlySet<string> OptionalOptions = new HashSet<string> { "directory-filter-types", "display-fps-override" };
+    public static readonly IReadOnlySet<string> OptionalOptions =
+        new HashSet<string> { "directory-filter-types", "display-fps-override", "d3d11-adapter" };
 
     private static KeyValuePair<string, string> P(string k, string v) => new(k, v);
     private static string F(double d) => d.ToString("0.###", CultureInfo.InvariantCulture);
@@ -99,7 +102,6 @@ public static class MpvOptionsBuilder
         yield return P("gpu-api", OperatingSystem.IsWindows() ? "d3d11" : "auto");
         // Off until a file loads: PlayerService decides per file (see UseHardwareDecoding).
         yield return P("hwdec", "no");
-        yield return P("display-fps-override", F(s.DisplayFps));
         yield return P("interpolation", "no");
         yield return P("deband", "no");
     }
@@ -114,14 +116,47 @@ public static class MpvOptionsBuilder
         codec is "hevc" or "av1" || width >= 1900 || height >= 1060;
 
     /// <summary>
-    /// The channel layout to output. Downmixes apply only to the sources they're meant for:
-    /// stereo to surround, mono to stereo. Passthrough leaves the bitstream alone.
+    /// The channel layout to output. The stereo downmix applies only to surround sources.
+    /// Passthrough leaves the bitstream alone.
     /// </summary>
     public static string AudioChannels(PlayerSettings s, int? sourceChannels) =>
-        s.AudioPassthrough ? "auto"
-        : s.DownmixToStereo && sourceChannels is null or > 2 ? "stereo"
-        : s.DownmixToMono && sourceChannels == 2 ? "mono"
-        : "auto";
+        !s.AudioPassthrough && s.DownmixToStereo && sourceChannels is null or > 2 ? "stereo" : "auto";
+
+    /// <summary>
+    /// The audio filters: one channel of a stereo source on both speakers, then the normalizer.
+    /// A bitstream sent to a receiver can't be filtered.
+    /// </summary>
+    public static string AudioFilters(PlayerSettings s, int? sourceChannels, StereoChannel channel = StereoChannel.Both)
+    {
+        if (s.AudioPassthrough) return "";
+        var filters = new List<string>();
+        if (sourceChannels == 2 && channel != StereoChannel.Both) filters.Add(ChannelFilter(channel));
+        if (s.NormalizeAudio) filters.Add(NormalizeFilter);
+        return string.Join(",", filters);
+    }
+
+    /// <summary>The left (or right) channel to both outputs: c0 is left, c1 right.</summary>
+    internal static string ChannelFilter(StereoChannel channel) =>
+        channel == StereoChannel.Left ? "lavfi=[pan=stereo|c0=c0|c1=c0]" : "lavfi=[pan=stereo|c0=c1|c1=c1]";
+
+    /// <summary>
+    /// The audio track to play when a file has several: a stereo one (the default-flagged one
+    /// first) where there is one. With preferred languages, only the first of them the file has
+    /// counts, so the language still comes first. Null leaves mpv's own choice.
+    /// </summary>
+    public static int? StereoTrack(IReadOnlyList<TrackInfo> tracks, string? preferredLanguages = null)
+    {
+        var audio = tracks.Where(t => t.Type == TrackType.Audio && !t.External).ToList();
+        if (audio.Count < 2) return null;
+        foreach (var lang in (preferredLanguages ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var inLanguage = audio.Where(t => string.Equals(t.Language, lang, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (inLanguage.Count == 0) continue;
+            audio = inLanguage;
+            break;
+        }
+        return audio.Where(t => t.Channels == 2).OrderByDescending(t => t.Default).ThenBy(t => t.Id).FirstOrDefault()?.Id;
+    }
 
     /// <summary>ffmpeg's dynamic normalizer, with a short window so it reacts within a couple of seconds.</summary>
     public const string NormalizeFilter = "lavfi=[dynaudnorm=f=250:g=15:p=0.9]";
@@ -160,9 +195,18 @@ public static class MpvOptionsBuilder
         yield return P("linear-downscaling", p == RenderProfile.High ? "yes" : "no");
         yield return P("sigmoid-upscaling", p == RenderProfile.High ? "yes" : "no");
         yield return P("dither-depth", p == RenderProfile.Fast ? "no" : "auto");
-        // display-resample retimes audio to the display's refresh; plain audio clocking
-        // is cheaper and immune to odd refresh-rate reporting.
-        yield return P("video-sync", p == RenderProfile.Fast ? "audio" : "display-resample");
+    }
+
+    /// <summary>
+    /// How frames are timed: by the audio clock (mpv's default) unless the user asks to sync to
+    /// the display. display-resample retimes audio to the display's refresh, which needs that rate
+    /// right: with a wrong one (a fixed 60 on a high-refresh monitor, a laptop's two GPUs) it
+    /// stuttered, while the audio clock is immune to it.
+    /// </summary>
+    public static IEnumerable<KeyValuePair<string, string>> Timing(PlayerSettings s)
+    {
+        yield return P("video-sync", s.SyncToDisplay ? "display-resample" : "audio");
+        yield return P("display-fps-override", F(s.SyncToDisplay ? s.DisplayFps : 0));
     }
 
     /// <param name="displayIsHdr">The window is on a display in HDR mode; decides what Auto does.</param>
@@ -188,7 +232,7 @@ public static class MpvOptionsBuilder
         yield return P("gamut-mapping-mode", s.GamutMapping);
     }
 
-    public static IEnumerable<KeyValuePair<string, string>> Deinterlace(PlayerSettings s)
+    public static IEnumerable<KeyValuePair<string, string>> Deinterlace()
     {
         // mpv's own deinterlace option would pick the GPU's deinterlacer when hardware
         // decoding, whatever we asked for. PlayerService inserts the chosen filter itself.
@@ -200,7 +244,20 @@ public static class MpvOptionsBuilder
     /// <summary>BWDIF, motion adaptive, one frame per field (50i → 50p).</summary>
     public const string DeinterlaceFilter = $"{DeinterlaceLabel}:bwdif=mode=send_field";
 
-    public static IEnumerable<KeyValuePair<string, string>> Audio(PlayerSettings s, int? sourceChannels = null)
+    /// <summary>
+    /// The field order is the frames' own where they're flagged. Frames without flags (found
+    /// interlaced by the picture check) would be taken as top field first, so they get the order
+    /// that check saw.
+    /// </summary>
+    public static string DeinterlaceFilterFor(FieldOrder? order) => order switch
+    {
+        FieldOrder.TopFirst => DeinterlaceFilter + ":parity=tff",
+        FieldOrder.BottomFirst => DeinterlaceFilter + ":parity=bff",
+        _ => DeinterlaceFilter,
+    };
+
+    public static IEnumerable<KeyValuePair<string, string>> Audio(PlayerSettings s, int? sourceChannels = null,
+        StereoChannel channel = StereoChannel.Both)
     {
         // Downmix only when the user asks; otherwise output the source channel layout.
         yield return P("audio-channels", AudioChannels(s, sourceChannels));
@@ -209,10 +266,10 @@ public static class MpvOptionsBuilder
         yield return P("audio-spdif", s.AudioPassthrough ? "ac3,eac3,dts,dts-hd,truehd" : "");
         if (OperatingSystem.IsWindows()) yield return P("audio-exclusive", s.AudioPassthrough ? "yes" : "no");
         // Only the user's normalization switch changes loudness: no downmix normalisation, no
-        // ReplayGain. A bitstream sent to a receiver can't be filtered.
+        // ReplayGain.
         yield return P("audio-normalize-downmix", "no");
         yield return P("replaygain", "no");
-        yield return P("af", s.NormalizeAudio && !s.AudioPassthrough ? NormalizeFilter : "");
+        yield return P("af", AudioFilters(s, sourceChannels, channel));
         yield return P("volume-max", "150");
         yield return P("volume", F(VolumeCurve.ToMpv(s.Volume)));
         yield return P("mute", s.Muted ? "yes" : "no");

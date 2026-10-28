@@ -13,11 +13,11 @@ public class PlayerIntegrationTests
         var variants = new[]
         {
             new PlayerSettings(),
-            new PlayerSettings { HdrMode = HdrMode.Passthrough, DownmixToStereo = true, Deinterlace = DeinterlaceMode.On },
+            new PlayerSettings { HdrMode = HdrMode.Passthrough, DownmixToStereo = true, SyncToDisplay = true, DisplayFps = 60 },
             new PlayerSettings { AudioPassthrough = true, Volume = 37 },
             new PlayerSettings { RenderQuality = RenderQuality.Balanced },
             new PlayerSettings { RenderQuality = RenderQuality.Fast, HdrMode = HdrMode.TonemapToSdr },
-            new PlayerSettings { Deinterlace = DeinterlaceMode.Off, PreferredAudioLanguages = "jpn",
+            new PlayerSettings { NormalizeAudio = true, PreferredAudioLanguages = "jpn",
                                  PreferredSubtitleLanguages = "eng", HdrDynamicPeak = false },
         };
         foreach (var curve in PlayerSettings.ToneMappingCurves)
@@ -42,8 +42,13 @@ public class PlayerIntegrationTests
         }
         // Mid-playback commands with the same filter strings must parse too.
         using var player = new PlayerHarness();
-        player.Player.Mpv.Command("vf", "add", MpvOptionsBuilder.DeinterlaceFilter);
-        player.Player.Mpv.Command("vf", "remove", MpvOptionsBuilder.DeinterlaceLabel);
+        foreach (var order in new FieldOrder?[] { null, FieldOrder.TopFirst, FieldOrder.BottomFirst })
+        {
+            player.Player.Mpv.Command("vf", "add", MpvOptionsBuilder.DeinterlaceFilterFor(order));
+            player.Player.Mpv.Command("vf", "remove", MpvOptionsBuilder.DeinterlaceLabel);
+        }
+        foreach (var channel in Enum.GetValues<StereoChannel>())
+            player.Player.Mpv.SetProperty("af", MpvOptionsBuilder.AudioFilters(new PlayerSettings { NormalizeAudio = true }, 2, channel));
     }
 
     [MpvTheory]
@@ -260,9 +265,18 @@ public class PlayerIntegrationTests
             // One output frame per field: the frame rate doubles.
             PlayerHarness.WaitUntil(() => h.Player.Mpv.GetString("video-out-params/h") == "1080", "output size");
 
-            h.Player.SetDeinterlace(DeinterlaceMode.Off);
-            PlayerHarness.WaitUntil(() => !h.Player.State.DeinterlaceActive, "deinterlacer off when disabled");
+            Assert.Equal(PlayerState.ByFlags, h.Player.State.InterlaceDetectedBy);
+
+            // Switched off: for this video only. It's still interlaced (the switch stays).
+            h.Player.SetDeinterlacing(false);
+            PlayerHarness.WaitUntil(() => !h.Player.State.DeinterlaceActive, "deinterlacer off when switched off");
+            Assert.True(h.Player.State.SourceInterlaced);
+            Assert.False(h.Player.State.DeinterlacingOn);
             Assert.DoesNotContain("bwdif", h.Player.Mpv.GetString("vf") ?? "");
+
+            h.OpenAndWait(TestEnvironment.Media("interlaced_1080i.ts"));
+            PlayerHarness.WaitUntil(() => h.Player.State.DeinterlaceActive, "on again for the next video");
+            Assert.True(h.Player.State.DeinterlacingOn);
         }
         using (var h = new PlayerHarness())
         {
@@ -270,10 +284,79 @@ public class PlayerIntegrationTests
             Thread.Sleep(300);
             Assert.False(h.Player.State.DeinterlaceActive, "progressive video is left alone");
             Assert.False(h.Player.State.SourceInterlaced);
-            h.Player.SetDeinterlace(DeinterlaceMode.On);
-            PlayerHarness.WaitUntil(() => h.Player.State.DeinterlaceActive, "forced deinterlace");
-            Assert.Contains("bwdif", h.Player.Mpv.GetString("vf"));
+            // There's no switch for it: nothing to turn on.
+            h.Player.SetDeinterlacing(true);
+            Thread.Sleep(200);
+            Assert.False(h.Player.State.DeinterlaceActive);
+            Assert.DoesNotContain("bwdif", h.Player.Mpv.GetString("vf") ?? "");
         }
+    }
+
+    [MpvFact]
+    public void The_picture_check_finds_interlaced_video_without_flags()
+    {
+        using var h = new PlayerHarness();
+        h.OpenAndWait(TestEnvironment.Media("unflagged_576i.mp4"));
+        PlayerHarness.WaitUntil(() => h.Player.State.DeinterlaceActive, "BWDIF from the picture check");
+        Assert.True(h.Player.State.SourceInterlaced);
+        Assert.Equal(PlayerState.ByPicture, h.Player.State.InterlaceDetectedBy);
+        Assert.Equal("BWDIF", h.Player.State.DeinterlaceFilter);
+        Assert.Contains("parity=tff", h.Player.Mpv.GetString("vf"));
+    }
+
+    [MpvFact]
+    public void The_picture_check_leaves_progressive_video_alone()
+    {
+        using var h = new PlayerHarness();
+        h.OpenAndWait(TestEnvironment.Media("progressive_576.mp4"));
+        Assert.True(h.Player.ProbeTask.Wait(TimeSpan.FromSeconds(20)), "the picture check finishes");
+        Thread.Sleep(200);
+        Assert.False(h.Player.State.SourceInterlaced);
+        Assert.False(h.Player.State.DeinterlaceActive);
+        Assert.DoesNotContain("bwdif", h.Player.Mpv.GetString("vf") ?? "");
+    }
+
+    [MpvFact]
+    public void The_probe_counts_fields_with_idet()
+    {
+        var (tff, bff, progressive) = InterlaceProbe.Count(TestEnvironment.Media("unflagged_576i.mp4"), 0.6, CancellationToken.None);
+        Assert.True(tff >= 100, $"tff {tff}");
+        Assert.Equal(0, bff);
+        Assert.True(progressive < 5, $"progressive {progressive}");
+        Assert.Equal(FieldOrder.TopFirst, InterlaceProbe.Analyze(TestEnvironment.Media("unflagged_576i.mp4"), 0.6, CancellationToken.None));
+        Assert.Null(InterlaceProbe.Analyze(TestEnvironment.Media("progressive_576.mp4"), 0.6, CancellationToken.None));
+        Assert.Null(InterlaceProbe.Analyze(Path.Combine(TestEnvironment.TempDir(), "missing.mkv"), 0, CancellationToken.None));
+    }
+
+    [MpvFact]
+    public void A_stereo_track_plays_by_default_for_that_file_only()
+    {
+        using var h = new PlayerHarness();
+        h.OpenAndWait(TestEnvironment.Media("two_audio.mkv"));
+        PlayerHarness.WaitUntil(() => h.Player.Mpv.GetLong("current-tracks/audio/id") == 2, "the stereo track");
+        PlayerHarness.WaitUntil(() => h.Player.State.SourceChannels == 2, "stereo source");
+        Assert.Equal("2", h.Player.Mpv.GetString("options/aid"));
+        h.OpenAndWait(TestEnvironment.Media("audio_51.mkv"));
+        Assert.Equal("auto", h.Player.Mpv.GetString("options/aid")); // the choice was the file's own
+        PlayerHarness.WaitUntil(() => h.Player.Mpv.GetLong("current-tracks/audio/id") == 1, "the next file's own track");
+    }
+
+    [MpvFact]
+    public void The_left_or_right_channel_plays_on_both_speakers_for_that_video()
+    {
+        using var h = new PlayerHarness();
+        h.OpenAndWait(TestEnvironment.Media("hdr10_hevc.mkv")); // stereo audio
+        PlayerHarness.WaitUntil(() => h.Player.State.SourceChannels == 2, "stereo source");
+        h.Player.SetStereoChannel(StereoChannel.Left);
+        Assert.Equal(StereoChannel.Left, h.Player.State.StereoChannel);
+        Assert.Contains("pan=stereo|c0=c0|c1=c0", h.Player.Mpv.GetString("af"));
+        PlayerHarness.WaitUntil(() => h.Player.Mpv.GetLong("audio-out-params/channel-count") == 2, "two channels out");
+        h.Player.SetStereoChannel(StereoChannel.Right);
+        Assert.Contains("c0=c1|c1=c1", h.Player.Mpv.GetString("af"));
+
+        h.OpenAndWait(TestEnvironment.Media("hdr10_hevc.mkv"));
+        PlayerHarness.WaitUntil(() => h.Player.State.StereoChannel == StereoChannel.Both, "both channels for the next video");
+        PlayerHarness.WaitUntil(() => (h.Player.Mpv.GetString("af") ?? "") == "", "no filter");
     }
 
     [MpvFact]

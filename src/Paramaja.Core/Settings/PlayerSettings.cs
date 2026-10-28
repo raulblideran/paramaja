@@ -13,15 +13,6 @@ public enum HdrMode
     Passthrough,
 }
 
-[JsonConverter(typeof(JsonStringEnumConverter<DeinterlaceMode>))]
-public enum DeinterlaceMode
-{
-    /// <summary>Deinterlace only content flagged as interlaced.</summary>
-    Auto,
-    On,
-    Off,
-}
-
 /// <summary>The rendering pipeline actually in use.</summary>
 public enum RenderProfile
 {
@@ -46,7 +37,7 @@ public enum RenderQuality
 public sealed class PlayerSettings
 {
     /// <summary>Bumped when a default changes for existing users too (see <see cref="Normalize"/>).</summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     /// <summary>The settings.json format; 0 for files written before versioning.</summary>
     public int SettingsVersion { get; set; }
@@ -54,12 +45,24 @@ public sealed class PlayerSettings
     public static readonly string[] ToneMappingCurves =
         ["mobius", "spline", "bt.2446a", "bt.2390", "st2094-40", "hable", "reinhard", "clip", "auto"];
 
-    // Video. Hardware decoding isn't a setting: it's decided for each video (PlayerService).
+    // Video. Hardware decoding and deinterlacing aren't settings: they're decided for each video
+    // (PlayerService), and their switches in the video menu last for that video only.
     /// <summary>
-    /// The display refresh rate playback is timed for, in Hz; 0 trusts what the monitor reports.
-    /// 60 by default: monitors that report odd or mismatched rates made playback stutter.
+    /// Times frames to the display's refresh (mpv's display-resample) instead of the audio clock.
+    /// Off by default: with a refresh rate mpv gets wrong (high-refresh monitors, laptops with two
+    /// GPUs) it made playback stutter, and the audio clock never does.
     /// </summary>
-    public double DisplayFps { get; set; } = 60;
+    public bool SyncToDisplay { get; set; }
+    /// <summary>
+    /// The display refresh rate <see cref="SyncToDisplay"/> times frames for, in Hz; 0 (default)
+    /// trusts what the monitor reports.
+    /// </summary>
+    public double DisplayFps { get; set; }
+    /// <summary>
+    /// Windows laptops with two GPUs: render and decode on the high-performance one, as games do,
+    /// rather than the power-saving one Windows hands out by default. Takes effect at the next start.
+    /// </summary>
+    public bool PreferHighPerformanceGpu { get; set; } = true;
     /// <summary>Highest resolution streamed from YouTube and other sites (e.g. 1080); 0 for the best.</summary>
     public int StreamMaxHeight { get; set; }
     public RenderQuality RenderQuality { get; set; } = RenderQuality.Balanced;
@@ -71,13 +74,10 @@ public sealed class PlayerSettings
     /// <summary>Restores fine detail lost in highlights during tonemapping (gpu-next).</summary>
     public double HdrContrastRecovery { get; set; } = 0.3;
     public string GamutMapping { get; set; } = "perceptual";
-    public DeinterlaceMode Deinterlace { get; set; } = DeinterlaceMode.Auto;
 
     // Audio — never normalised; downmix is strictly opt-in.
     /// <summary>Applies to surround sources only (5.1, 7.1…).</summary>
     public bool DownmixToStereo { get; set; }
-    /// <summary>Applies to stereo sources only.</summary>
-    public bool DownmixToMono { get; set; }
     /// <summary>Evens out loud and quiet passages (dynamic normalization). Off by default.</summary>
     public bool NormalizeAudio { get; set; }
     /// <summary>Send Dolby/DTS bitstreams untouched to an AV receiver (WASAPI exclusive on Windows).</summary>
@@ -110,16 +110,6 @@ public sealed class PlayerSettings
         var m => m,
     };
 
-    public List<string> RecentItems { get; set; } = [];
-    public const int MaxRecentItems = 15;
-
-    public void AddRecent(string item)
-    {
-        RecentItems.RemoveAll(r => string.Equals(r, item, StringComparison.Ordinal));
-        RecentItems.Insert(0, item);
-        if (RecentItems.Count > MaxRecentItems) RecentItems.RemoveRange(MaxRecentItems, RecentItems.Count - MaxRecentItems);
-    }
-
     /// <summary>Clamps values that may have been hand-edited into nonsense.</summary>
     public void Normalize()
     {
@@ -127,6 +117,8 @@ public sealed class PlayerSettings
         if (SettingsVersion < 2 && RenderQuality == RenderQuality.Auto) RenderQuality = RenderQuality.Balanced;
         // 1.7.0 made mobius the default curve; whoever was on the old default (spline) moves too.
         if (SettingsVersion < 3 && ToneMapping == "spline") ToneMapping = "mobius";
+        // 1.8.0 made display sync opt-in, timed for the monitor's own rate; the old default (60) moves too.
+        if (SettingsVersion < 4 && DisplayFps == 60) DisplayFps = 0;
         SettingsVersion = CurrentVersion;
         if (!ToneMappingCurves.Contains(ToneMapping)) ToneMapping = "mobius";
         HdrContrastRecovery = Math.Clamp(HdrContrastRecovery, 0, 2);
@@ -139,7 +131,6 @@ public sealed class PlayerSettings
         LongSeekSeconds = Math.Clamp(LongSeekSeconds, 1, 3600);
         TorrentMetadataTimeoutSeconds = Math.Clamp(TorrentMetadataTimeoutSeconds, 10, 600);
         TorrentListenPort = Math.Clamp(TorrentListenPort, 0, 65535);
-        RecentItems ??= [];
         PreferredAudioLanguages ??= "";
         PreferredSubtitleLanguages ??= "";
         GamutMapping = string.IsNullOrWhiteSpace(GamutMapping) ? "perceptual" : GamutMapping;

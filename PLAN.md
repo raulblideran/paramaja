@@ -125,3 +125,13 @@ paramaja/
 - [x] Buffering quips ("Big fast, many speed", "Bruney", …) in the top bar, on the video and on the welcome screen
 - [ ] Live YouTube check on Windows (couldn't run the downloaded yt-dlp here)
 - [ ] Linux Flatpak rebuild with these changes (yt-dlp + QuickJS modules) once testers are happy
+
+### Phase 9 — 1.8.0: interlace detection, a lagging Windows laptop, audio, Developer tab
+- [x] Interlaced or not, per video: frame flags as before, plus a picture check (FFmpeg idet in a second, headless mpv) for CPU-decoded videos without flags; progressive video never deinterlaced; on/off switch for interlaced videos only, for that video
+- [x] Disc engine reports interlacing from libVLC's own detection (its log) instead of "always on in Auto"
+- [x] Every engine switch takes over the new engine's state (stale paused icon and deinterlace badge); the pause state is also asked live
+- [x] Lag on a Windows laptop with two GPUs and a >60 Hz monitor: audio-clock frame timing for every profile (display sync is opt-in), the high-performance GPU (DXGI) for mpv, position updates throttled, copy-back only while deinterlacing
+- [x] Stereo track by default (mpv: file-local aid at on_preloaded; libVLC: matched by title), Left / Right channel for stereo sources; mono downmix removed
+- [x] Codec badge; Recent list removed (and no longer stored); Developer tab with the advanced options; Create log
+- [x] Menus stay put: the bars don't hide or park while one of their menus is open
+- [ ] Friend's laptop: confirm the lag is gone, or read the log from Create log

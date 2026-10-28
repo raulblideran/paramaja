@@ -24,7 +24,7 @@ public class RenderProfileTests
         var o = Opts(MpvOptionsBuilder.Scaling(RenderProfile.High));
         Assert.Equal("ewa_lanczossharp", o["scale"]);
         Assert.Equal("ewa_lanczossharp", o["cscale"]);
-        Assert.Equal("display-resample", o["video-sync"]);
+        Assert.False(o.ContainsKey("video-sync"), "frame timing is its own setting, the same for every profile");
     }
 
     [Fact]
@@ -44,7 +44,6 @@ public class RenderProfileTests
         var o = Opts(MpvOptionsBuilder.Scaling(RenderProfile.Fast));
         Assert.Equal("bilinear", o["scale"]);
         Assert.Equal("bilinear", o["cscale"]);
-        Assert.Equal("audio", o["video-sync"]);
         var hdr = Opts(MpvOptionsBuilder.Hdr(new PlayerSettings(), RenderProfile.Fast));
         Assert.Equal("no", hdr["hdr-compute-peak"]);
         Assert.Equal("0", hdr["hdr-contrast-recovery"]);

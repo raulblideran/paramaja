@@ -89,7 +89,7 @@ public class RenderingTests
         var report = r.Dialogs.Clipboard2!;
         Assert.Contains(AppInfo.Display, report);
         Assert.Contains("Source: Torrent", report);
-        Assert.Contains("hevc 3840x2160", report);
+        Assert.Contains("HEVC 3840x2160", report);
         Assert.Contains("hardware (d3d11va)", report);
         Assert.Contains("Verdict:", report);
         Assert.DoesNotContain("Secret.Movie", report);

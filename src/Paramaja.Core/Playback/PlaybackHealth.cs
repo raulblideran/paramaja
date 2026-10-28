@@ -11,7 +11,24 @@ public sealed record HealthSample(
     double? InputBytesPerSecond,
     double? CachedSeconds,
     long? FileSize,
-    double Duration);
+    double Duration)
+{
+    // More readings for the log (Create Log); null where the engine doesn't report them.
+    public double Position { get; init; }
+    /// <summary>Frames per second leaving the filters (after deinterlacing: one per field).</summary>
+    public double? OutputFps { get; init; }
+    /// <summary>The refresh rate mpv times frames for, and the one it measures from vsyncs.</summary>
+    public double? DisplayFps { get; init; }
+    public double? MeasuredDisplayFps { get; init; }
+    public double? VsyncJitter { get; init; }
+    public double? AvSync { get; init; }
+    public long? MistimedFrames { get; init; }
+    /// <summary>GPU time to render a new frame, all passes together, in microseconds.</summary>
+    public double? GpuMicroseconds { get; init; }
+    /// <summary>The app's CPU use, 100 being one core fully busy; filled in by the app.</summary>
+    public double? CpuPercent { get; init; }
+    public double? MemoryMb { get; init; }
+}
 
 public enum Finding
 {

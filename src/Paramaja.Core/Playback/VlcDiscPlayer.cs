@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using LibVLCSharp.Shared;
 using Paramaja.Core.Mpv;
 using Paramaja.Core.Native;
@@ -114,12 +115,14 @@ public sealed partial class VlcDiscPlayer : IPlayer
             "--no-video-title-show",   // the app shows the title itself
             "--sub-source=marq",       // on-screen messages (ShowText)
             "--mouse-hide-timeout=2500", // the pointer hides with the controls (MainViewModel.ControlsHideDelay)
-            // Paramaja's libVLC runs BWDIF for this mode (see DeinterlaceMode below); Auto
+            // Paramaja's libVLC runs BWDIF for this mode (see DeinterlaceModeName below); -1
             // deinterlaces only what the disc flags as interlaced.
             "--deinterlace-mode=" + DeinterlaceModeName,
-            "--deinterlace=" + DeinterlaceState(settings.Deinterlace),
+            "--deinterlace=-1",
             "--quiet",
             .. extraOptions]);
+        // libVLC tells whether the video is interlaced only in its log (OnLog).
+        _vlc.Log += OnLog;
         HasBwdif = _vlc.VideoFilters.Any(f => f.Name == "deinterlace" && f.LongName?.Contains("BWDIF", StringComparison.Ordinal) == true);
         _mp = new MediaPlayer(_vlc)
         {
@@ -185,6 +188,8 @@ public sealed partial class VlcDiscPlayer : IPlayer
         _mp.TitleChanged += (_, _) => Later(() =>
         {
             if (_cdTrack >= 0) return; // a CD's tracks are its chapters
+            PickStereoSoon();
+            ApplyStereoChannel(); // a title's audio output may start out in plain stereo
             RefreshChapters();
             Set("media-title", () => State.Title = _title);
         });
@@ -192,7 +197,7 @@ public sealed partial class VlcDiscPlayer : IPlayer
         {
             if (_cdTrack < 0) Set("chapter", () => State.Chapter = e.Chapter);
         };
-        _mp.ESAdded += (_, _) => Later(RefreshTracks);
+        _mp.ESAdded += (_, _) => Later(RefreshTracksTwice);
         _mp.ESDeleted += (_, _) => Later(RefreshTracks);
         _mp.ESSelected += (_, _) => Later(RefreshTracks);
         _mp.Vout += (_, e) => Later(() =>
@@ -203,7 +208,7 @@ public sealed partial class VlcDiscPlayer : IPlayer
                 Set("video-params/w", () => State.VideoWidth = (int)w);
                 Set("video-params/h", () => State.VideoHeight = (int)h);
             }
-            Set("video-format", () => State.VideoFormat = "disc");
+            Set("video-format", () => State.VideoFormat = VideoCodec());
             Set("hwdec-current", () => State.HwdecCurrent = _mp.EnableHardwareDecoding ? "auto" : "no");
         });
         _mp.Muted += (_, _) => Set("mute", () => State.IsMuted = true);
@@ -232,6 +237,8 @@ public sealed partial class VlcDiscPlayer : IPlayer
     public void OpenDisc(string root, bool bluray)
     {
         ForgetAudioCd();
+        StartFresh();
+        PickStereoSoon();
         _title = Path.GetFileName(root.TrimEnd('/', '\\')) is { Length: > 0 } name ? name : root;
         Chapters = [];
         Titles = [];
@@ -292,6 +299,7 @@ public sealed partial class VlcDiscPlayer : IPlayer
     public void OpenAudioCd(string device)
     {
         ForgetAudioCd();
+        StartFresh();
         _title = "Audio CD";
         Titles = [];
         Chapters = [];
@@ -486,23 +494,113 @@ public sealed partial class VlcDiscPlayer : IPlayer
 
     public void SelectTitle(int id) => _mp.Title = id;
 
+    /// <summary>Each disc (or CD) starts afresh: its own video, its own audio, every switch on its default.</summary>
+    private void StartFresh()
+    {
+        _pickStereo = false;
+        _lastDisplayed = null;
+        ResetDeinterlacing();
+        SetStereoChannel(StereoChannel.Both);
+        Set("video-format", () => State.VideoFormat = null);
+        Set("audio-params/channel-count", () => State.SourceChannels = null);
+    }
+
     // ---- Tracks -------------------------------------------------------------------------------
 
     private void RefreshTracks()
     {
-        var list = new List<TrackInfo>();
         var audio = _mp.AudioTrack;
+        var audioIds = _mp.AudioTrackDescription.Where(t => t.Id >= 0).Select(t => t.Id).ToList();
+        var channels = MatchChannels(MediaTracks(), audioIds);
+        var list = new List<TrackInfo>();
         foreach (var t in _mp.AudioTrackDescription.Where(t => t.Id >= 0))
-            list.Add(new TrackInfo(t.Id, TrackType.Audio, t.Name, null, null, t.Id == audio, false, false, null));
+            list.Add(new TrackInfo(t.Id, TrackType.Audio, t.Name, null, null, t.Id == audio, false, false,
+                channels.TryGetValue(t.Id, out var ch) ? ch : null));
         var spu = _mp.Spu;
         foreach (var t in _mp.SpuDescription.Where(t => t.Id >= 0))
             list.Add(new TrackInfo(t.Id, TrackType.Subtitle, t.Name, null, null, t.Id == spu, false, false, null));
         Tracks = list;
         TracksChanged?.Invoke();
+        int? playing = channels.TryGetValue(audio, out var c) ? c : null;
+        if (playing != State.SourceChannels) Set("audio-params/channel-count", () => State.SourceChannels = playing);
+        PickStereo(list, audio);
+    }
+
+    /// <summary>libVLC fills in a new track's channel count a moment after announcing it: look again then.</summary>
+    private void RefreshTracksTwice()
+    {
+        RefreshTracks();
+        Thread.Sleep(1500);
+        RefreshTracks();
+    }
+
+    /// <summary>
+    /// Audio track id → channels. libVLC 3 lists a disc's tracks (every title adds its own, under
+    /// ids of their own) apart from the ids it plays them by; the playing title's audio tracks
+    /// are the ones after its video track, in the order the track list gives the ids. Where the
+    /// two lists don't line up, nothing is matched.
+    /// </summary>
+    internal static Dictionary<int, int> MatchChannels(IReadOnlyList<(bool IsVideo, bool IsAudio, int Channels)> mediaTracks,
+        IReadOnlyList<int> audioIds)
+    {
+        var lastVideo = -1;
+        for (var i = 0; i < mediaTracks.Count; i++) if (mediaTracks[i].IsVideo) lastVideo = i;
+        var audio = mediaTracks.Skip(lastVideo + 1).Where(t => t.IsAudio).Select(t => t.Channels).ToList();
+        var map = new Dictionary<int, int>();
+        if (audio.Count != audioIds.Count) return map;
+        for (var i = 0; i < audio.Count; i++) if (audio[i] > 0) map[audioIds[i]] = audio[i];
+        return map;
+    }
+
+    private List<(bool IsVideo, bool IsAudio, int Channels)> MediaTracks()
+    {
+        using var media = _mp.Media;
+        if (media is null) return [];
+        return media.Tracks.Select(t => (t.TrackType == LibVLCSharp.Shared.TrackType.Video, t.TrackType == LibVLCSharp.Shared.TrackType.Audio,
+            t.TrackType == LibVLCSharp.Shared.TrackType.Audio ? (int)t.Data.Audio.Channels : 0)).ToList();
+    }
+
+    /// <summary>FFmpeg's name for the playing video's codec ("mpeg2video" on a DVD).</summary>
+    private string? VideoCodec()
+    {
+        using var media = _mp.Media;
+        if (media is null) return null;
+        var tracks = media.Tracks;
+        var video = Array.FindLastIndex(tracks, t => t.TrackType == LibVLCSharp.Shared.TrackType.Video);
+        return video < 0 ? null : CodecLabels.FromFourCC(FourCC(tracks[video].Codec));
+    }
+
+    private static string FourCC(uint c) =>
+        new([(char)(c & 0xff), (char)((c >> 8) & 0xff), (char)((c >> 16) & 0xff), (char)(c >> 24)]);
+
+    // ---- A stereo track by default ----------------------------------------------------------
+
+    /// <summary>A disc's titles bring their tracks a moment after they start; a stereo one is picked meanwhile.</summary>
+    private static readonly TimeSpan StereoPickWindow = TimeSpan.FromSeconds(5);
+    private volatile bool _pickStereo;
+    private DateTime _pickUntil;
+
+    private void PickStereoSoon()
+    {
+        _pickUntil = DateTime.UtcNow + StereoPickWindow;
+        _pickStereo = true;
+    }
+
+    /// <summary>
+    /// Concert discs often carry the stereo mix beside 5.1 and DTS: where the playing title has
+    /// a stereo track, it plays, unless a track has been picked by hand.
+    /// </summary>
+    private void PickStereo(IReadOnlyList<TrackInfo> tracks, int playing)
+    {
+        if (!_pickStereo) return;
+        if (DateTime.UtcNow > _pickUntil) { _pickStereo = false; return; }
+        if (MpvOptionsBuilder.StereoTrack(tracks, Settings.PreferredAudioLanguages) is { } id && id != playing)
+            _mp.SetAudioTrack(id);
     }
 
     public void SelectTrack(TrackType type, int? id)
     {
+        if (type == TrackType.Audio) _pickStereo = false; // picked by hand
         if (type == TrackType.Audio && id is { } a) _mp.SetAudioTrack(a);
         else if (type == TrackType.Subtitle) _mp.SetSpu(id ?? -1);
         Later(RefreshTracks);
@@ -595,43 +693,78 @@ public sealed partial class VlcDiscPlayer : IPlayer
     /// <summary>This libVLC's deinterlacer is Paramaja's, with BWDIF (its description says so).</summary>
     public bool HasBwdif { get; }
 
-    /// <summary>libVLC's "deinterlace" setting: -1 only what's flagged interlaced, 1 always, 0 never.</summary>
-    private static int DeinterlaceState(DeinterlaceMode mode) => mode switch
+    /// <summary>libVLC's video output found the pictures flagged interlaced (and so deinterlaces them).</summary>
+    private volatile bool _interlaced;
+    /// <summary>Switched off for this disc; every disc starts with it on.</summary>
+    private volatile bool _deinterlaceOff;
+
+    /// <summary>
+    /// libVLC's video output decides from each picture's flags (-1, "automatic") and says so only
+    /// in its log: "Detected interlaced video", and with every change of the setting
+    /// "deinterlace -1, mode yadif2x, is_needed 1". A new output (a new title) starts at 0.
+    /// Called on libVLC's threads: no calls back into libVLC here.
+    /// </summary>
+    private void OnLog(object? sender, LogEventArgs e)
     {
-        DeinterlaceMode.On => 1,
-        DeinterlaceMode.Off => 0,
-        _ => -1,
+        if (InterlacedFromLog(e.Message) is { } interlaced) SetInterlaced(interlaced);
+        if (e.Level >= LogLevel.Warning) _messages.Add($"[{e.Module}] {e.Level}: {e.Message}");
+    }
+
+    private static readonly Regex IsNeeded = new(@"^deinterlace -?\d+, mode \S*, is_needed (\d)", RegexOptions.CultureInvariant);
+
+    internal static bool? InterlacedFromLog(string? message) => message switch
+    {
+        null => null,
+        _ when message.StartsWith("Detected interlaced video", StringComparison.Ordinal) => true,
+        _ when message.StartsWith("Detected progressive video", StringComparison.Ordinal) => false,
+        _ => IsNeeded.Match(message) is { Success: true } m ? m.Groups[1].Value != "0" : null,
     };
 
-    public void SetDeinterlace(DeinterlaceMode mode)
+    private void SetInterlaced(bool interlaced)
     {
-        Settings.Deinterlace = mode;
-        switch (mode)
+        if (_interlaced == interlaced) return;
+        _interlaced = interlaced;
+        if (interlaced) _messages.Add("libVLC: the video is interlaced (flagged)");
+        PublishDeinterlace();
+    }
+
+    /// <summary>The video menu's switch, there only while the disc's video is interlaced.</summary>
+    public void SetDeinterlacing(bool on)
+    {
+        if (!_interlaced || _deinterlaceOff == !on) return;
+        _deinterlaceOff = !on;
+        if (on)
         {
-            case DeinterlaceMode.On: _mp.SetDeinterlace(DeinterlaceModeName); break;
-            case DeinterlaceMode.Off: _mp.SetDeinterlace(""); break;
-            default:
-                // libVLC's API has no "auto": set the player's own variable, which the next
-                // video output (the next title or disc) takes. Until then, keep deinterlacing.
-                _mp.SetDeinterlace(DeinterlaceModeName);
-                SetPlayerInteger("deinterlace", -1);
-                break;
+            _mp.SetDeinterlace(DeinterlaceModeName);
+            // libVLC's API has no "automatic": set the player's own variable back, which the next
+            // video output (the next title) takes.
+            SetPlayerInteger("deinterlace", -1);
+        }
+        else _mp.SetDeinterlace(""); // this title and the next ones, until the disc changes
+        PublishDeinterlace();
+    }
+
+    private void ResetDeinterlacing()
+    {
+        _interlaced = false;
+        if (_deinterlaceOff)
+        {
+            _deinterlaceOff = false;
+            SetPlayerInteger("deinterlace", -1);
         }
         PublishDeinterlace();
     }
 
     private void PublishDeinterlace()
     {
-        var name = HasBwdif ? "BWDIF" : "yadif2x";
+        var active = _interlaced && !_deinterlaceOff;
         Set("deinterlace-active", () =>
         {
-            State.DeinterlaceActive = Settings.Deinterlace != DeinterlaceMode.Off;
-            State.DeinterlaceFilter = Settings.Deinterlace switch
-            {
-                DeinterlaceMode.Off => null,
-                DeinterlaceMode.On => name,
-                _ => $"{name} (auto)",
-            };
+            State.SourceInterlaced = _interlaced;
+            State.InterlaceDetectedBy = _interlaced ? PlayerState.ByFlags : null;
+            State.DeinterlacingOn = !_deinterlaceOff;
+            State.DeinterlaceActive = active;
+            State.DeinterlaceFilter = active ? HasBwdif ? "BWDIF" : "yadif2x" : null;
         });
     }
 
@@ -674,6 +807,79 @@ public sealed partial class VlcDiscPlayer : IPlayer
         });
     }
 
+    // ---- Audio: one channel of a stereo source ------------------------------------------------
+
+    public void SetStereoChannel(StereoChannel channel)
+    {
+        Set("stereo-channel", () => State.StereoChannel = channel);
+        ApplyStereoChannel();
+    }
+
+    private void ApplyStereoChannel() => _mp.SetChannel(State.StereoChannel switch
+    {
+        StereoChannel.Left => AudioOutputChannel.Left,
+        StereoChannel.Right => AudioOutputChannel.Right,
+        _ => AudioOutputChannel.Stereo,
+    });
+
+    // ---- Statistics and the log ----------------------------------------------------------------
+
+    private readonly RecentLines _messages = new();
+    public IReadOnlyList<string> RecentMessages() => _messages.ToList();
+
+    private (DateTime At, int Displayed)? _lastDisplayed;
+
+    public HealthSample SampleHealth()
+    {
+        var stats = Statistics();
+        double? fps = null;
+        if (stats is { } st)
+        {
+            var now = DateTime.UtcNow;
+            if (_lastDisplayed is { } last && now > last.At && st.DisplayedPictures >= last.Displayed)
+                fps = (st.DisplayedPictures - last.Displayed) / (now - last.At).TotalSeconds;
+            _lastDisplayed = (now, st.DisplayedPictures);
+        }
+        return new HealthSample(DateTime.UtcNow, !State.IsIdle && !State.IsPaused, State.IsBuffering,
+            stats?.LostPictures, null, null, stats is { } s ? s.DemuxBitrate * 1_000_000 : null, null, null, State.Duration)
+        {
+            Position = State.Position,
+            OutputFps = fps,
+        };
+    }
+
+    private MediaStats? Statistics()
+    {
+        try
+        {
+            using var media = _mp.Media;
+            return media?.Statistics;
+        }
+        catch (VLCException) { return null; }
+    }
+
+    public IReadOnlyList<KeyValuePair<string, string>> Details()
+    {
+        var stats = Statistics();
+        return
+        [
+            new("Engine", $"libVLC {_vlc.Version}"),
+            new("Deinterlacer", HasBwdif ? "Paramaja's BWDIF" : "libVLC's yadif2x (this libVLC has no BWDIF)"),
+            new("Interlaced", _interlaced ? $"yes (flagged), deinterlacing {(_deinterlaceOff ? "switched off" : "on")}" : "no"),
+            new("Hardware decoding", _mp.EnableHardwareDecoding ? "on" : "off"),
+            new("Video codec", State.VideoFormat ?? "n/a"),
+            new("Pictures", stats is { } s ? $"decoded {s.DecodedVideo}, displayed {s.DisplayedPictures}, lost {s.LostPictures}" : "n/a"),
+            new("Audio", $"{State.SourceChannels?.ToString() ?? "?"}ch, channel {State.StereoChannel}"),
+        ];
+    }
+
+    public bool? QueryPaused() => _mp.State switch
+    {
+        VLCState.Paused => true,
+        VLCState.Playing => false,
+        _ => null,
+    };
+
     // ---- Settings that don't apply to discs ----------------------------------------------------
 
     public void SetDownmix(bool stereo) => Settings.DownmixToStereo = stereo;
@@ -684,13 +890,12 @@ public sealed partial class VlcDiscPlayer : IPlayer
     public void ApplyHdr() { }
     public void SetCursorHidden(bool hidden) { } // libVLC hides it itself (--mouse-hide-timeout)
     public void ToggleStats() { }
-    public HealthSample SampleHealth() => new(DateTime.UtcNow, !State.IsIdle && !State.IsPaused, false, 0, 0, 0, null, null, null, State.Duration);
     public RenderProfile RenderProfile => RenderProfile.Balanced;
     public void FallBackToFastRendering() { }
     public void ApplyRenderQuality() { }
     public double StreamBufferSeconds => 0;
     public void ApplyStreamQuality() { }
-    public void ApplyDisplayFps() { }
+    public void ApplyTiming() { }
 
     public void Dispose()
     {

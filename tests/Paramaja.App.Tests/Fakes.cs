@@ -56,6 +56,9 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public void Stop() => Log("Stop");
     public void TogglePause() => Log("TogglePause");
     public void SetPaused(bool paused) => Log($"SetPaused {paused}");
+    /// <summary>What the engine says when asked live; null (can't tell) unless a test sets it.</summary>
+    public bool? LivePaused { get; set; }
+    public bool? QueryPaused() => LivePaused;
     public void SeekRelative(double seconds) => Log($"SeekRelative {seconds}");
     public void SeekAbsolute(double seconds) => Log($"SeekAbsolute {seconds}");
     public void FrameStep() => Log("FrameStep");
@@ -66,13 +69,29 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public void ShowText(string text, int durationMs = 1500) => Log($"ShowText {text}");
     public void SetCursorHidden(bool hidden) => Log($"SetCursorHidden {hidden}");
     public void ApplyStreamQuality() => Log($"ApplyStreamQuality {Settings.StreamMaxHeight}");
-    public void ApplyDisplayFps() => Log($"ApplyDisplayFps {Settings.DisplayFps}");
+    public void ApplyTiming() => Log($"ApplyTiming {Settings.SyncToDisplay} {Settings.DisplayFps}");
+    public List<string> Messages { get; } = [];
+    public IReadOnlyList<string> RecentMessages() => Messages;
+    public IReadOnlyList<KeyValuePair<string, string>> Details() => [new("Engine", "fake")];
     public void ToggleStats() => Log("ToggleStats");
     public string Screenshot(bool includeSubtitles) { Log($"Screenshot {includeSubtitles}"); return "/tmp/shot.png"; }
     public void SetDownmix(bool stereo) => Log($"SetDownmix {stereo}");
     public void SetHdrMode(HdrMode mode) => Log($"SetHdrMode {mode}");
     public void SetDisplayHdr(bool isHdr) => Log($"SetDisplayHdr {isHdr}");
-    public void SetDeinterlace(DeinterlaceMode mode) => Log($"SetDeinterlace {mode}");
+    public void SetDeinterlacing(bool on)
+    {
+        Log($"SetDeinterlacing {on}");
+        State.DeinterlacingOn = on;
+        State.DeinterlaceActive = on && State.SourceInterlaced;
+        State.DeinterlaceFilter = State.DeinterlaceActive ? "BWDIF" : null;
+        RaiseState("deinterlace-active");
+    }
+    public void SetStereoChannel(StereoChannel channel)
+    {
+        Log($"SetStereoChannel {channel}");
+        State.StereoChannel = channel;
+        RaiseState("stereo-channel");
+    }
 
     /// <summary>Tests set this to simulate playback statistics.</summary>
     public Func<HealthSample> NextSample { get; set; } = () => new(DateTime.UtcNow, true, false, 0, 0, 0, null, null, null, 0);

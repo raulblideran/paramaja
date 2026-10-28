@@ -45,6 +45,8 @@ public interface IPlayer : IDisposable
     void Stop();
     void TogglePause();
     void SetPaused(bool paused);
+    /// <summary>Whether the engine is paused right now, asked live (null if it can't tell).</summary>
+    bool? QueryPaused();
     void SeekRelative(double seconds);
     void SeekAbsolute(double seconds);
     void FrameStep();
@@ -59,7 +61,13 @@ public interface IPlayer : IDisposable
     void SetDownmix(bool stereo);
     void SetHdrMode(HdrMode mode);
     void SetDisplayHdr(bool isHdr);
-    void SetDeinterlace(DeinterlaceMode mode);
+    /// <summary>
+    /// The deinterlacing switch, for the playing video only (it applies only while
+    /// <see cref="PlayerState.SourceInterlaced"/>); the next video starts with it on again.
+    /// </summary>
+    void SetDeinterlacing(bool on);
+    /// <summary>One channel of a stereo source on both speakers, for the playing video only.</summary>
+    void SetStereoChannel(StereoChannel channel);
     HealthSample SampleHealth();
     RenderProfile RenderProfile { get; }
     event Action<RenderProfile>? RenderProfileChanged;
@@ -75,7 +83,11 @@ public interface IPlayer : IDisposable
     void ApplySubtitles();
     void ApplyAudio();
     void ApplyStreamQuality();
-    void ApplyDisplayFps();
+    void ApplyTiming();
+    /// <summary>The engine's latest log lines (warnings and up, plus its own notes), oldest first.</summary>
+    IReadOnlyList<string> RecentMessages();
+    /// <summary>What the log (Create Log) says about the engine and how it's playing the video.</summary>
+    IReadOnlyList<KeyValuePair<string, string>> Details();
     void SelectTrack(TrackType type, int? id);
     void CycleTrack(TrackType type);
     void AddSubtitle(string path);

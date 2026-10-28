@@ -1,3 +1,4 @@
+using Paramaja.App.Services;
 using Paramaja.Core.Input;
 using Paramaja.App.ViewModels;
 using Paramaja.Core.Mpv;
@@ -234,17 +235,27 @@ public class KeyboardTests
     public void New_audio_and_stream_settings_apply_and_save()
     {
         using var r = new Rig();
-        r.Vm.DownmixToMono = true;
         r.Vm.NormalizeAudio = true;
         r.Vm.StreamQualityIndex = 3; // up to 1080p
-        r.Vm.DisplayFpsIndex = 1;    // Auto
+        r.Vm.SyncToDisplay = true;
+        r.Vm.DisplayFpsIndex = 5;    // 144 Hz
         var saved = r.Store.Load();
-        Assert.True(saved.DownmixToMono);
         Assert.True(saved.NormalizeAudio);
         Assert.Equal(1080, saved.StreamMaxHeight);
-        Assert.Equal(0, saved.DisplayFps);
+        Assert.True(saved.SyncToDisplay);
+        Assert.Equal(144, saved.DisplayFps);
         Assert.Contains("ApplyStreamQuality 1080", r.Player.Calls);
-        Assert.Contains("ApplyDisplayFps 0", r.Player.Calls);
+        Assert.Contains("ApplyTiming True 0", r.Player.Calls);
+        Assert.Contains("ApplyTiming True 144", r.Player.Calls);
+    }
+
+    [Fact]
+    public void Display_sync_is_off_and_timed_for_the_monitors_own_rate_by_default()
+    {
+        using var r = new Rig();
+        Assert.False(r.Vm.SyncToDisplay);
+        Assert.Equal(0, r.Vm.DisplayFpsIndex);
+        Assert.Equal(0, MainViewModel.DisplayRates[0]);
     }
 
     [Fact]
@@ -278,16 +289,23 @@ public class KeyboardTests
     }
 
     [Fact]
-    public void D_cycles_deinterlace_modes()
+    public void D_switches_deinterlacing_for_an_interlaced_video_only()
     {
         using var r = new Rig();
         r.Vm.HandleKey("d");
-        Assert.Equal(DeinterlaceMode.On, r.Settings.Deinterlace);
+        Assert.DoesNotContain(r.Player.Calls, c => c.StartsWith("SetDeinterlacing"));
+        Assert.Contains("ShowText This video isn't interlaced: nothing to deinterlace", r.Player.Calls);
+
+        r.Player.State.SourceInterlaced = true;
+        r.Player.State.DeinterlaceActive = true;
+        r.Player.State.DeinterlaceFilter = "BWDIF";
+        r.Player.RaiseState("deinterlace-active");
         r.Vm.HandleKey("d");
-        Assert.Equal(DeinterlaceMode.Off, r.Settings.Deinterlace);
+        Assert.Contains("SetDeinterlacing False", r.Player.Calls);
+        Assert.False(r.Vm.Deinterlacing);
         r.Vm.HandleKey("d");
-        Assert.Equal(DeinterlaceMode.Auto, r.Settings.Deinterlace);
-        Assert.Contains("SetDeinterlace On", r.Player.Calls);
+        Assert.Contains("SetDeinterlacing True", r.Player.Calls);
+        Assert.True(r.Vm.Deinterlacing);
     }
 
     [Fact]
@@ -362,14 +380,15 @@ public class KeyboardTests
 public class OpeningTests
 {
     [Fact]
-    public async Task Opening_a_file_plays_it_and_remembers_it()
+    public async Task Opening_a_file_plays_it_and_keeps_no_history()
     {
         using var r = new Rig();
         var f = r.MediaFile();
         await r.Vm.OpenInputAsync(f);
         Assert.Contains($"Open {f}", r.Player.Calls);
-        Assert.Equal(f, r.Vm.RecentItems[0]);
-        Assert.Equal(f, r.Store.Load().RecentItems[0]);
+        r.Vm.SaveSettings();
+        Assert.DoesNotContain("recent", File.ReadAllText(r.Store.FilePath), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(Path.GetFileName(f), File.ReadAllText(r.Store.FilePath));
     }
 
     [Fact]
@@ -472,7 +491,6 @@ public class TorrentTests
         Assert.Contains("Open http://127.0.0.1:9/stream/1/1 Sintel.mp4 [stream]", r.Player.Calls);
         Assert.True(r.Vm.IsTorrent);
         Assert.False(r.Vm.IsResolving);
-        Assert.Equal(Magnet, r.Vm.RecentItems[0]);
     }
 
     [Fact]
@@ -681,15 +699,12 @@ public class StateTests
         using var r = new Rig();
         r.Vm.ToneMapping = "bt.2446a";
         r.Vm.SubtitleScale = 1.5;
-        r.Vm.DeinterlaceIndex = 2;
         r.Vm.ToneMapping = "not-a-curve";
         Assert.Contains("ApplyHdr", r.Player.Calls);
         Assert.Contains("ApplySubtitles", r.Player.Calls);
-        Assert.Contains("SetDeinterlace Off", r.Player.Calls);
         var saved = r.Store.Load();
         Assert.Equal("bt.2446a", saved.ToneMapping);
         Assert.Equal(1.5, saved.SubtitleScale);
-        Assert.Equal(DeinterlaceMode.Off, saved.Deinterlace);
     }
 }
 
@@ -780,7 +795,6 @@ public class StreamingFeatureTests
         Assert.Contains("Open http://127.0.0.1:9/mega/0 Clip.mkv [stream]", r.Player.Calls);
         Assert.Contains("Clip.mkv", r.Vm.StatusMessage);
         Assert.False(r.Vm.IsResolving);
-        Assert.Equal("https://mega.nz/file/AbC#key", r.Vm.RecentItems[0]);
     }
 
     [Fact]
@@ -860,16 +874,91 @@ public class PlaybackSettingTests
     }
 
     [Fact]
-    public void Deinterlace_badge_names_the_filter()
+    public void Deinterlace_badge_names_the_filter_and_shows_only_for_interlaced_video()
     {
         using var r = new Rig();
+        Assert.False(r.Vm.IsInterlacedVideo);
+        r.Player.State.SourceInterlaced = true;
+        r.Player.State.InterlaceDetectedBy = PlayerState.ByFlags;
         r.Player.State.DeinterlaceActive = true;
         r.Player.State.DeinterlaceFilter = "BWDIF";
         r.Player.RaiseState("deinterlace-active");
+        Assert.True(r.Vm.IsInterlacedVideo);
         Assert.Equal("BWDIF", r.Vm.DeinterlaceBadge);
+        Assert.Contains("flagged", r.Vm.DeinterlaceTip);
+
+        // Switched off: the video is still interlaced, and says so.
+        r.Vm.Deinterlacing = false;
+        Assert.Contains("SetDeinterlacing False", r.Player.Calls);
+        Assert.Equal("Interlaced", r.Vm.DeinterlaceBadge);
+        Assert.Contains("off for this video", r.Vm.DeinterlaceTip);
+
+        // A progressive video: no badge, no switch.
+        r.Player.State.SourceInterlaced = false;
         r.Player.State.DeinterlaceActive = false;
+        r.Player.State.DeinterlacingOn = true;
         r.Player.RaiseState("deinterlace-active");
         Assert.Equal("", r.Vm.DeinterlaceBadge);
+        Assert.False(r.Vm.IsInterlacedVideo);
+        var calls = r.Player.Calls.Count;
+        r.Vm.Deinterlacing = false;
+        Assert.Equal(calls, r.Player.Calls.Count);
+    }
+
+    [Fact]
+    public void The_picture_check_is_named_in_the_tip()
+    {
+        using var r = new Rig();
+        r.Player.State.SourceInterlaced = true;
+        r.Player.State.InterlaceDetectedBy = PlayerState.ByPicture;
+        r.Player.State.DeinterlaceActive = true;
+        r.Player.State.DeinterlaceFilter = "BWDIF";
+        r.Player.RaiseState("deinterlace-active");
+        Assert.Contains("seen in the picture", r.Vm.DeinterlaceTip);
+    }
+
+    [Fact]
+    public void Codec_badge_names_the_codec()
+    {
+        using var r = new Rig();
+        r.Player.State.VideoFormat = "hevc";
+        r.Player.State.VideoCodec = "hevc (HEVC (High Efficiency Video Coding))";
+        r.Player.RaiseState("video-format");
+        Assert.Equal("HEVC", r.Vm.CodecBadge);
+        Assert.Contains("High Efficiency", r.Vm.CodecTip);
+        r.Player.State.VideoFormat = "mpeg2video";
+        r.Player.State.VideoCodec = null;
+        r.Player.RaiseState("video-format");
+        Assert.Equal("MPEG-2", r.Vm.CodecBadge);
+        Assert.Equal("MPEG-2", r.Vm.CodecTip);
+        r.Player.State.VideoFormat = null;
+        r.Player.RaiseState("video-format");
+        Assert.Equal("", r.Vm.CodecBadge);
+    }
+
+    [Fact]
+    public void A_stereo_sources_channel_choice_goes_to_the_player_and_resets_with_it()
+    {
+        using var r = new Rig();
+        r.Player.State.SourceChannels = 2;
+        r.Player.RaiseState("audio-params/channel-count");
+        Assert.True(r.Vm.IsStereoAudio);
+        r.Vm.StereoChannelIndex = 1;
+        Assert.Contains("SetStereoChannel Left", r.Player.Calls);
+        Assert.Contains("ShowText Left channel only (on both speakers)", r.Player.Calls);
+        Assert.Equal(1, r.Vm.StereoChannelIndex);
+        r.Vm.StereoChannelIndex = 2;
+        Assert.Contains("SetStereoChannel Right", r.Player.Calls);
+
+        // The next video starts with both channels (the player resets and says so).
+        var changed = new List<string?>();
+        r.Vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        r.Player.State.StereoChannel = StereoChannel.Both;
+        r.Player.RaiseState("stereo-channel");
+        Assert.Equal(0, r.Vm.StereoChannelIndex);
+        Assert.Contains(nameof(MainViewModel.StereoChannelIndex), changed);
+        // Nothing is saved: it's for that video only.
+        Assert.DoesNotContain("stereoChannel", File.Exists(r.Store.FilePath) ? File.ReadAllText(r.Store.FilePath) : "");
     }
 
     [Fact]
@@ -904,5 +993,178 @@ public class PlaybackSettingTests
         Assert.False(r.Vm.ControlsVisible);
         r.Vm.ReportPointer(110, 105, insideWindow: true);
         Assert.True(r.Vm.ControlsVisible);
+    }
+}
+
+public class EngineStateTests
+{
+    [Fact]
+    public async Task Switching_engines_takes_over_the_new_engines_state()
+    {
+        using var r = new Rig(discEngine: true);
+        var disc = Path.Combine(Path.GetTempPath(), "paramaja-app-tests", Guid.NewGuid().ToString("N"), "MOVIE");
+        File.WriteAllText(Path.Combine(Directory.CreateDirectory(Path.Combine(disc, "VIDEO_TS")).FullName, "VIDEO_TS.IFO"), "");
+        await r.Vm.OpenInputAsync(disc);
+        Assert.True(r.Vm.IsDiscMode);
+        // The disc is paused and interlaced.
+        var d = r.DiscPlayer!.State;
+        d.IsPaused = true;
+        d.SourceInterlaced = d.DeinterlaceActive = true;
+        d.DeinterlaceFilter = "BWDIF";
+        d.VideoFormat = "mpeg2video";
+        foreach (var name in new[] { "pause", "deinterlace-active", "video-format" }) r.DiscPlayer.RaiseState(name);
+        Assert.True(r.Vm.IsPaused);
+        Assert.Equal("BWDIF", r.Vm.DeinterlaceBadge);
+        Assert.Equal("MPEG-2", r.Vm.CodecBadge);
+
+        // A progressive file plays through mpv, whose pause was already off: no event comes.
+        r.Player.State.VideoFormat = "h264";
+        await r.Vm.OpenInputAsync(r.MediaFile());
+        Assert.False(r.Vm.IsDiscMode);
+        Assert.False(r.Vm.IsPaused, "the play button shows pause while the file plays");
+        Assert.Equal("", r.Vm.DeinterlaceBadge);
+        Assert.False(r.Vm.IsInterlacedVideo);
+        Assert.Equal("H.264", r.Vm.CodecBadge);
+    }
+
+    [Fact]
+    public void A_missed_pause_event_is_healed_by_asking_the_engine()
+    {
+        using var r = new Rig();
+        r.Vm.IsIdle = false;
+        r.Vm.IsPaused = true; // a stray "paused" left the play icon up
+        r.Player.LivePaused = false;
+        r.Vm.TickAutoHide(DateTime.UtcNow);
+        Assert.False(r.Vm.IsPaused);
+        r.Player.LivePaused = true;
+        r.Vm.TickAutoHide(DateTime.UtcNow);
+        Assert.True(r.Vm.IsPaused);
+        // An engine that can't tell is left alone.
+        r.Player.LivePaused = null;
+        r.Vm.IsPaused = false;
+        r.Vm.TickAutoHide(DateTime.UtcNow);
+        Assert.False(r.Vm.IsPaused);
+    }
+
+    [Fact]
+    public void The_position_shown_is_throttled_and_skipped_while_the_controls_are_hidden()
+    {
+        using var r = new Rig();
+        r.Vm.IsIdle = false;
+        r.Player.State.Duration = 600;
+        r.Player.RaiseState("duration");
+        var changes = 0;
+        r.Vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.Position)) changes++; };
+        for (var i = 1; i <= 25; i++) // a second of 25 fps video, each frame reporting its position
+        {
+            r.Player.State.Position = 10 + i * 0.04;
+            r.Player.RaiseState("time-pos");
+        }
+        Assert.InRange(changes, 1, 2);
+
+        // A seek shows at once.
+        r.Player.State.Position = 300;
+        r.Player.RaiseState("time-pos");
+        Assert.Equal(300, r.Vm.Position);
+
+        // Hidden controls: no updates, then the current one as they show.
+        r.Vm.ControlsVisible = false;
+        changes = 0;
+        r.Player.State.Position = 300.5;
+        r.Player.RaiseState("time-pos");
+        Assert.Equal(0, changes);
+        r.Vm.NotifyActivity();
+        Assert.Equal(300.5, r.Vm.Position);
+
+        // Pausing shows the exact position.
+        r.Player.State.Position = 300.6;
+        r.Player.State.IsPaused = true;
+        r.Player.RaiseState("pause");
+        Assert.Equal(300.6, r.Vm.Position);
+    }
+
+    [Fact]
+    public void An_open_menu_keeps_the_controls_up()
+    {
+        using var r = new Rig();
+        r.Vm.IsIdle = false;
+        var start = DateTime.UtcNow;
+        r.Vm.MenuOpened();
+        r.Vm.TickAutoHide(start + MainViewModel.ControlsHideDelay * 3);
+        Assert.True(r.Vm.ControlsVisible);
+        r.Vm.MenuClosed();
+        r.Vm.MenuClosed(); // a stray close doesn't count below zero
+        Assert.False(r.Vm.IsMenuOpen);
+        r.Vm.TickAutoHide(DateTime.UtcNow + MainViewModel.ControlsHideDelay * 2);
+        Assert.False(r.Vm.ControlsVisible);
+    }
+
+    [Fact]
+    public void Create_log_saves_every_recorded_second_to_the_logs_folder()
+    {
+        using var r = new Rig();
+        r.Vm.IsIdle = false;
+        r.Player.State.VideoFormat = "hevc";
+        r.Player.State.VideoWidth = 3840;
+        r.Player.State.VideoHeight = 2160;
+        r.Player.Messages.Add("[vo/gpu-next] warn: something to see");
+        long drops = 0;
+        var at = DateTime.UtcNow;
+        r.Player.NextSample = () => new HealthSample(at = at.AddSeconds(1), true, false, drops += 2, 0, 1, null, 4, null, 60)
+        {
+            Position = (at - DateTime.UtcNow).TotalSeconds,
+            OutputFps = 23.976,
+            DisplayFps = 60,
+            MeasuredDisplayFps = 143.9,
+            GpuMicroseconds = 2500,
+        };
+        for (var i = 0; i < 5; i++) r.Vm.RefreshHealth();
+        r.Vm.CreateLogCommand.Execute(null);
+
+        var file = r.Vm.LastLogFile!;
+        Assert.StartsWith(r.Paths.Logs, file);
+        Assert.Matches(@"paramaja-\d{8}-\d{6}\.log$", file);
+        var log = File.ReadAllText(file);
+        Assert.Contains("HEVC 3840x2160", log);
+        Assert.Contains("Engine: mpv", log);
+        Assert.Contains("frame timing: audio clock", log);
+        Assert.Contains("143.9", log);                     // the refresh rate mpv measured
+        Assert.Contains("Frames: dropped 8", log);         // 5 samples, 2 more each second
+        Assert.Contains("GPU time per frame: 2.50 ms", log);
+        Assert.Contains("something to see", log);
+        Assert.Equal(5, log.Split('\n').Count(l => l.Contains(" playing ")));
+        Assert.Contains("Saved", r.Vm.LogStatus);
+
+        // A new video starts a new recording.
+        r.Player.RaiseLoaded();
+        r.Vm.CreateLogCommand.Execute(null);
+        Assert.Contains("nothing recorded yet", File.ReadAllText(r.Vm.LastLogFile!));
+    }
+
+    [Fact]
+    public void The_high_performance_gpu_is_chosen_only_where_windows_wouldnt_pick_it()
+    {
+        GpuAdapter Gpu(string name, int order) => new(name, 0x10de, 6L << 30, order);
+        // A laptop: the gaming GPU ranks first by performance, but Windows hands out the built-in one.
+        Assert.Equal("NVIDIA GeForce RTX 4060 Laptop GPU",
+            GpuAdapters.Preferred([Gpu("NVIDIA GeForce RTX 4060 Laptop GPU", 1), Gpu("Intel(R) UHD Graphics", 0)]));
+        // A desktop with the monitor on the graphics card, or one GPU: nothing to change.
+        Assert.Null(GpuAdapters.Preferred([Gpu("AMD Radeon RX 9060 XT", 0), Gpu("AMD Radeon(TM) Graphics", 1)]));
+        Assert.Null(GpuAdapters.Preferred([Gpu("AMD Radeon RX 9060 XT", 0)]));
+        Assert.Null(GpuAdapters.Preferred([]));
+        Assert.Contains("high-performance", GpuAdapters.Describe([Gpu("A", 1), Gpu("B", 0)]));
+        Assert.Contains("Windows' default", GpuAdapters.Describe([Gpu("A", 1), Gpu("B", 0)]));
+        // Off Windows there's nothing to list; on Windows (CI) it lists without failing, software adapters left out.
+        var adapters = GpuAdapters.List();
+        if (!OperatingSystem.IsWindows()) Assert.Empty(adapters);
+        Assert.DoesNotContain(adapters, a => a.Description.Contains("Basic Render", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void A_log_can_be_made_with_nothing_playing()
+    {
+        using var r = new Rig(attach: false);
+        r.Vm.CreateLogCommand.Execute(null);
+        Assert.Contains("Nothing is playing", File.ReadAllText(r.Vm.LastLogFile!));
     }
 }

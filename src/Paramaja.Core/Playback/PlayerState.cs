@@ -1,5 +1,8 @@
 namespace Paramaja.Core.Playback;
 
+/// <summary>Which channel of a stereo source plays, on both speakers; for the playing video only.</summary>
+public enum StereoChannel { Both, Left, Right }
+
 /// <summary>Latest values of the mpv properties the UI cares about.</summary>
 public sealed class PlayerState
 {
@@ -15,8 +18,15 @@ public sealed class PlayerState
     public int? Chapter { get; set; }
     /// <summary>"BWDIF" while deinterlacing, otherwise null.</summary>
     public string? DeinterlaceFilter { get; set; }
-    /// <summary>The current file's frames are flagged interlaced.</summary>
+    /// <summary>The playing video is interlaced: only then is there a deinterlacing switch.</summary>
     public bool SourceInterlaced { get; set; }
+    /// <summary>How that was found out: <see cref="ByFlags"/> or <see cref="ByPicture"/>; null while not interlaced.</summary>
+    public string? InterlaceDetectedBy { get; set; }
+    public const string ByFlags = "flags";
+    public const string ByPicture = "picture";
+    /// <summary>The switch: on for every interlaced video, until switched off for that video.</summary>
+    public bool DeinterlacingOn { get; set; } = true;
+    public StereoChannel StereoChannel { get; set; }
     public bool EofReached { get; set; }
     public bool IsIdle { get; set; } = true;
     public double? BufferingPercent { get; set; }

@@ -50,11 +50,16 @@ public sealed class PlayerService : IPlayer
             try { _mpv.SetOption(k, v); }
             catch (MpvException e) when (e.Code == MpvException.OptionNotFound && MpvOptionsBuilder.OptionalOptions.Contains(k)) { }
         }
-        foreach (var (k, v) in extraOptions ?? []) _mpv.SetOption(k, v);
+        foreach (var (k, v) in extraOptions ?? [])
+        {
+            try { _mpv.SetOption(k, v); }
+            catch (MpvException e) when (e.Code == MpvException.OptionNotFound && MpvOptionsBuilder.OptionalOptions.Contains(k)) { }
+        }
+        _audioFilters = MpvOptionsBuilder.AudioFilters(settings, null);
         Wire();
-        _mpv.Initialize();
+        _mpv.Initialize("info"); // info and up go into the log (Create Log), not just warnings
         Observe();
-        _mpv.AddHook("on_preloaded", DecideHardwareDecoding);
+        _mpv.AddHook("on_preloaded", OnPreloaded);
         BindKeys();
     }
 
@@ -69,11 +74,21 @@ public sealed class PlayerService : IPlayer
         };
         _mpv.StartFile += () =>
         {
-            // Every file is judged on its own frames: drop the previous file's verdict.
-            _sourceInterlaced = false;
-            State.SourceInterlaced = false;
+            // Every file is judged on its own frames, and the switches made for the previous one
+            // (deinterlacing, hardware decoding, a stereo channel) don't carry over.
+            lock (_deinterlaceLock)
+            {
+                _file++;
+                _probe?.Cancel();
+                _probe = null;
+                _sourceInterlaced = false;
+                _interlaceBy = null;
+                _fieldOrder = null;
+                _deinterlaceOff = false;
+            }
             ResetHardwareDecoding();
-            if (Settings.Deinterlace == DeinterlaceMode.Auto) ApplyDeinterlace();
+            ApplyDeinterlace();
+            SetStereoChannel(StereoChannel.Both);
         };
         _mpv.EndFile += (reason, err) =>
             EndFile?.Invoke(reason, reason == EndFileReason.Error ? MpvClient.ErrorString(err) : null);
@@ -83,8 +98,16 @@ public sealed class PlayerService : IPlayer
             else if (args.Length >= 1 && args[0] == MouseMessage) MouseMoved?.Invoke();
             else if (args.Length >= 1 && args[0] == ClickMessage) MouseClicked?.Invoke();
         };
-        _mpv.LogMessage += m => Log?.Invoke(m);
+        _mpv.LogMessage += m =>
+        {
+            _messages.Add($"[{m.Prefix}] {m.Level}: {m.Text}");
+            Log?.Invoke(m);
+        };
     }
+
+    private readonly RecentLines _messages = new();
+
+    public IReadOnlyList<string> RecentMessages() => _messages.ToList();
 
     private void Observe()
     {
@@ -141,16 +164,13 @@ public sealed class PlayerService : IPlayer
             case "video-frame-info/interlaced":
                 // Latched per file: once the deinterlacer runs, the frames it outputs are
                 // progressive, and un-latching would switch it straight off again.
-                if (value as bool? == true && !_sourceInterlaced)
-                {
-                    _sourceInterlaced = true;
-                    s.SourceInterlaced = true;
-                    if (Settings.Deinterlace == DeinterlaceMode.Auto) ApplyDeinterlace();
-                }
+                if (value as bool? == true) MarkInterlaced(PlayerState.ByFlags, null);
                 break;
             case "audio-params/channel-count":
                 s.SourceChannels = ToInt(value);
-                ApplyAudioChannels(); // the downmixes depend on what the source has
+                // The downmix and the stereo channel choice depend on what the source has.
+                ApplyAudioChannels();
+                ApplyAudioFilters();
                 break;
             case "audio-out-params/channel-count": s.OutputChannels = ToInt(value); break;
             case "video-params/w": s.VideoWidth = ToInt(value); break;
@@ -278,6 +298,8 @@ public sealed class PlayerService : IPlayer
         catch (MpvException) { }
     }
 
+    public bool? QueryPaused() => _mpv.GetFlag("pause");
+
     public void ShowText(string text, int durationMs = 1500) =>
         _mpv.TryCommand("show-text", text, durationMs.ToString(CultureInfo.InvariantCulture));
 
@@ -320,11 +342,30 @@ public sealed class PlayerService : IPlayer
     }
     public void ApplyAudio()
     {
-        ApplyGroup(MpvOptionsBuilder.Audio(Settings, State.SourceChannels));
+        ApplyGroup(MpvOptionsBuilder.Audio(Settings, State.SourceChannels, _stereoChannel));
         _audioChannels = MpvOptionsBuilder.AudioChannels(Settings, State.SourceChannels);
+        _audioFilters = MpvOptionsBuilder.AudioFilters(Settings, State.SourceChannels, _stereoChannel);
     }
 
     private string? _audioChannels;
+    private string? _audioFilters;
+    private StereoChannel _stereoChannel;
+
+    /// <summary>One channel of a stereo source on both speakers, for the playing video only.</summary>
+    public void SetStereoChannel(StereoChannel channel)
+    {
+        _stereoChannel = channel;
+        State.StereoChannel = channel;
+        ApplyAudioFilters();
+        StateChanged?.Invoke("stereo-channel");
+    }
+
+    private void ApplyAudioFilters()
+    {
+        var af = MpvOptionsBuilder.AudioFilters(Settings, State.SourceChannels, _stereoChannel);
+        if (af == _audioFilters) return;
+        if (_mpv.TrySetProperty("af", af)) _audioFilters = af;
+    }
 
     /// <summary>Re-picks the output layout when the source's channel count becomes known.</summary>
     private void ApplyAudioChannels()
@@ -337,8 +378,7 @@ public sealed class PlayerService : IPlayer
     /// <summary>Applies to the next web link opened.</summary>
     public void ApplyStreamQuality() => _mpv.TrySetProperty("ytdl-format", YtDlp.Format(Settings.StreamMaxHeight));
 
-    public void ApplyDisplayFps() =>
-        _mpv.TrySetProperty("display-fps-override", Settings.DisplayFps.ToString(CultureInfo.InvariantCulture));
+    public void ApplyTiming() => ApplyGroup(MpvOptionsBuilder.Timing(Settings));
     private bool _streaming;
     private int _stalls;
 
@@ -364,7 +404,56 @@ public sealed class PlayerService : IPlayer
         InputBytesPerSecond: _mpv.GetDouble("cache-speed"),
         CachedSeconds: _mpv.GetDouble("demuxer-cache-duration"),
         FileSize: _mpv.GetLong("file-size"),
-        Duration: State.Duration);
+        Duration: State.Duration)
+    {
+        Position = State.Position,
+        OutputFps = _mpv.GetDouble("estimated-vf-fps"),
+        DisplayFps = _mpv.GetDouble("display-fps"),
+        MeasuredDisplayFps = _mpv.GetDouble("estimated-display-fps"),
+        VsyncJitter = _mpv.GetDouble("vsync-jitter"),
+        AvSync = _mpv.GetDouble("avsync"),
+        MistimedFrames = _mpv.GetLong("mistimed-frame-count"),
+        GpuMicroseconds = GpuFrameTime(),
+    };
+
+    /// <summary>
+    /// The GPU's average time for a new frame, over all its render passes, in microseconds.
+    /// mpv gives them as one node (vo-passes: {"fresh": [{"desc", "avg", …}, …]}, in ns).
+    /// </summary>
+    private double? GpuFrameTime() => GpuFrameTime(_mpv.GetString("vo-passes"));
+
+    internal static double? GpuFrameTime(string? passes)
+    {
+        if (string.IsNullOrEmpty(passes)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(passes);
+            if (!doc.RootElement.TryGetProperty("fresh", out var fresh) || fresh.ValueKind != System.Text.Json.JsonValueKind.Array) return null;
+            long total = 0;
+            foreach (var pass in fresh.EnumerateArray())
+                if (pass.TryGetProperty("avg", out var avg) && avg.TryGetInt64(out var ns)) total += ns;
+            return total > 0 ? total / 1000.0 : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    /// <summary>What the log (Create Log) says about mpv and how it's playing the video.</summary>
+    public IReadOnlyList<KeyValuePair<string, string>> Details()
+    {
+        string V(string property) => _mpv.GetString(property) is { Length: > 0 } v ? v : "n/a";
+        return
+        [
+            new("Engine", $"mpv {V("mpv-version")}, {V("ffmpeg-version")}"),
+            new("Video output", $"{V("current-vo")}, {V("current-gpu-context")}, gpu-api {V("gpu-api")}, d3d11-adapter {V("d3d11-adapter")}"),
+            new("Video codec", $"{V("video-codec")}, profile {V("current-tracks/video/codec-profile")}"),
+            new("Pixel format", $"{V("video-params/pixelformat")} (hardware {V("video-params/hw-pixelformat")})"),
+            new("Hardware decoding", $"wanted {(_hardwareWanted ? "yes" : "no")}, asked for {_hwdec ?? "n/a"}, in use {V("hwdec-current")}"),
+            new("Interlaced", State.SourceInterlaced ? $"yes ({State.InterlaceDetectedBy}), deinterlacing {(State.DeinterlacingOn ? "on" : "switched off")}" : "no"),
+            new("Video filters", V("vf")),
+            new("Frame timing", $"video-sync {V("video-sync")}, display-fps-override {V("display-fps-override")}, framedrop {V("framedrop")}"),
+            new("Audio", $"{V("audio-codec-name")} {V("audio-params/channel-count")}ch → {V("audio-out-params/channel-count")}ch, ao {V("current-ao")}, af {V("af")}"),
+        ];
+    }
 
     /// <summary>The rendering pipeline in use: chosen in settings, or picked by Auto.</summary>
     public RenderProfile RenderProfile { get; private set; }
@@ -410,39 +499,100 @@ public sealed class PlayerService : IPlayer
 
     private readonly object _deinterlaceLock = new();
     private bool _sourceInterlaced;
+    private string? _interlaceBy;
+    /// <summary>The picture check's field order; null where the frames' own flags give it.</summary>
+    private FieldOrder? _fieldOrder;
+    /// <summary>Switched off for this video; every new interlaced video starts with it on.</summary>
+    private bool _deinterlaceOff;
     private string? _deinterlaceFilter;
     private string? _hwdec;
+    /// <summary>Counts files, so a picture check's late answer can't land on the next one.</summary>
+    private int _file;
+    private CancellationTokenSource? _probe;
 
     /// <summary>
-    /// Inserts or removes our deinterlacing filter. Auto follows the frames' own interlaced
-    /// flag; the filter is always BWDIF, never the GPU's own deinterlacer.
+    /// Inserts or removes our deinterlacing filter: BWDIF for every interlaced video, unless its
+    /// switch is off; never the GPU's own deinterlacer. Publishes the state every time, so a new
+    /// file always reports its own.
     /// </summary>
     public void ApplyDeinterlace()
     {
         lock (_deinterlaceLock)
         {
-            var wanted = Settings.Deinterlace switch
+            var filter = _sourceInterlaced && !_deinterlaceOff ? MpvOptionsBuilder.DeinterlaceFilterFor(_fieldOrder) : null;
+            if (filter != _deinterlaceFilter)
             {
-                DeinterlaceMode.On => true,
-                DeinterlaceMode.Off => false,
-                _ => _sourceInterlaced,
-            };
-            var filter = wanted ? MpvOptionsBuilder.DeinterlaceFilter : null;
-            if (filter == _deinterlaceFilter) return;
-
-            if (_deinterlaceFilter is not null) _mpv.TryCommand("vf", "remove", MpvOptionsBuilder.DeinterlaceLabel);
-            // Software filters need decoded frames in system memory, so hardware decoding
-            // switches to its copy-back mode while one is active (interlaced video is at most
-            // 1080i, so the copy is cheap).
-            SetHwdec(filter is not null);
-            if (filter is not null && !_mpv.TryCommand("vf", "add", filter)) filter = null;
-
-            _deinterlaceFilter = filter;
-            State.DeinterlaceActive = filter is not null;
-            State.DeinterlaceFilter = filter is null ? null : "BWDIF";
+                if (_deinterlaceFilter is not null) _mpv.TryCommand("vf", "remove", MpvOptionsBuilder.DeinterlaceLabel);
+                // Software filters need decoded frames in system memory, so hardware decoding
+                // switches to its copy-back mode while one is active (interlaced video is at most
+                // 1080i, so the copy is cheap). Progressive video never needs it.
+                SetHwdec(filter is not null);
+                if (filter is not null && !_mpv.TryCommand("vf", "add", filter)) filter = null;
+                _deinterlaceFilter = filter;
+            }
+            State.SourceInterlaced = _sourceInterlaced;
+            State.InterlaceDetectedBy = _sourceInterlaced ? _interlaceBy : null;
+            State.DeinterlacingOn = !_deinterlaceOff;
+            State.DeinterlaceActive = _deinterlaceFilter is not null;
+            State.DeinterlaceFilter = _deinterlaceFilter is null ? null : "BWDIF";
         }
         StateChanged?.Invoke("deinterlace-active");
     }
+
+    /// <summary>The video turned out interlaced: by its frames' flags, or by the picture check.</summary>
+    private void MarkInterlaced(string by, FieldOrder? order, int? file = null)
+    {
+        lock (_deinterlaceLock)
+        {
+            if (_sourceInterlaced || file is { } f && f != _file) return;
+            _sourceInterlaced = true;
+            _interlaceBy = by;
+            _fieldOrder = order;
+        }
+        ApplyDeinterlace();
+    }
+
+    /// <summary>The video menu's switch, there only for interlaced video; it lasts for that video.</summary>
+    public void SetDeinterlacing(bool on)
+    {
+        lock (_deinterlaceLock)
+        {
+            if (!_sourceInterlaced || _deinterlaceOff == !on) return;
+            _deinterlaceOff = !on;
+        }
+        ApplyDeinterlace();
+    }
+
+    /// <summary>
+    /// Frames without interlace flags may still be interlaced: tape captures saved as lossless or
+    /// MJPEG AVIs, some rips. Where the CPU decodes anyway (so no copy-back is needed), a second,
+    /// headless mpv checks the picture (InterlaceProbe); hardware-decoded video goes by its flags.
+    /// </summary>
+    private void StartInterlaceProbe((string? Codec, int? Width, int? Height, double? Fps) video)
+    {
+        if (_streaming || _hardwareWanted || video.Codec is null || !InterlaceVerdict.Applies(video.Height, video.Fps)) return;
+        if (_mpv.GetString("path") is not { } path || !File.Exists(path)) return; // local files only
+        var start = InterlaceProbe.StartFor(_mpv.GetDouble("duration"));
+        CancellationTokenSource cts;
+        int file;
+        lock (_deinterlaceLock)
+        {
+            cts = _probe = new CancellationTokenSource();
+            file = _file;
+        }
+        ProbeTask = Task.Run(async () =>
+        {
+            try
+            {
+                if (await InterlaceProbe.AnalyzeAsync(path, start, cts.Token) is { } order && !cts.IsCancellationRequested)
+                    MarkInterlaced(PlayerState.ByPicture, order, file);
+            }
+            catch (Exception e) when (e is MpvException or OperationCanceledException or ObjectDisposedException or DllNotFoundException) { }
+        });
+    }
+
+    /// <summary>The latest picture check; tests wait for it.</summary>
+    internal Task ProbeTask { get; private set; } = Task.CompletedTask;
 
     // ---- Hardware decoding: decided for each video ------------------------------------------
 
@@ -467,15 +617,28 @@ public sealed class PlayerService : IPlayer
     }
 
     /// <summary>
-    /// Runs once the file is open but before its decoders start, so the video decodes the
-    /// chosen way from its first frame (switching later raced with interlace detection).
+    /// Runs once the file is open but before its tracks are picked and its decoders start, so
+    /// the video decodes the chosen way from its first frame (switching later raced with
+    /// interlace detection) and a stereo audio track plays from the start.
     /// </summary>
-    private void DecideHardwareDecoding()
+    private void OnPreloaded()
     {
-        var (codec, width, height) = VideoTrackToPlay();
-        _hardwareWanted = MpvOptionsBuilder.UseHardwareDecoding(codec, width, height);
+        var video = VideoTrackToPlay();
+        _hardwareWanted = MpvOptionsBuilder.UseHardwareDecoding(video.Codec, video.Width, video.Height);
         lock (_deinterlaceLock) SetHwdec(_deinterlaceFilter is not null);
         PublishHardwareDecoding();
+        PickStereoAudio();
+        StartInterlaceProbe(video);
+    }
+
+    /// <summary>
+    /// A stereo track where the file has several audio tracks (concert discs often carry the
+    /// stereo mix beside 5.1 and DTS). File-local, so it doesn't carry over to the next file.
+    /// </summary>
+    private void PickStereoAudio()
+    {
+        if (MpvOptionsBuilder.StereoTrack(ReadTracks(), Settings.PreferredAudioLanguages) is { } id)
+            _mpv.TrySetProperty("file-local-options/aid", id.ToString(CultureInfo.InvariantCulture));
     }
 
     /// <summary>
@@ -483,7 +646,7 @@ public sealed class PlayerService : IPlayer
     /// current-tracks is still empty): the file's default video track, else its first, leaving
     /// out cover art.
     /// </summary>
-    private (string? Codec, int? Width, int? Height) VideoTrackToPlay()
+    private (string? Codec, int? Width, int? Height, double? Fps) VideoTrackToPlay()
     {
         var count = _mpv.GetLong("track-list/count") ?? 0;
         int? pick = null;
@@ -494,9 +657,10 @@ public sealed class PlayerService : IPlayer
             if (_mpv.GetFlag(p + "default") == true) { pick = i; break; }
             pick ??= i;
         }
-        if (pick is not { } t) return (null, null, null);
+        if (pick is not { } t) return (null, null, null, null);
         var track = $"track-list/{t}/";
-        return (_mpv.GetString(track + "codec"), ToInt(_mpv.GetLong(track + "demux-w")), ToInt(_mpv.GetLong(track + "demux-h")));
+        return (_mpv.GetString(track + "codec"), ToInt(_mpv.GetLong(track + "demux-w")), ToInt(_mpv.GetLong(track + "demux-h")),
+            _mpv.GetDouble(track + "demux-fps"));
     }
 
     /// <summary>
@@ -567,11 +731,6 @@ public sealed class PlayerService : IPlayer
         ApplyHdr();
     }
 
-    public void SetDeinterlace(DeinterlaceMode mode)
-    {
-        Settings.Deinterlace = mode;
-        ApplyDeinterlace();
-    }
 
     // ---- Chapters and disc titles ---------------------------------------------------------
 
@@ -614,6 +773,12 @@ public sealed class PlayerService : IPlayer
 
     public void RefreshTracks()
     {
+        Tracks = ReadTracks();
+        TracksChanged?.Invoke();
+    }
+
+    private List<TrackInfo> ReadTracks()
+    {
         var count = (int)(_mpv.GetLong("track-list/count") ?? 0);
         var list = new List<TrackInfo>(count);
         for (var i = 0; i < count; i++)
@@ -639,8 +804,7 @@ public sealed class PlayerService : IPlayer
                 _mpv.GetFlag(p + "default") ?? false,
                 ch is null ? null : (int)ch));
         }
-        Tracks = list;
-        TracksChanged?.Invoke();
+        return list;
     }
 
     public void SelectTrack(TrackType type, int? id)
@@ -670,5 +834,9 @@ public sealed class PlayerService : IPlayer
         return Math.Round(_mpv.GetDouble("sub-delay") ?? 0, 3);
     }
 
-    public void Dispose() => _mpv.Dispose();
+    public void Dispose()
+    {
+        lock (_deinterlaceLock) _probe?.Cancel();
+        _mpv.Dispose();
+    }
 }
