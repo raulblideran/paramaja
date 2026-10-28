@@ -45,7 +45,8 @@ public static partial class GpuAdapters
         private static readonly Guid IidFactory6 = new("c1b6694f-ff09-44a9-b03c-77900a0a1d17");
         private static readonly Guid IidAdapter1 = new("29038f61-3839-4626-91fd-086879011a05");
         private const int DxgiErrorNotFound = unchecked((int)0x887A0002);
-        private const uint FlagSoftware = 2;
+        private const uint FlagRemote = 1, FlagSoftware = 2;
+        private const uint MicrosoftVendorId = 0x1414;
         private const int GpuPreferenceHighPerformance = 2;
 
         // vtable slots: IUnknown 0-2, IDXGIObject 3-6, then each interface's own methods.
@@ -108,7 +109,9 @@ public static partial class GpuAdapters
                         if (hr == DxgiErrorNotFound || hr < 0) break;
                         var d = Desc(adapter);
                         Release(adapter);
-                        if (d is not { } desc || (desc.Flags & FlagSoftware) != 0) continue;
+                        // Microsoft's own adapters (the Basic Render Driver, a VM's basic display, a
+                        // remote session's) are never the one to play on, flagged as software or not.
+                        if (d is not { } desc || (desc.Flags & (FlagSoftware | FlagRemote)) != 0 || desc.VendorId == MicrosoftVendorId) continue;
                         list.Add(new GpuAdapter(new string(desc.Description).TrimEnd('\0'), desc.VendorId,
                             (long)desc.DedicatedVideoMemory, defaults.IndexOf((desc.LuidLow, desc.LuidHigh))));
                     }

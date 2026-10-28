@@ -837,6 +837,9 @@ public sealed class PlayerService : IPlayer
     public void Dispose()
     {
         lock (_deinterlaceLock) _probe?.Cancel();
+        // The picture check's own mpv closes first: none outlives its player.
+        try { ProbeTask.Wait(TimeSpan.FromSeconds(2)); }
+        catch (AggregateException) { }
         _mpv.Dispose();
     }
 }

@@ -54,3 +54,22 @@ public class GpuTimeTests
         Assert.Null(PlayerService.GpuFrameTime("not json"));
     }
 }
+
+public class InterlaceProbeParsingTests
+{
+    [Fact]
+    public void Idets_counts_are_read_from_the_whole_metadata_map()
+    {
+        // As mpv gives vf-metadata/<label> (abridged).
+        const string metadata = "{\"lavfi.idet.repeated.neither\":\"16.00\",\"lavfi.idet.single.tff\":\"290.00\"," +
+                                "\"lavfi.idet.multiple.tff\":\"301.00\",\"lavfi.idet.multiple.bff\":\"2.00\",\"lavfi.idet.multiple.progressive\":\"7.00\"," +
+                                "\"lavfi.idet.multiple.undetermined\":\"0.00\"}";
+        Assert.Equal((301L, 2L, 7L), InterlaceProbe.Counts(metadata));
+        // Before idet has counted anything, or nothing readable: no counts.
+        Assert.Null(InterlaceProbe.Counts("""{"lavfi.idet.single.tff":"1.00"}"""));
+        Assert.Null(InterlaceProbe.Counts(null));
+        Assert.Null(InterlaceProbe.Counts(""));
+        Assert.Null(InterlaceProbe.Counts("not json"));
+        Assert.Null(InterlaceProbe.Counts("[]"));
+    }
+}

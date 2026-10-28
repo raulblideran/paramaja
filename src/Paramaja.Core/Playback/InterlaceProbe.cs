@@ -84,7 +84,7 @@ public static class InterlaceProbe
         while (!ct.IsCancellationRequested && !failed && DateTime.UtcNow < deadline)
         {
             Thread.Sleep(50);
-            if (Read(mpv, "progressive") is { } p) counts = (Read(mpv, "tff") ?? 0, Read(mpv, "bff") ?? 0, p);
+            if (Counts(mpv.GetString($"vf-metadata/{Label}")) is { } c) counts = c;
             if (mpv.GetFlag("eof-reached") == true) break;
         }
         return counts;
@@ -92,7 +92,23 @@ public static class InterlaceProbe
 
     private const string Label = "paramaja-idet";
 
-    private static long? Read(MpvClient mpv, string kind) =>
-        mpv.GetString($"vf-metadata/{Label}/lavfi.idet.multiple.{kind}") is { } s
-        && double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? (long)v : null;
+    /// <summary>
+    /// idet's counts from the filter's metadata, which mpv gives as one map:
+    /// {"lavfi.idet.multiple.tff": "301.00", …}. It's read whole: asking mpv 0.37 (Ubuntu
+    /// 24.04's) for a single key of it crashed the process.
+    /// </summary>
+    internal static (long Tff, long Bff, long Progressive)? Counts(string? metadata)
+    {
+        if (string.IsNullOrEmpty(metadata)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(metadata);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
+            long? Get(string kind) =>
+                doc.RootElement.TryGetProperty($"lavfi.idet.multiple.{kind}", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String
+                && double.TryParse(v.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? (long)d : null;
+            return Get("progressive") is { } p ? (Get("tff") ?? 0, Get("bff") ?? 0, p) : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
 }
