@@ -35,13 +35,39 @@ public class PictureAndOsdTests
     }
 
     [Fact]
-    public void A_sites_qualities_come_from_what_mpvs_ytdl_hook_kept()
+    public void A_youtube_videos_qualities_come_from_what_mpvs_ytdl_hook_kept()
     {
+        const string yt = "https://www.youtube.com/watch?v=aqz-KE-bpKQ";
         const string json = """{"title": "Clip", "formats": [{"height": 1080, "vcodec": "avc1"}, {"height": 360, "vcodec": "vp9"}, {"vcodec": "none"}]}""";
-        Assert.Equal([1080, 360], PlayerService.HeightsFromYtdlHook(System.Text.Json.JsonSerializer.Serialize(json))); // quoted, as mpv gives it
-        Assert.Equal([1080, 360], PlayerService.HeightsFromYtdlHook(json));
-        Assert.Empty(PlayerService.HeightsFromYtdlHook(null));   // a file or a direct link: yt-dlp never ran
-        Assert.Empty(PlayerService.HeightsFromYtdlHook("\"oops"));
+        Assert.Equal([1080, 360], PlayerService.HeightsFromYtdlHook(yt, System.Text.Json.JsonSerializer.Serialize(json))); // quoted, as mpv gives it
+        Assert.Equal([1080, 360], PlayerService.HeightsFromYtdlHook(yt, json));
+        Assert.Empty(PlayerService.HeightsFromYtdlHook(yt, null));   // yt-dlp never ran
+        Assert.Empty(PlayerService.HeightsFromYtdlHook(yt, "\"oops"));
+        // Other sites yt-dlp reads get no quality options.
+        Assert.Empty(PlayerService.HeightsFromYtdlHook("https://archive.org/details/MichaelJacksonThriller", json));
+        Assert.Empty(PlayerService.HeightsFromYtdlHook("https://vimeo.com/76979871", json));
+    }
+
+    [Theory]
+    [InlineData("https://www.youtube.com/watch?v=aqz-KE-bpKQ", true)]
+    [InlineData("https://youtube.com/watch?v=aqz-KE-bpKQ", true)]
+    [InlineData("https://m.youtube.com/watch?v=aqz-KE-bpKQ", true)]
+    [InlineData("https://music.youtube.com/watch?v=aqz-KE-bpKQ", true)]
+    [InlineData("https://youtu.be/aqz-KE-bpKQ", true)]
+    [InlineData("https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ", true)]
+    [InlineData("https://www.youtube.com/shorts/abc", true)]
+    [InlineData("https://archive.org/details/thriller", false)]
+    [InlineData("https://vimeo.com/76979871", false)]
+    [InlineData("https://www.dailymotion.com/video/x7", false)]
+    [InlineData("http://127.0.0.1:4443/7dhGXQwR/MJ%20in%20Cork%201988_02.mp4", false)]
+    [InlineData("https://notyoutube.com/watch?v=x", false)]
+    [InlineData("https://youtube.com.evil.example/watch?v=x", false)]
+    [InlineData("/home/raul/video.mkv", false)]
+    [InlineData(null, false)]
+    public void Youtube_links_are_told_apart(string? url, bool youtube)
+    {
+        Assert.Equal(youtube, YtDlp.IsYouTube(url));
+        Assert.Equal(YtDlp.Format(youtube ? 720 : 0), YtDlp.FormatFor(url, 720));
     }
 
     [Theory]
@@ -105,19 +131,17 @@ public class Prompt7PlaybackTests
     }
 
     [MpvFact]
-    public void Another_quality_reloads_the_video_where_it_was_for_it_only()
+    public void Only_youtube_gets_the_streaming_quality()
     {
         using var h = new PlayerHarness(new PlayerSettings { StreamMaxHeight = 1080 });
+        // Anything but YouTube plays at its best, whatever the setting.
         h.OpenAndWait(TestEnvironment.Media("chapters.mkv"), paused: true);
-        h.Player.SeekAbsolute(3);
-        PlayerHarness.WaitUntil(() => Math.Abs(h.Player.State.Position - 3) < 0.2, "the seek");
+        Assert.Equal(YtDlp.Format(0), h.Player.Mpv.GetString("ytdl-format"));
+        // The video menu's quality is YouTube's only: anything else isn't reloaded.
         h.Player.ReloadStream(720);
-        PlayerHarness.WaitUntil(() => (h.Player.Mpv.GetString("ytdl-format") ?? "").Contains("720"), "the format");
-        h.WaitRestart();
-        PlayerHarness.WaitUntil(() => Math.Abs(h.Player.State.Position - 3) < 0.3, "the same place");
-        Assert.True(h.Player.State.IsPaused);
-        h.OpenAndWait(TestEnvironment.Media("sdr_h264.mp4"));
-        Assert.Contains("1080", h.Player.Mpv.GetString("ytdl-format"));
+        Thread.Sleep(300);
+        Assert.Equal(YtDlp.Format(0), h.Player.Mpv.GetString("ytdl-format"));
+        Assert.Equal("chapters.mkv", Path.GetFileName(h.Player.Mpv.GetString("path")));
     }
 
     [MpvFact]

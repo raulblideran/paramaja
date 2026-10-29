@@ -59,6 +59,22 @@ public sealed class YtDlp(string appDirectory)
         ? $"bv*[height<={maxHeight}]+ba/b[height<={maxHeight}]/bv*+ba/b"
         : "bv*+ba/b";
 
+    /// <summary>
+    /// The format for a link: YouTube's videos up to the streaming quality chosen, any other
+    /// site's (archive.org, Vimeo…) at their best. The quality options are for YouTube only.
+    /// </summary>
+    public static string FormatFor(string? url, int maxHeight) => Format(IsYouTube(url) ? maxHeight : 0);
+
+    /// <summary>A YouTube video's link: youtube.com (www., m., music.), youtu.be or youtube-nocookie.com.</summary>
+    public static bool IsYouTube(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) return false;
+        var host = uri.Host.ToLowerInvariant();
+        return host is "youtu.be" or "youtube.com" or "youtube-nocookie.com"
+               || host.EndsWith(".youtube.com", StringComparison.Ordinal)
+               || host.EndsWith(".youtube-nocookie.com", StringComparison.Ordinal);
+    }
+
     /// <summary>A video's title and the resolutions it's offered in, highest first.</summary>
     public sealed record VideoInfo(string Title, IReadOnlyList<int> Heights);
 

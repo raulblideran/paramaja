@@ -22,9 +22,11 @@ also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 - **Resize to 4:3 / Crop to 16:9** in the video menu, for the playing video: resize for any
   picture that isn't 4:3, crop (the middle of it) for any that isn't 16:9. A DVD's shape comes
   from the disc itself (libVLC doesn't tell it), so a 4:3 DVD offers only the crop.
-- **Streaming quality in the video menu:** while a YouTube (or other site's) video plays, the
-  menu lists the qualities it offers and switches to one at once, from where it was, for that
-  video. The default quality moved to Settings → Developer.
+- **YouTube quality in the video menu:** while a YouTube video plays, the menu lists the
+  qualities it offers and switches to one at once, from where it was, for that video. The
+  default quality moved to Settings → Developer. Both are for YouTube only: other sites
+  (archive.org, Vimeo…) play at their best, and direct links (MEGA's desktop app streaming
+  included) are left to the player alone.
 - **DVD badge:** a DVD shows "DVD" in the controls instead of its codec (MPEG-2 on hover).
 - **5.1 stays 5.1 on discs:** DVDs and Blu-rays played their 5.1 tracks downmixed to stereo,
   as libVLC's default stereo mode does that. They now keep every channel (a stereo track is

@@ -54,7 +54,7 @@
         <Button Content="Open screenshots folder" Command="{Binding OpenScreenshotsFolderCommand}" />
         <TextBlock Classes="section" Text="YouTube &amp; other sites" />
         <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                   Text="Links from YouTube and ~1800 other sites play through yt-dlp. Sites change often; if one stops working, update it. While one plays, the video menu can change its quality." />
+                   Text="Links from YouTube and ~1800 other sites play through yt-dlp. Sites change often; if one stops working, update it. While a YouTube video plays, the video menu can change its quality." />
         <StackPanel Orientation="Horizontal" Spacing="10">
           <Button Content="Update YouTube support" Command="{Binding UpdateYtDlpCommand}" IsEnabled="{Binding HasYtDlp}" />
           <Button Content="Open downloads folder" Command="{Binding OpenDownloadsFolderCommand}" />
@@ -174,7 +174,7 @@
             <ComboBoxItem Content="Up to 360p" />
           </ComboBox>
           <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                     Text="The quality YouTube and other sites' videos start in. While one plays, the video menu can change it for that video." />
+                     Text="The quality YouTube videos start in (other sites' play at their best). While one plays, the video menu can change it for that video." />
         </StackPanel>
       </ScrollViewer>
     </TabItem>

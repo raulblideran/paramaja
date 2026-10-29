@@ -252,7 +252,9 @@ public sealed class PlayerService : IPlayer
         _streaming = streaming;
         _stalls = 0;
         ForgetSacd();
-        ResetStreamQuality();
+        // mpv's yt-dlp hook reads ytdl-format as each link loads: YouTube's up to the streaming
+        // quality chosen, any other site's at its best.
+        _mpv.TrySetProperty("ytdl-format", YtDlp.FormatFor(pathOrUrl, Settings.StreamMaxHeight));
         if (displayTitle is not null) _mpv.SetProperty("force-media-title", displayTitle);
         else _mpv.SetProperty("force-media-title", "");
         if (streaming) LoadWithOptions(pathOrUrl, MpvOptionsBuilder.StreamingFileOptions);
@@ -429,39 +431,31 @@ public sealed class PlayerService : IPlayer
         if (_mpv.TrySetProperty("audio-channels", channels)) _audioChannels = channels;
     }
 
-    /// <summary>Applies to the next web link opened.</summary>
-    public void ApplyStreamQuality()
-    {
-        _streamQualityChanged = false;
-        _mpv.TrySetProperty("ytdl-format", YtDlp.Format(Settings.StreamMaxHeight));
-    }
-
-    /// <summary>The video menu changed the quality for the open video; the next one opened goes by the setting.</summary>
-    private bool _streamQualityChanged;
-
-    private void ResetStreamQuality()
-    {
-        if (_streamQualityChanged) ApplyStreamQuality();
-    }
+    /// <summary>Applies to the next YouTube link opened (each link sets its format as it opens).</summary>
+    public void ApplyStreamQuality() { }
 
     /// <summary>
-    /// The qualities of a site's video, from what mpv's yt-dlp hook got for the page (it keeps
-    /// yt-dlp's answer in user-data until the file ends). Nothing runs yt-dlp a second time, and
-    /// a direct link (a file on a web server, MEGA's desktop app streaming) is never handed to it:
-    /// MEGA's local server stalled when two clients read the same file at once.
+    /// The qualities of a YouTube video (the only site the quality options are for), from what
+    /// mpv's yt-dlp hook got for the page (it keeps yt-dlp's answer in user-data until the file
+    /// ends). Nothing runs yt-dlp a second time, and a direct link (a file on a web server, MEGA's
+    /// desktop app streaming) is never handed to it: MEGA's local server stalled when two clients
+    /// read the same file at once.
     /// </summary>
     private void ReadStreamHeights()
     {
-        var heights = HeightsFromYtdlHook(_mpv.GetString("user-data/mpv/ytdl/json-subprocess-result/stdout"));
+        var heights = HeightsFromYtdlHook(_mpv.GetString("path"), _mpv.GetString("user-data/mpv/ytdl/json-subprocess-result/stdout"));
         if (heights.SequenceEqual(State.StreamHeights)) return;
         State.StreamHeights = heights;
         StateChanged?.Invoke("stream-heights");
     }
 
-    /// <summary>yt-dlp's -J output as the hook kept it; a string inside user-data comes back as a JSON string (quoted, escaped).</summary>
-    internal static IReadOnlyList<int> HeightsFromYtdlHook(string? stdout)
+    /// <summary>
+    /// The heights in yt-dlp's -J output as the hook kept it, for a YouTube <paramref name="page"/>
+    /// only; a string inside user-data comes back as a JSON string (quoted, escaped).
+    /// </summary>
+    internal static IReadOnlyList<int> HeightsFromYtdlHook(string? page, string? stdout)
     {
-        if (string.IsNullOrEmpty(stdout)) return [];
+        if (string.IsNullOrEmpty(stdout) || !YtDlp.IsYouTube(page)) return [];
         try
         {
             var json = stdout.StartsWith('"') ? System.Text.Json.JsonSerializer.Deserialize<string>(stdout) ?? "" : stdout;
@@ -476,9 +470,8 @@ public sealed class PlayerService : IPlayer
     /// </summary>
     public void ReloadStream(int maxHeight)
     {
-        if (_mpv.GetString("path") is not { Length: > 0 } url) return;
+        if (_mpv.GetString("path") is not { Length: > 0 } url || !YtDlp.IsYouTube(url)) return;
         var position = State.Position;
-        _streamQualityChanged = true;
         _mpv.TrySetProperty("ytdl-format", YtDlp.Format(maxHeight));
         _keepFit = State.PictureFit;
         _stalls = 0;
@@ -1014,7 +1007,6 @@ public sealed class PlayerService : IPlayer
         if (sacd.Area(kind) is not { } area) return;
         _streaming = false;
         _stalls = 0;
-        ResetStreamQuality();
         _sacd = sacd;
         _sacdArea = kind;
         var title = sacd.AlbumTitle ?? Path.GetFileNameWithoutExtension(sacd.Path);

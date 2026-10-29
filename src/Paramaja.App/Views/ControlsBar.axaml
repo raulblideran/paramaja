@@ -207,7 +207,7 @@
                                   OnContent="Cropped to 16:9" OffContent="Crop to 16:9" />
                   </StackPanel>
                   <StackPanel x:Name="StreamQualityOptions" Spacing="6" IsVisible="{Binding HasStreamQualities}">
-                    <TextBlock Classes="section" Text="Streaming quality (this video)" />
+                    <TextBlock Classes="section" Text="YouTube quality (this video)" />
                     <ComboBox x:Name="StreamQuality" ItemsSource="{Binding StreamQualities}"
                               SelectedIndex="{Binding StreamQualityChoiceIndex}" HorizontalAlignment="Stretch" />
                   </StackPanel>

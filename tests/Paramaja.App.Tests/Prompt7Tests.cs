@@ -189,6 +189,19 @@ public class Prompt7ViewModelTests
         Assert.Empty(r.Vm.StreamQualities);
     }
 
+    [Theory]
+    [InlineData("https://archive.org/details/MichaelJacksonThriller")]
+    [InlineData("https://vimeo.com/76979871")]
+    public async Task Other_sites_get_no_quality_menu(string url)
+    {
+        using var r = new Rig();
+        await r.Vm.OpenInputAsync(url);
+        r.Player.State.StreamHeights = [1080, 720, 480]; // even if yt-dlp found some
+        r.Player.RaiseState("stream-heights");
+        Assert.False(r.Vm.HasStreamQualities);
+        Assert.Empty(r.Vm.StreamQualities);
+    }
+
     [Fact]
     public async Task A_direct_link_gets_no_quality_menu_and_nothing_else_reads_it()
     {

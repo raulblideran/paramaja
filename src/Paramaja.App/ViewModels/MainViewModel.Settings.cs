@@ -87,8 +87,8 @@ public sealed partial class MainViewModel
     /// <summary>The playing web video's qualities, best first: "Best available", then its own heights.</summary>
     public ObservableCollection<StreamQualityItem> StreamQualities { get; } = [];
 
-    /// <summary>The playing video came from a site yt-dlp reads, and offers more than one quality.</summary>
-    public bool HasStreamQualities => StreamQualities.Count > 2 && _webUrl is not null;
+    /// <summary>A YouTube video plays (the quality options are for YouTube only), and it offers more than one quality.</summary>
+    public bool HasStreamQualities => StreamQualities.Count > 2 && YtDlp.IsYouTube(_webUrl);
 
     /// <summary>The height the playing web video was asked for; 0 for the best.</summary>
     private int _streamChoice;
@@ -101,13 +101,14 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>
-    /// The qualities the engine found for a site's video (yt-dlp's answer, which mpv keeps; see
-    /// PlayerService.ReadStreamHeights). Direct links have none, and no menu.
+    /// The qualities the engine found for a YouTube video (yt-dlp's answer, which mpv keeps; see
+    /// PlayerService.ReadStreamHeights). Other sites (archive.org, Vimeo…) and direct links get no
+    /// menu: they play at their best.
     /// </summary>
     private void FillStreamQualities(IReadOnlyList<int> heights)
     {
         _fillingQualities = true;
-        Replace(StreamQualities, heights.Count == 0 || _webUrl is null ? [] : StreamQualityItem.For(heights));
+        Replace(StreamQualities, heights.Count == 0 || !YtDlp.IsYouTube(_webUrl) ? [] : StreamQualityItem.For(heights));
         _fillingQualities = false;
         OnPropertyChanged(nameof(HasStreamQualities));
         OnPropertyChanged(nameof(StreamQualityChoiceIndex));
