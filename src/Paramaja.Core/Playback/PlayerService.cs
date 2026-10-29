@@ -58,6 +58,9 @@ public sealed class PlayerService : IPlayer
         _audioFilters = MpvOptionsBuilder.AudioFilters(settings, null);
         Wire();
         _mpv.Initialize("info"); // info and up go into the log (Create Log), not just warnings
+        _osdMargin = _mpv.GetLong("osd-margin-y") ?? 16;
+        _sacdReadable = Sacd.SacdProtocol.Register(_mpv);
+        _originalAspect = _mpv.GetDouble("video-aspect-override") ?? -2;
         Observe();
         _mpv.AddHook("on_preloaded", OnPreloaded);
         BindKeys();
@@ -89,7 +92,22 @@ public sealed class PlayerService : IPlayer
             ResetHardwareDecoding();
             ApplyDeinterlace();
             SetStereoChannel(StereoChannel.Both);
+            State.HasVideo = null;
+            State.DisplayAspect = null;
+            StateChanged?.Invoke("has-video");
+            SetPictureFit(_keepFit);
+            _keepFit = PictureFit.Original;
         };
+        // The interlace flag and the channel counts are watched, but mpv reports only changes, and
+        // between two videos alike (two interlaced, two stereo) its last word could be the gap
+        // between them ("none") or nothing at all. So they're also read whenever the audio is set
+        // up and playback (re)starts.
+        _mpv.PlaybackRestart += () =>
+        {
+            if (_mpv.GetFlag("video-frame-info/interlaced") == true) MarkInterlaced(PlayerState.ByFlags, null);
+            ReadChannelsLive();
+        };
+        _mpv.AudioReconfig += ReadChannelsLive;
         _mpv.EndFile += (reason, err) =>
             EndFile?.Invoke(reason, reason == EndFileReason.Error ? MpvClient.ErrorString(err) : null);
         _mpv.ClientMessage += args =>
@@ -112,7 +130,7 @@ public sealed class PlayerService : IPlayer
     private void Observe()
     {
         foreach (var p in new[] { "time-pos", "duration", "volume", "cache-buffering-state", "demuxer-cache-time",
-                     "container-fps", "estimated-vf-fps" })
+                     "container-fps", "estimated-vf-fps", "video-params/aspect" })
             _mpv.ObserveDouble(p);
         foreach (var p in new[] { "pause", "mute", "paused-for-cache", "eof-reached", "idle-active", "seeking", "video-frame-info/interlaced" })
             _mpv.ObserveFlag(p);
@@ -128,8 +146,9 @@ public sealed class PlayerService : IPlayer
     /// When the video surface has focus mpv gets the keystrokes; forward each of our
     /// shortcuts back to us as a client message so handling is identical to the app window.
     /// Double-clicks are timed by the app from single clicks: mpv's own MBTN_LEFT_DBL isn't
-    /// reliably generated for an embedded window. On Windows the app reads clicks from the OS
-    /// instead (VideoClicks), as mpv's window doesn't reliably report them there.
+    /// reliably generated for an embedded window. The app reads clicks from the OS (VideoClicks:
+    /// a mouse hook on Windows, XInput2 on Linux), as mpv's window doesn't reliably report them;
+    /// mpv's own report is the fallback on Linux, where XInput2 may be missing.
     /// </summary>
     private void BindKeys()
     {
@@ -151,6 +170,12 @@ public sealed class PlayerService : IPlayer
             case "demuxer-cache-time": s.CacheTime = value as double?; break;
             case "container-fps": s.ContainerFps = value as double?; break;
             case "estimated-vf-fps": s.OutputFps = value as double?; break;
+            case "video-params/aspect":
+                // The source's own shape: with the picture stretched to 4:3 mpv reports 4:3.
+                if (s.PictureFit == PictureFit.Resize4x3) return;
+                s.DisplayAspect = value as double?;
+                if (s.PictureFit == PictureFit.Crop16x9) ApplyCrop(); // the crop needs the shape
+                break;
             case "pause": s.IsPaused = value as bool? ?? false; break;
             case "mute": s.IsMuted = value as bool? ?? false; break;
             case "paused-for-cache":
@@ -173,9 +198,13 @@ public sealed class PlayerService : IPlayer
                 ApplyAudioFilters();
                 break;
             case "audio-out-params/channel-count": s.OutputChannels = ToInt(value); break;
-            case "video-params/w": s.VideoWidth = ToInt(value); break;
+            case "video-params/w":
+                s.VideoWidth = ToInt(value);
+                if (s.PictureFit == PictureFit.Crop16x9) ApplyCrop();
+                break;
             case "video-params/h":
                 s.VideoHeight = ToInt(value);
+                if (s.PictureFit == PictureFit.Crop16x9) ApplyCrop();
                 // Auto picks the profile from the video's size: Balanced for 4K.
                 if (Settings.RenderQuality == RenderQuality.Auto) ApplyRenderQuality();
                 break;
@@ -202,6 +231,18 @@ public sealed class PlayerService : IPlayer
 
     private static int? ToInt(object? v) => v is long l ? (int)l : null;
 
+    /// <summary>The source's and the output's channel counts and the duration, asked live; a change goes through as an event would.</summary>
+    private void ReadChannelsLive()
+    {
+        foreach (var name in new[] { "audio-params/channel-count", "audio-out-params/channel-count" })
+        {
+            var live = _mpv.GetLong(name);
+            var known = name.StartsWith("audio-params") ? State.SourceChannels : State.OutputChannels;
+            if (ToInt(live) != known) OnProperty(name, live);
+        }
+        if (_mpv.GetDouble("duration") is { } duration && Math.Abs(duration - State.Duration) > 0.001) OnProperty("duration", duration);
+    }
+
     // ---- Commands -------------------------------------------------------------------------
 
     /// <param name="streaming">Torrent, MEGA or web stream: buffer in bigger chunks before playing.</param>
@@ -209,6 +250,8 @@ public sealed class PlayerService : IPlayer
     {
         _streaming = streaming;
         _stalls = 0;
+        ForgetSacd();
+        ResetStreamQuality();
         if (displayTitle is not null) _mpv.SetProperty("force-media-title", displayTitle);
         else _mpv.SetProperty("force-media-title", "");
         if (streaming) LoadWithOptions(pathOrUrl, MpvOptionsBuilder.StreamingFileOptions);
@@ -224,8 +267,9 @@ public sealed class PlayerService : IPlayer
     {
         _streaming = false;
         _stalls = 0;
+        ForgetSacd();
         _mpv.SetProperty(bluray ? "bluray-device" : "dvd-device", root);
-        _mpv.SetProperty("force-media-title", Path.GetFileName(root));
+        _mpv.SetProperty("force-media-title", DiscTitle(root));
         _mpv.Command("loadfile", bluray ? "bd://" : "dvd://", "replace");
         _mpv.SetProperty("pause", false);
     }
@@ -238,10 +282,19 @@ public sealed class PlayerService : IPlayer
     {
         _streaming = false;
         _stalls = 0;
+        ForgetSacd();
         _mpv.SetProperty("cdda-device", device);
         _mpv.SetProperty("force-media-title", "Audio CD");
         _mpv.Command("loadfile", "cdda://", "replace");
         _mpv.SetProperty("pause", false);
+    }
+
+    /// <summary>A disc's name: its folder's, or an image's file name without the extension.</summary>
+    internal static string DiscTitle(string root)
+    {
+        var trimmed = root.TrimEnd('/', '\\');
+        if (File.Exists(trimmed)) return Path.GetFileNameWithoutExtension(trimmed);
+        return Path.GetFileName(trimmed) is { Length: > 0 } name ? name : root;
     }
 
     /// <summary>
@@ -376,7 +429,68 @@ public sealed class PlayerService : IPlayer
     }
 
     /// <summary>Applies to the next web link opened.</summary>
-    public void ApplyStreamQuality() => _mpv.TrySetProperty("ytdl-format", YtDlp.Format(Settings.StreamMaxHeight));
+    public void ApplyStreamQuality()
+    {
+        _streamQualityChanged = false;
+        _mpv.TrySetProperty("ytdl-format", YtDlp.Format(Settings.StreamMaxHeight));
+    }
+
+    /// <summary>The video menu changed the quality for the open video; the next one opened goes by the setting.</summary>
+    private bool _streamQualityChanged;
+
+    private void ResetStreamQuality()
+    {
+        if (_streamQualityChanged) ApplyStreamQuality();
+    }
+
+    /// <summary>
+    /// The page is opened again with the new format: mpv's yt-dlp hook reads ytdl-format as each
+    /// link loads. It starts where it was, paused or not as it was, with the picture as it was.
+    /// </summary>
+    public void ReloadStream(int maxHeight)
+    {
+        if (_mpv.GetString("path") is not { Length: > 0 } url) return;
+        var position = State.Position;
+        _streamQualityChanged = true;
+        _mpv.TrySetProperty("ytdl-format", YtDlp.Format(maxHeight));
+        _keepFit = State.PictureFit;
+        _stalls = 0;
+        LoadWithOptions(url, MpvOptionsBuilder.StreamingFileOptions
+                             + ",start=" + position.ToString("0.###", CultureInfo.InvariantCulture));
+    }
+
+    // ---- On-screen messages and the picture's shape ---------------------------------------------
+
+    /// <summary>mpv's own margin above its messages, in its scaled pixels (720 to the window's height).</summary>
+    private readonly long _osdMargin;
+
+    public void SetOsdTopInset(double fraction) =>
+        _mpv.TrySetProperty("osd-margin-y", MpvOptionsBuilder.OsdMarginBelow(fraction, _osdMargin).ToString(CultureInfo.InvariantCulture));
+
+    /// <summary>mpv's default for video-aspect-override (the video's own shape), to go back to.</summary>
+    private readonly double _originalAspect;
+    /// <summary>Carried over a reload of the same video at another quality.</summary>
+    private PictureFit _keepFit;
+
+    public void SetPictureFit(PictureFit fit)
+    {
+        State.PictureFit = fit;
+        _mpv.TrySetProperty("video-aspect-override", fit == PictureFit.Resize4x3
+            ? "4:3"
+            : _originalAspect.ToString(CultureInfo.InvariantCulture));
+        ApplyCrop();
+        StateChanged?.Invoke("picture-fit");
+    }
+
+    /// <summary>The 16:9 crop in the source's pixels; needs the video's size and shape, so it's applied again once they're known.</summary>
+    private void ApplyCrop()
+    {
+        var crop = State.PictureFit == PictureFit.Crop16x9
+            ? MpvOptionsBuilder.CropTo(State.VideoWidth, State.VideoHeight, State.DisplayAspect, 16.0 / 9) ?? ""
+            : "";
+        // video-crop is mpv 0.38+; older ones simply don't crop.
+        _mpv.TrySetProperty("video-crop", crop);
+    }
 
     public void ApplyTiming() => ApplyGroup(MpvOptionsBuilder.Timing(Settings));
     private bool _streaming;
@@ -750,6 +864,10 @@ public sealed class PlayerService : IPlayer
             var id = (int)(_mpv.GetLong($"edition-list/{i}/id") ?? i);
             titles.Add(new DiscTitleInfo(id, _mpv.GetString($"edition-list/{i}/title") ?? $"Title {id + 1}", id == current));
         }
+        // An SACD's areas (stereo, multichannel) are its titles.
+        if (_sacd is { Areas.Count: > 1 } sacd)
+            titles = sacd.Areas.Select(a => new DiscTitleInfo((int)a.Kind,
+                $"{a.Label} ({TimeFormat.Format(a.Tracks.Sum(t => t.Seconds))})", a.Kind == _sacdArea)).ToList();
         Chapters = chapters;
         Titles = titles;
         ChaptersChanged?.Invoke();
@@ -760,8 +878,12 @@ public sealed class PlayerService : IPlayer
     /// <summary>Next (+1) or previous (-1) chapter; at the first chapter, back to its start.</summary>
     public void StepChapter(int delta) => _mpv.TryCommand("add", "chapter", delta.ToString(CultureInfo.InvariantCulture));
 
-    /// <summary>Plays another title of the disc (an mpv edition).</summary>
-    public void SelectTitle(int id) => _mpv.TrySetProperty("edition", id.ToString(CultureInfo.InvariantCulture));
+    /// <summary>Plays another title of the disc (an mpv edition), or another area of an SACD.</summary>
+    public void SelectTitle(int id)
+    {
+        if (_sacd is { } sacd) OpenSacdArea(sacd, (Sacd.SacdAreaKind)id);
+        else _mpv.TrySetProperty("edition", id.ToString(CultureInfo.InvariantCulture));
+    }
 
     // mpv has no disc menu support; discs with menus play through VlcDiscPlayer.
     public bool HasDiscMenu => false;
@@ -775,6 +897,11 @@ public sealed class PlayerService : IPlayer
     {
         Tracks = ReadTracks();
         TracksChanged?.Invoke();
+        // Audio alone, or with its cover art: no picture to step through or reshape.
+        bool? hasVideo = Tracks.Count == 0 ? null : Tracks.Any(t => t.Type == TrackType.Video && !t.AlbumArt);
+        if (hasVideo == State.HasVideo) return;
+        State.HasVideo = hasVideo;
+        StateChanged?.Invoke("has-video");
     }
 
     private List<TrackInfo> ReadTracks()
@@ -802,7 +929,8 @@ public sealed class PlayerService : IPlayer
                 _mpv.GetFlag(p + "selected") ?? false,
                 _mpv.GetFlag(p + "external") ?? false,
                 _mpv.GetFlag(p + "default") ?? false,
-                ch is null ? null : (int)ch));
+                ch is null ? null : (int)ch,
+                _mpv.GetFlag(p + "albumart") ?? false));
         }
         return list;
     }
@@ -833,6 +961,44 @@ public sealed class PlayerService : IPlayer
         _mpv.TryCommand("add", "sub-delay", seconds.ToString(CultureInfo.InvariantCulture));
         return Math.Round(_mpv.GetDouble("sub-delay") ?? 0, 3);
     }
+
+    // ---- SACD images ------------------------------------------------------------------------
+
+    /// <summary>The SACD image playing, and which of its areas; its areas are the titles then.</summary>
+    private Sacd.SacdImage? _sacd;
+    private Sacd.SacdAreaKind _sacdArea;
+    /// <summary>This libmpv reads sacd:// through us (Sacd.SacdProtocol).</summary>
+    private readonly bool _sacdReadable;
+
+    /// <summary>
+    /// An SACD image: its stereo area (else the multichannel one) as one timeline of its tracks,
+    /// each a chapter. Throws <see cref="InvalidDataException"/> or <see cref="IOException"/> if the
+    /// image can't be read, and <see cref="MpvException"/> where this libmpv can't take it.
+    /// </summary>
+    public void OpenSacd(string image)
+    {
+        if (!_sacdReadable) throw new MpvException("this build's libmpv can't read SACD images", MpvException.Unsupported);
+        var sacd = Sacd.SacdProtocol.Image(image);
+        OpenSacdArea(sacd, sacd.Areas[0].Kind);
+    }
+
+    private void OpenSacdArea(Sacd.SacdImage sacd, Sacd.SacdAreaKind kind)
+    {
+        if (sacd.Area(kind) is not { } area) return;
+        _streaming = false;
+        _stalls = 0;
+        ResetStreamQuality();
+        _sacd = sacd;
+        _sacdArea = kind;
+        var title = sacd.AlbumTitle ?? Path.GetFileNameWithoutExtension(sacd.Path);
+        _mpv.SetProperty("force-media-title", sacd.AlbumArtist is { } artist ? $"{artist} — {title}" : title);
+        // mpv lets a timeline (EDL) open only its own protocols, unless told otherwise; for this
+        // file only, it may open sacd://, which is ours.
+        LoadWithOptions(Sacd.SacdProtocol.EdlFor(sacd, area), "load-unsafe-playlists=yes");
+        _mpv.SetProperty("pause", false);
+    }
+
+    private void ForgetSacd() => _sacd = null;
 
     public void Dispose()
     {

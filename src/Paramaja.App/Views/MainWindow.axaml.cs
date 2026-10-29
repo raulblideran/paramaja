@@ -106,9 +106,10 @@ public partial class MainWindow : Window
         _tick.Start();
         UpdateOverlays();
         ProbeHdr();
-        // Double-click fullscreen; on Linux mpv reports the clicks instead (PlayerService).
+        // Double-click fullscreen, from clicks the OS reports; where it can't, the engine's own.
         if (TryGetPlatformHandle()?.Handle is { } hwnd)
             _clicks = VideoClicks.Watch(hwnd, () => { if (!Vm.IsIdle) Vm.HandleClick(DateTime.UtcNow); });
+        Vm.ClicksFromSystem = _clicks is not null;
     }
 
     private void ProbeHdr()
@@ -188,10 +189,13 @@ public partial class MainWindow : Window
         if (_top.Topmost != topmost) _top.Topmost = topmost;
         if (_bottom.Topmost != topmost) _bottom.Topmost = topmost;
 
-        var area = visible
+        var area = visible || (!vm.IsIdle && ActiveVideo.Bounds.Height > 100)
             ? OverlayPlacement.PlayerArea(ActiveVideo.PointToScreen(new Point(0, 0)), ActiveVideo.Bounds.Size, RenderScaling,
                 Screens.ScreenFromWindow(this)?.Bounds, fullscreen)
             : default;
+        // The engines' messages start below the top bar, which covers the top of the video.
+        if (area.Height > 0) vm.SetOsdInset(OverlayPlacement.OsdInset(TopBar.BarHeight, RenderScaling, area.Height));
+        vm.BarsShown = visible;
         if (visible)
         {
             _top.Width = _bottom.Width = area.Width / RenderScaling;
@@ -203,6 +207,9 @@ public partial class MainWindow : Window
             // An open menu would otherwise stay behind, alone, or follow its bar off screen.
             _top.CloseMenus();
             _bottom.CloseMenus();
+            // A bar clicked last has the keyboard: hidden, it would take it along (on Linux nothing
+            // got it back, and Space did nothing until the window was minimized and restored).
+            if (_top.IsActive || _bottom.IsActive) Activate();
         }
         if (!visible && !OverlayPlacement.ParkInsteadOfHiding)
         {

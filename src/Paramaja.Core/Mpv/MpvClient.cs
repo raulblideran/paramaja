@@ -12,6 +12,9 @@ public sealed class MpvException(string message, int code = 0) : Exception(messa
     /// <summary>MPV_ERROR_INVALID_PARAMETER: e.g. a command argument this libmpv doesn't take.</summary>
     public const int InvalidParameter = -4;
 
+    /// <summary>MPV_ERROR_UNSUPPORTED: something this libmpv can't do.</summary>
+    public const int Unsupported = -18;
+
     public int Code { get; } = code;
 }
 
@@ -74,6 +77,10 @@ public sealed class MpvClient : IDisposable
         _eventThread = new Thread(EventLoop) { IsBackground = true, Name = "mpv-events" };
         _eventThread.Start();
     }
+
+    /// <summary>Lets mpv read URLs of <paramref name="protocol"/> through <paramref name="openFn"/> (mpv_stream_cb_open_ro_fn).</summary>
+    public void AddStreamProtocol(string protocol, IntPtr openFn) =>
+        Check(MpvNative.mpv_stream_cb_add_ro(Handle, protocol, IntPtr.Zero, openFn), $"protocol {protocol}");
 
     public void Command(params string[] args)
     {

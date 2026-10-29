@@ -3,6 +3,47 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.9.0 — 2026-10-29
+
+- **Disc images:** a DVD or Blu-ray `.iso` plays like the disc, menus included (Open Disc →
+  **Disc image…**, or open / drop the file). So does an Audio CD image (`.bin` with its `.cue`),
+  with its tracks as chapters, named as its cue sheet names them. Other `.iso` files are left
+  alone.
+- **SACD images:** the `.iso` a ripper makes of an SACD plays with Paramaja's own SACD reader,
+  the stereo area by default; the **Titles & chapters** menu has the multichannel (5.1) area,
+  and the tracks are chapters, with the disc's titles. Played through on two Thriller SACDs
+  (1999 and the 2022 MFSL), whose stereo areas are plain DSD. DST-compressed discs (most
+  multichannel areas) are read too, but were only tested on images made for the purpose.
+- **DSD files** (`.dsf`, `.dff`) play, and are picked up from folders.
+- **Stop button** in the controls (Ctrl+S, as before).
+- **Torrent playlists:** a torrent with several videos or songs gets **Previous** / **Next**
+  buttons, and each file plays on into the next. Music counts now, not just videos; an album
+  starts at its first track.
+- **Resize to 4:3 / Crop to 16:9** in the video menu, for the playing video: resize for any
+  picture that isn't 4:3, crop (the middle of it) for any that isn't 16:9. A DVD's shape comes
+  from the disc itself (libVLC doesn't tell it), so a 4:3 DVD offers only the crop.
+- **Streaming quality in the video menu:** while a YouTube (or other site's) video plays, the
+  menu lists the qualities it offers and switches to one at once, from where it was, for that
+  video. The default quality moved to Settings → Developer.
+- **DVD badge:** a DVD shows "DVD" in the controls instead of its codec (MPEG-2 on hover).
+- **5.1 stays 5.1 on discs:** DVDs and Blu-rays played their 5.1 tracks downmixed to stereo,
+  as libVLC's default stereo mode does that. They now keep every channel (a stereo track is
+  still picked first where a disc has one).
+- The deinterlacing, hardware decoding, HDR and passthrough switches moved to **Settings →
+  Developer** (the first two still for the playing video only); the player's menus keep the
+  everyday options. The Video tab is gone (its options moved with them).
+- The previous / next frame buttons, and the video menu, are hidden while only audio plays
+  (music, Audio CDs, SACDs).
+- Messages on the video (volume, subtitle timing, "Screenshot saved"…) start below the title
+  bar instead of under it, and the buffering lines show in one place at a time.
+- Linux: **Space** (and the other keys) stopped working after a click on the controls, until the
+  window was minimized and restored: the hidden controls kept the keyboard. They give it back.
+- Linux: **double-click** for fullscreen works, on discs too: clicks are read from the X server
+  itself, as on Windows from Windows.
+- Opening the same interlaced video twice in a row could leave the second without
+  deinterlacing. Likewise, after two files alike (two stereo songs), the audio badge and the
+  left / right channel choice could go missing, and the length shown could be the previous one's.
+
 ## 1.8.0 — 2026-10-28
 
 - **Deinterlacing only where the video is interlaced.** The deinterlace badge showed for

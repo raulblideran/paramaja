@@ -136,4 +136,8 @@ internal static partial class MpvNative
 
     [LibraryImport(NativeLibraries.Mpv)]
     public static partial IntPtr mpv_error_string(int error);
+
+    /// <summary>A protocol of our own (sacd://): mpv calls <paramref name="openFn"/> to read such a URL.</summary>
+    [LibraryImport(NativeLibraries.Mpv, StringMarshalling = StringMarshalling.Utf8)]
+    public static partial int mpv_stream_cb_add_ro(IntPtr ctx, string protocol, IntPtr userData, IntPtr openFn);
 }

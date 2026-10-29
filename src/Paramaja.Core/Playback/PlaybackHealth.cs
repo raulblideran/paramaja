@@ -136,12 +136,12 @@ public sealed class PlaybackHealth
     {
         Finding.NoHardwareDecoding =>
             "Hardware decoding isn't active, so this 4K video is being decoded by the CPU. " +
-            "Check Settings → Video → Hardware acceleration; older GPUs can't decode 10-bit HEVC.",
+            "Check Settings → Developer → This video → Hardware acceleration; older GPUs can't decode 10-bit HEVC.",
         Finding.DecoderTooSlow =>
             $"The decoder can't keep up ({DecoderDropsPerSecond:0.0} frames/s dropped before display).",
         Finding.RenderingTooSlow =>
             $"The graphics card can't keep up with rendering ({RenderDropsPerSecond:0.0} frames/s dropped). " +
-            "Settings → Video → Rendering → Fast fixes this.",
+            "Settings → Developer → Rendering quality → Fast fixes this.",
         Finding.NetworkTooSlow =>
             $"The download ({Mb(InputBytesPerSecond)}/s) is slower than this video needs ({Mb(RequiredBytesPerSecond)}/s), " +
             $"so it stopped to buffer {Stalls} time(s). Paramaja buffers longer after each stall.",

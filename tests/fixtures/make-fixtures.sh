@@ -115,4 +115,9 @@ if [ ! -f "$OUT/cd_rip/rip.cue" ]; then
     'FILE "02 - SECOND song.wav" WAVE' '    INDEX 01 00:00:00' > "$OUT/cd_rip/rip.cue"
 fi
 
+# Music: on its own, and with its album's cover art (a picture track mpv shows, but no video)
+[ -f "$OUT/music.flac" ] || ff -f lavfi -i sine=frequency=550:duration=2 -ac 2 -c:a flac "$OUT/music.flac"
+[ -f "$OUT/music_cover.flac" ] || ff -f lavfi -i sine=frequency=550:duration=2 -f lavfi -i testsrc=size=200x200:duration=1 \
+  -map 0:a -map 1:v -frames:v 1 -ac 2 -c:a flac -c:v png -disposition:v attached_pic "$OUT/music_cover.flac"
+
 echo "Fixtures in $OUT:"; ls -1 "$OUT"

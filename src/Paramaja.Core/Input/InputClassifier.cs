@@ -1,6 +1,6 @@
 namespace Paramaja.Core.Input;
 
-public enum InputKind { None, Magnet, Url, File, Mega, Folder, Dvd, Bluray, AudioCd }
+public enum InputKind { None, Magnet, Url, File, Mega, Folder, Dvd, Bluray, AudioCd, Sacd }
 
 /// <summary>Decides what a pasted/dropped/command-line string is.</summary>
 public static class InputClassifier
@@ -29,8 +29,9 @@ public static class InputClassifier
     /// A local file or folder. DVD (VIDEO_TS) and Blu-ray (BDMV) folders, and their
     /// VIDEO_TS.IFO / index.bdmv / .mpls files, play as discs (the main title); the value is
     /// then the disc's root folder. An Audio CD's drive (Track01.cda… on Windows) plays as a CD.
-    /// A folder holding a CD rip's cue sheet plays the cue sheet (its tracks as chapters). Any
-    /// other folder plays as a playlist.
+    /// A folder holding a CD rip's cue sheet plays the cue sheet (its tracks as chapters). Disc
+    /// images play like their discs: a DVD, Blu-ray or SACD .iso (DiscImage), and an Audio CD's
+    /// BIN/CUE (the value is then its cue sheet). Any other folder plays as a playlist.
     /// </summary>
     private static (InputKind, string) Local(string path)
     {
@@ -51,12 +52,28 @@ public static class InputClassifier
                 return FindBluray(dir) is { } bd ? (InputKind.Bluray, bd) : (InputKind.File, full);
             if (dir is not null && Path.GetExtension(name).Equals(".cda", StringComparison.OrdinalIgnoreCase))
                 return (InputKind.AudioCd, Path.GetPathRoot(full) ?? dir);
+            if (Path.GetExtension(name).Equals(".iso", StringComparison.OrdinalIgnoreCase))
+            {
+                // A disc image plays like the disc; any other .iso goes to mpv as a file, as before.
+                return DiscImage.Probe(full) switch
+                {
+                    DiscImageKind.Dvd => (InputKind.Dvd, full),
+                    DiscImageKind.Bluray => (InputKind.Bluray, full),
+                    DiscImageKind.Sacd => (InputKind.Sacd, full),
+                    _ => (InputKind.File, full),
+                };
+            }
+            if (Path.GetExtension(name).Equals(".cue", StringComparison.OrdinalIgnoreCase) && Playback.CueSheet.IsCdImage(full))
+                return (InputKind.AudioCd, full);
+            // A CD image's .bin (or .img) picked rather than its cue sheet.
+            if (dir is not null && Path.GetExtension(name).ToLowerInvariant() is ".bin" or ".img" && CueFor(full) is { } imageCue)
+                return (InputKind.AudioCd, imageCue);
             return (InputKind.File, full);
         }
         if (IsDvd(full)) return (InputKind.Dvd, full);
         if (IsBluray(full)) return (InputKind.Bluray, full);
         if (OpticalDisc.HasCdaTracks(full)) return (InputKind.AudioCd, full);
-        if (CueSheet(full) is { } cue) return (InputKind.File, cue);
+        if (CueSheet(full) is { } cue) return (Playback.CueSheet.IsCdImage(cue) ? InputKind.AudioCd : InputKind.File, cue);
         // The VIDEO_TS or BDMV folder itself was picked: the disc is its parent.
         if (Path.GetFileName(full).Equals("VIDEO_TS", StringComparison.OrdinalIgnoreCase)
             && Path.GetDirectoryName(full) is { } dvdParent && IsDvd(dvdParent))
@@ -128,6 +145,24 @@ public static class InputClassifier
                     .Path
                 ?? cues.FirstOrDefault(c => c.Tracks.Count > 0 && c.Tracks.All(t => Playback.CueSheet.Resolve(dir, t.File) is not null)).Path)
                 ?? cues.FirstOrDefault().Path;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    /// <summary>The cue sheet next to a CD image's .bin that names it, if it's an audio CD's.</summary>
+    private static string? CueFor(string image)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(image)!;
+            return Directory.EnumerateFiles(dir)
+                .Where(f => Path.GetExtension(f).Equals(".cue", StringComparison.OrdinalIgnoreCase))
+                .FirstOrDefault(c =>
+                {
+                    var sheet = Playback.CueSheet.Read(c);
+                    return Playback.CueSheet.IsCdImage(sheet) && sheet.Tracks.Any(t =>
+                        string.Equals(Playback.CueSheet.FileName(t.File), Path.GetFileName(image), StringComparison.OrdinalIgnoreCase));
+                });
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
     }

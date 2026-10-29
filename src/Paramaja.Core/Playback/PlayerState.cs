@@ -3,6 +3,9 @@ namespace Paramaja.Core.Playback;
 /// <summary>Which channel of a stereo source plays, on both speakers; for the playing video only.</summary>
 public enum StereoChannel { Both, Left, Right }
 
+/// <summary>How the picture is shaped, for the playing video only: as it is, stretched to 4:3, or cropped to 16:9.</summary>
+public enum PictureFit { Original, Resize4x3, Crop16x9 }
+
 /// <summary>Latest values of the mpv properties the UI cares about.</summary>
 public sealed class PlayerState
 {
@@ -35,6 +38,14 @@ public sealed class PlayerState
     public double? OutputFps { get; set; }
     public int? SourceChannels { get; set; }
     public int? OutputChannels { get; set; }
+    /// <summary>
+    /// Whether there's a picture to show: false for audio alone (an album's cover art doesn't
+    /// count), null until the tracks are known.
+    /// </summary>
+    public bool? HasVideo { get; set; }
+    /// <summary>The picture's width over its height as displayed (non-square pixels accounted for).</summary>
+    public double? DisplayAspect { get; set; }
+    public PictureFit PictureFit { get; set; }
     public int? VideoWidth { get; set; }
     public int? VideoHeight { get; set; }
     public string? Title { get; set; }

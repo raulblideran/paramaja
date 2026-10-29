@@ -1015,7 +1015,8 @@ public class EngineStateTests
         foreach (var name in new[] { "pause", "deinterlace-active", "video-format" }) r.DiscPlayer.RaiseState(name);
         Assert.True(r.Vm.IsPaused);
         Assert.Equal("BWDIF", r.Vm.DeinterlaceBadge);
-        Assert.Equal("MPEG-2", r.Vm.CodecBadge);
+        Assert.Equal("DVD", r.Vm.CodecBadge); // a DVD shows as one, not as MPEG-2
+        Assert.Equal("DVD (MPEG-2)", r.Vm.CodecTip);
 
         // A progressive file plays through mpv, whose pause was already off: no event comes.
         r.Player.State.VideoFormat = "h264";

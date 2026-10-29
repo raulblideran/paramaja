@@ -52,6 +52,14 @@ public static class OverlayPlacement
     /// </summary>
     public static bool HideWhileInactive => OperatingSystem.IsLinux();
 
+    /// <summary>
+    /// The share of the player's height the top bar covers (<paramref name="barHeight"/> in
+    /// device-independent pixels over the player's physical height): messages on the video start
+    /// below it.
+    /// </summary>
+    public static double OsdInset(double barHeight, double scale, int playerHeight) =>
+        playerHeight <= 0 ? 0 : Math.Clamp(barHeight * scale / playerHeight, 0, 0.5);
+
     /// <summary>On top of everything only while fullscreen and in front, never over other apps.</summary>
     public static bool ShouldBeTopmost(bool fullscreen, bool appActive) => fullscreen && appActive;
 }

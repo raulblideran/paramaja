@@ -12,8 +12,11 @@ namespace Paramaja.Core.Playback;
 /// </summary>
 public static class CueSheet
 {
-    /// <summary>A track: its file, where it starts in it (INDEX 01, in seconds) and its title.</summary>
-    public sealed record Track(string File, double Start, string? Title);
+    /// <summary>
+    /// A track: its file, where it starts in it (INDEX 01, in seconds) and its title; the file's
+    /// type (WAVE, BINARY…) and the track's mode (AUDIO, MODE1/2352…) as the sheet gives them.
+    /// </summary>
+    public sealed record Track(string File, double Start, string? Title, string? FileType = null, string? Mode = null);
 
     public sealed record Sheet(string? Title, IReadOnlyList<Track> Tracks);
 
@@ -34,7 +37,7 @@ public static class CueSheet
 
     public static Sheet Parse(IEnumerable<string> lines)
     {
-        string? album = null, file = null, title = null;
+        string? album = null, file = null, title = null, fileType = null, mode = null;
         var inTrack = false;
         var current = -1; // this TRACK block's entry in tracks, once its INDEX 01 is read
         var tracks = new List<Track>();
@@ -48,11 +51,13 @@ public static class CueSheet
             {
                 case "FILE":
                     file = Unquote(rest, dropLastWord: true);
+                    fileType = LastWord(rest);
                     break;
                 case "TRACK":
                     inTrack = true;
                     title = null;
                     current = -1;
+                    mode = LastWord(rest);
                     break;
                 case "TITLE" when !inTrack:
                     album = Unquote(rest);
@@ -63,7 +68,7 @@ public static class CueSheet
                     break;
                 case "INDEX" when file is not null && rest.StartsWith("01 ", StringComparison.Ordinal):
                     if (Time(rest[3..].Trim()) is not { } start) break;
-                    tracks.Add(new Track(file, start, title));
+                    tracks.Add(new Track(file, start, title, fileType, mode));
                     current = tracks.Count - 1;
                     break;
             }
@@ -77,6 +82,29 @@ public static class CueSheet
         if (value.StartsWith('"') && value.IndexOf('"', 1) is > 0 and var end) return value[1..end];
         if (dropLastWord && value.LastIndexOf(' ') is > 0 and var last) value = value[..last];
         return value.Trim();
+    }
+
+    /// <summary>A FILE line's type or a TRACK line's mode, upper case: its last word, after any quoted name.</summary>
+    private static string? LastWord(string value)
+    {
+        var tail = value.StartsWith('"') && value.IndexOf('"', 1) is > 0 and var end ? value[(end + 1)..] : value;
+        var words = tail.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return words.Length > (value.StartsWith('"') ? 0 : 1) ? words[^1].ToUpperInvariant() : null;
+    }
+
+    /// <summary>
+    /// A CD image (BIN/CUE): audio tracks kept as raw CD sectors in a .bin, which no player reads as
+    /// a file; libVLC's CD reader plays it like a disc in a drive.
+    /// </summary>
+    public static bool IsCdImage(Sheet sheet) =>
+        sheet.Tracks.Any(t => t.Mode == "AUDIO")
+        && sheet.Tracks.Where(t => t.Mode == "AUDIO").All(t => t.FileType is "BINARY" or "MOTOROLA");
+
+    /// <summary>The cue sheet is a CD image's (see <see cref="IsCdImage(Sheet)"/>); false if it can't be read.</summary>
+    public static bool IsCdImage(string cuePath)
+    {
+        try { return IsCdImage(Read(cuePath)); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
     }
 
     /// <summary>mm:ss:ff, where ff counts CD frames (75 a second).</summary>

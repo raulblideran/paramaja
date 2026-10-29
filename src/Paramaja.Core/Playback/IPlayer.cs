@@ -40,8 +40,10 @@ public interface IPlayer : IDisposable
 
     void Open(string pathOrUrl, string? displayTitle = null, bool streaming = false);
     void OpenDisc(string root, bool bluray);
-    /// <summary>An Audio CD from its drive; its tracks are the chapters.</summary>
+    /// <summary>An Audio CD from its drive, or a CD image's cue sheet; its tracks are the chapters.</summary>
     void OpenAudioCd(string device);
+    /// <summary>An SACD image (ISO): its stereo area, else its multichannel one; the tracks are the chapters.</summary>
+    void OpenSacd(string image);
     void Stop();
     void TogglePause();
     void SetPaused(bool paused);
@@ -83,7 +85,19 @@ public interface IPlayer : IDisposable
     void ApplySubtitles();
     void ApplyAudio();
     void ApplyStreamQuality();
+    /// <summary>
+    /// Plays the open web video again at another quality (up to <paramref name="maxHeight"/>, 0 for
+    /// the best), from where it was. For that video only: the next link opened uses the setting.
+    /// </summary>
+    void ReloadStream(int maxHeight);
     void ApplyTiming();
+    /// <summary>
+    /// Where on-screen messages start: this fraction of the video's height from its top, so they
+    /// sit below the top bar (which covers that much) instead of under it.
+    /// </summary>
+    void SetOsdTopInset(double fraction);
+    /// <summary>Stretches the picture to 4:3, crops it to 16:9, or leaves it as it is; for the playing video only.</summary>
+    void SetPictureFit(PictureFit fit);
     /// <summary>The engine's latest log lines (warnings and up, plus its own notes), oldest first.</summary>
     IReadOnlyList<string> RecentMessages();
     /// <summary>What the log (Create Log) says about the engine and how it's playing the video.</summary>

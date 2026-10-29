@@ -136,6 +136,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (_player is not null) return;
         _player = _mpvPlayer = _playerFactory(windowId);
         Wire(_player);
+        if (_osdInset > 0) _player.SetOsdTopInset(_osdInset);
         RenderProfileText = DescribeProfile(_player.RenderProfile);
         if (DisplayIsHdr) _player.SetDisplayHdr(true);
         OpenPendingWhenReady();
@@ -166,7 +167,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         player.ChaptersChanged += () => Post(SyncChapters);
         player.KeyPressed += key => Post(() => HandleKey(key));
         player.MouseMoved += () => Post(NotifyActivity);
-        player.MouseClicked += () => Post(() => HandleClick(DateTime.UtcNow));
+        player.MouseClicked += () => Post(() => { if (!ClicksFromSystem) HandleClick(DateTime.UtcNow); });
         player.FileLoaded += () => Post(() =>
         {
             _health.Reset();
@@ -216,6 +217,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             var engine = await Task.Run(() => factory(surface));
             Wire(engine);
+            if (_osdInset > 0) engine.SetOsdTopInset(_osdInset);
             _discPlayer = engine;
             ShowStatus("");
         }
@@ -259,7 +261,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [
         "duration", "pause", "mute", "volume", "paused-for-cache", "media-title", "deinterlace-active",
         "hwdec-current", "video-params/gamma", "hardware-decoding", "chapter", "video-params/w",
-        "audio-params/channel-count", "video-format", "video-codec", "stereo-channel",
+        "audio-params/channel-count", "video-format", "video-codec", "stereo-channel", "has-video",
+        "video-params/aspect", "picture-fit",
     ];
 
     /// <summary>Back to the disc's root menu (the Menu button).</summary>
@@ -282,16 +285,29 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case "volume": Volume = s.Volume; break;
             case "deinterlace-active": UpdateDeinterlace(s); break;
             case "paused-for-cache": IsBuffering = s.IsBuffering; break;
-            case "idle-active": IsIdle = s.IsIdle; OnPropertyChanged(nameof(CanDownload)); break;
+            case "idle-active":
+                IsIdle = s.IsIdle;
+                OnPropertyChanged(nameof(CanDownload));
+                OnAudioOnlyChanged();
+                break;
+            case "has-video": OnAudioOnlyChanged(); break;
+            case "video-params/aspect" or "picture-fit": OnPictureChanged(); break;
+            case "eof-reached":
+                // A torrent's files play one after the other (mpv stays at the end of each).
+                if (s.EofReached && IsTorrent) StepTorrentFile(1);
+                break;
             case "media-title": MediaTitle = s.Title ?? ""; break;
             case "video-format" or "video-codec":
-                CodecBadge = CodecLabels.Describe(s.VideoFormat);
-                CodecTip = string.IsNullOrEmpty(s.VideoCodec) ? CodecBadge : s.VideoCodec;
+                var codec = CodecLabels.Describe(s.VideoFormat);
+                // A DVD is what people know it by, more than its MPEG-2.
+                CodecBadge = _openedKind == InputKind.Dvd && codec.Length > 0 ? "DVD" : codec;
+                CodecTip = !string.IsNullOrEmpty(s.VideoCodec) ? s.VideoCodec : CodecBadge == "DVD" ? $"DVD ({codec})" : codec;
                 break;
             case "stereo-channel": OnPropertyChanged(nameof(StereoChannelIndex)); break;
             case "hwdec-current": DecoderBadge = s.IsHardwareDecoding ? $"HW · {s.HwdecCurrent}" : "SW"; break;
             case "video-params/gamma" or "video-params/primaries": UpdateHdrBadge(); break;
             case "hardware-decoding":
+                OnPropertyChanged(nameof(HasVideoSwitches));
                 OnPropertyChanged(nameof(HardwareDecodingApplies));
                 OnPropertyChanged(nameof(HardwareDecoding));
                 break;
@@ -335,6 +351,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void UpdateDeinterlace(PlayerState s)
     {
+        OnPropertyChanged(nameof(HasVideoSwitches));
         DeinterlaceBadge = !s.SourceInterlaced ? "" : s.DeinterlaceActive ? s.DeinterlaceFilter ?? "BWDIF" : "Interlaced";
         DeinterlaceTip = !s.SourceInterlaced ? ""
             : (s.InterlaceDetectedBy == PlayerState.ByPicture ? "Interlaced: seen in the picture (the video isn't flagged)" : "Interlaced: flagged by the video")
@@ -357,6 +374,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// can decode it. Only then is there a switch; it's decided anew for each video.
     /// </summary>
     public bool HardwareDecodingApplies => _player?.State.HardwareDecodingApplies == true;
+
+    /// <summary>Settings → Developer has a switch for the playing video (deinterlacing or hardware decoding).</summary>
+    public bool HasVideoSwitches => IsInterlacedVideo || HardwareDecodingApplies;
+
+    /// <summary>Audio alone (a music file, an Audio CD, an SACD): no frames to step through, no picture to shape.</summary>
+    public bool IsAudioOnly => !IsIdle && _player?.State.HasVideo == false;
+
+    private void OnAudioOnlyChanged()
+    {
+        OnPropertyChanged(nameof(IsAudioOnly));
+        OnPictureChanged();
+    }
 
     internal void UpdateHdrBadge()
     {
@@ -434,6 +463,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _pendingOpen = value;
             return;
         }
+        _openedKind = kind;
+        ForgetStreamQualities();
         switch (kind)
         {
             case InputKind.Magnet:
@@ -445,7 +476,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         CloseTorrent();
         SetSource(kind is InputKind.Url ? MediaSource.Web : MediaSource.Local, kind is InputKind.Url ? value : null);
-        if (kind is InputKind.Dvd or InputKind.Bluray or InputKind.AudioCd)
+        if (kind == InputKind.Sacd)
+        {
+            // libVLC doesn't read SACDs; mpv does, through Paramaja's own reader.
+            UseEngine(_mpvPlayer!);
+            try { _player!.OpenSacd(value); }
+            catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException or MpvException)
+            {
+                ShowStatus($"Can't play this SACD image: {e.Message}");
+            }
+        }
+        else if (kind is InputKind.Dvd or InputKind.Bluray or InputKind.AudioCd)
         {
             // libVLC shows the disc's menus and plays CDs; without it, mpv plays a disc's main title.
             UseEngine(await DiscEngineAsync() ?? _mpvPlayer!);
@@ -481,8 +522,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             UseEngine(_mpvPlayer!);
             _player!.Open(value, streaming: InputClassifier.IsStreaming(kind));
+            if (kind == InputKind.Url) _ = LoadStreamQualitiesAsync(value);
         }
     }
+
+    /// <summary>What was opened last (a DVD shows as "DVD" rather than by its codec).</summary>
+    private InputKind _openedKind;
 
     private async Task OpenMagnetAsync(string magnet)
     {
@@ -497,24 +542,30 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _torrent = info;
             IsTorrent = true;
 
+            // Its videos and music, in the order of their names: a playlist to go through.
             Replace(TorrentFiles, info.Files
-                .Where(f => f.IsVideo)
+                .Where(IsMediaFile)
                 .OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase)
                 .Select(f => new TorrentFileItem(f.Index, f.FileName, TimeFormat.Bytes(f.Length))));
             OnPropertyChanged(nameof(HasTorrentFiles));
+
+            // The engine starts at the main video (the largest); an album starts at its first track.
+            var (streamUrl, fileIdx) = (info.StreamUrl, info.SelectedFile);
+            if (!info.Files.Any(f => f.IsVideo) && TorrentFiles.FirstOrDefault() is { } first && first.Index != fileIdx)
+                (streamUrl, fileIdx) = (_torrents.SelectFile(info.Id, first.Index), first.Index);
             _selectingTorrentFile = true;
-            SelectedTorrentFile = TorrentFiles.FirstOrDefault(f => f.Index == info.SelectedFile);
+            SelectedTorrentFile = TorrentFiles.FirstOrDefault(f => f.Index == fileIdx);
             _selectingTorrentFile = false;
 
-            if (info.StreamUrl is null || info.SelectedFile is not { } fileIdx)
+            if (streamUrl is null || fileIdx is not { } index)
             {
                 ShowStatus("This torrent has no playable files.");
                 return;
             }
-            var file = info.Files.First(f => f.Index == fileIdx);
+            var file = info.Files.First(f => f.Index == index);
             SetSource(MediaSource.Torrent);
             UseEngine(_mpvPlayer!);
-            _player!.Open(info.StreamUrl, file.FileName, streaming: true);
+            _player!.Open(streamUrl, file.FileName, streaming: true);
             ShowStatus($"Streaming {file.FileName}");
         }
         catch (TorrentException e)
@@ -567,6 +618,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     private bool _selectingTorrentFile;
+
+    private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".wav", ".wv", ".ape", ".dsf", ".dff", ".mka", ".ac3", ".dts",
+    };
+
+    /// <summary>A video, or music: what a torrent's playlist is made of.</summary>
+    internal static bool IsMediaFile(TorrentFile file) => file.IsVideo || AudioExtensions.Contains(Path.GetExtension(file.Path));
+
+    /// <summary>The previous or next file of a torrent with several; false at either end.</summary>
+    private bool StepTorrentFile(int delta)
+    {
+        if (!HasTorrentFiles || SelectedTorrentFile is not { } current) return false;
+        var i = TorrentFiles.IndexOf(current) + delta;
+        if (i < 0 || i >= TorrentFiles.Count) return false;
+        SelectedTorrentFile = TorrentFiles[i];
+        return true;
+    }
+
+    [RelayCommand] private void PreviousFile() => StepTorrentFile(-1);
+    [RelayCommand] private void NextFile() => StepTorrentFile(1);
 
     partial void OnSelectedTorrentFileChanged(TorrentFileItem? value)
     {
@@ -684,6 +756,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // ---- Commands -------------------------------------------------------------------------
 
     [RelayCommand] private void TogglePause() => _player?.TogglePause();
+    [RelayCommand] private void Stop() => Execute(PlayerAction.Stop);
     [RelayCommand] private void FrameStep() => _player?.FrameStep();
     [RelayCommand] private void FrameBackStep() => _player?.FrameBackStep();
     [RelayCommand] private void ToggleMute() => _player?.ToggleMute();
@@ -727,8 +800,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// A DVD or Blu-ray (with its menus) or an Audio CD, from a drive or a folder; a CD rip's
-    /// folder plays its cue sheet, with the tracks as chapters.
+    /// A DVD or Blu-ray (with its menus) or an Audio CD, from a drive, a folder or a disc image (an
+    /// SACD's too); a CD rip's folder plays its cue sheet, with the tracks as chapters.
     /// </summary>
     [RelayCommand]
     private async Task OpenDisc()
@@ -737,8 +810,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (await Dialogs.PickDiscAsync() is not { } root) return;
         var (kind, value) = InputClassifier.Classify(root);
         var cueSheet = kind == InputKind.File && Path.GetExtension(value).Equals(".cue", StringComparison.OrdinalIgnoreCase);
-        if (kind is InputKind.Dvd or InputKind.Bluray or InputKind.AudioCd || cueSheet) await OpenInputAsync(root);
-        else ShowStatus("That isn't a disc: look for a folder with VIDEO_TS or BDMV inside, or a CD rip's .cue sheet.");
+        if (kind is InputKind.Dvd or InputKind.Bluray or InputKind.AudioCd or InputKind.Sacd || cueSheet) await OpenInputAsync(root);
+        else ShowStatus("That isn't a disc: look for a folder with VIDEO_TS or BDMV inside, a CD rip's .cue sheet, or a DVD, Blu-ray or SACD .iso.");
     }
 
     [RelayCommand]
@@ -803,7 +876,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             _player.FallBackToFastRendering();
             _health.Reset(); // judge the new profile on its own frames
-            const string msg = "Frames were dropping, so Paramaja switched to Fast rendering (Settings → Video → Rendering)";
+            const string msg = "Frames were dropping, so Paramaja switched to Fast rendering (Settings → Developer → Rendering quality)";
             _player.ShowText(msg, 5000);
             ShowStatus(msg);
         }
@@ -994,6 +1067,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public static readonly TimeSpan ControlsHideDelay = TimeSpan.FromSeconds(2.5);
 
+    /// <summary>
+    /// Set by the view: clicks on the video are read from the OS (VideoClicks), so the engine's own
+    /// reports of them, where it makes any, would count each click twice.
+    /// </summary>
+    public bool ClicksFromSystem { get; set; }
+
     /// <summary>Two clicks on the video within this time toggle fullscreen.</summary>
     public static readonly TimeSpan DoubleClickTime = TimeSpan.FromMilliseconds(500);
     private DateTime _lastClick = DateTime.MinValue;
@@ -1090,8 +1169,25 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (utcNow - _lastQuip < QuipInterval) return;
         _lastQuip = utcNow;
         BufferingText = BufferingQuips.Next(BufferingText);
-        // On top of the video too, where people are looking while it stalls.
-        if (IsBuffering && !IsIdle) _player?.ShowText(BufferingText, (int)QuipInterval.TotalMilliseconds + 300);
+        // On the video too, where people are looking while it stalls, unless the top bar (which
+        // shows it) is up: then it would only say it twice.
+        if (IsBuffering && !IsIdle && !BarsShown) _player?.ShowText(BufferingText, (int)QuipInterval.TotalMilliseconds + 300);
+    }
+
+    // ---- On-screen messages ----------------------------------------------------------------
+
+    /// <summary>Set by the view: the control bars are on screen.</summary>
+    public bool BarsShown { get; set; }
+
+    /// <summary>The share of the video's height the top bar covers; the engines' messages start below it.</summary>
+    private double _osdInset;
+
+    public void SetOsdInset(double fraction)
+    {
+        if (Math.Abs(fraction - _osdInset) < 0.002) return;
+        _osdInset = fraction;
+        _mpvPlayer?.SetOsdTopInset(fraction);
+        _discPlayer?.SetOsdTopInset(fraction);
     }
 
     // ---- Status line ----------------------------------------------------------------------

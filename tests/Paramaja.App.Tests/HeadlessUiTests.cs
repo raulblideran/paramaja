@@ -10,6 +10,7 @@ using Paramaja.App.Services;
 using Paramaja.App.ViewModels;
 using Paramaja.App.Views;
 using Paramaja.Core.Input;
+using Paramaja.Core.Playback;
 using Paramaja.Core.Settings;
 
 namespace Paramaja.App.Tests;
@@ -76,12 +77,13 @@ public class HeadlessUiTests
         var w = new SettingsWindow { DataContext = r.Vm };
         w.Show();
         var tabs = w.GetLogicalDescendants().OfType<TabItem>().Select(t => t.Header as string).ToList();
-        Assert.Equal(["Video", "Audio", "Subtitles", "Torrents", "Playback", "Developer", "About", "Shortcuts"], tabs);
+        Assert.Equal(["Audio", "Subtitles", "Torrents", "Playback", "Developer", "About", "Shortcuts"], tabs);
 
-        w.GetLogicalDescendants().OfType<TabControl>().Single().SelectedIndex = 1;
+        w.GetLogicalDescendants().OfType<TabControl>().Single().SelectedIndex = 0;
         Dispatch();
         var switches = w.GetVisualDescendants().OfType<ToggleSwitch>().ToList();
         Assert.DoesNotContain(switches, t => (t.OnContent as string)?.Contains("mono", StringComparison.OrdinalIgnoreCase) == true);
+        Assert.DoesNotContain(switches, t => (t.OnContent as string)?.Contains("Passthrough") == true); // in Developer now
         var toggle = switches.First(t => (t.OnContent as string)?.Contains("Downmix") == true);
         toggle.IsChecked = true;
         Assert.True(r.Settings.DownmixToStereo);
@@ -132,30 +134,29 @@ public class HeadlessUiTests
     }
 
     [AvaloniaFact]
-    public void The_menus_have_no_advanced_or_mono_options_and_show_deinterlacing_for_interlaced_video_only()
+    public void The_menus_have_no_advanced_or_mono_options()
     {
         using var r = new Rig();
         r.Vm.IsIdle = false;
         var bar = new ControlsBar { DataContext = r.Vm, Width = 1280 };
         bar.Show();
-        var video = bar.GetVisualDescendants().OfType<Button>().First(b => (ToolTip.GetTip(b) as string)?.StartsWith("Video") == true);
+        var video = bar.FindControl<Button>("VideoMenuButton")!;
+        Assert.Equal("Video", ToolTip.GetTip(video));
         video.Flyout!.ShowAt(video);
         Dispatch();
         Assert.True(r.Vm.IsMenuOpen, "an open menu keeps the bars up");
-        var deinterlace = bar.FindControl<StackPanel>("DeinterlaceOptions")!;
-        Assert.False(deinterlace.IsVisible);
-        Assert.Empty(deinterlace.GetLogicalDescendants().OfType<ComboBox>()); // on / off only
-        r.Player.State.SourceInterlaced = true;
-        r.Player.State.DeinterlaceActive = true;
-        r.Player.State.DeinterlaceFilter = "BWDIF";
+        // Deinterlacing, hardware decoding and HDR moved to Settings → Developer.
+        r.Player.State.SourceInterlaced = r.Player.State.DeinterlaceActive = true;
+        r.Player.State.HardwareDecodingApplies = r.Player.State.HardwareDecodingOn = true;
         r.Player.RaiseState("deinterlace-active");
+        r.Player.RaiseState("hardware-decoding");
         Dispatch();
-        Assert.True(deinterlace.IsVisible);
-        var toggle = deinterlace.GetLogicalDescendants().OfType<ToggleSwitch>().Single();
-        Assert.True(toggle.IsChecked);
-        toggle.IsChecked = false;
-        Assert.Contains("SetDeinterlacing False", r.Player.Calls);
-        Assert.Empty(((Control)video.Flyout.GetType().GetProperty("Content")!.GetValue(video.Flyout)!).GetLogicalDescendants().OfType<Expander>());
+        var content = (Control)video.Flyout.GetType().GetProperty("Content")!.GetValue(video.Flyout)!;
+        Assert.Empty(content.GetLogicalDescendants().OfType<Expander>());
+        Assert.Null(bar.FindControl<StackPanel>("DeinterlaceOptions"));
+        Assert.Null(bar.FindControl<StackPanel>("HardwareOptions"));
+        Assert.Null(bar.FindControl<StackPanel>("HdrOptions"));
+        Assert.DoesNotContain(content.GetLogicalDescendants().OfType<ToggleSwitch>(), t => t.IsVisible);
         video.Flyout.Hide();
         Dispatch();
         Assert.False(r.Vm.IsMenuOpen);
@@ -174,8 +175,53 @@ public class HeadlessUiTests
             channels.Items.OfType<ComboBoxItem>().Select(i => i.Content as string));
         channels.SelectedIndex = 2;
         Assert.Contains("SetStereoChannel Right", r.Player.Calls);
+        var audioContent = (Control)audio.Flyout.GetType().GetProperty("Content")!.GetValue(audio.Flyout)!;
+        Assert.DoesNotContain(audioContent.GetLogicalDescendants().OfType<ToggleSwitch>(),
+            t => (t.OnContent as string)?.Contains("Passthrough") == true);
         audio.Flyout.Hide();
         bar.Close();
+    }
+
+    [AvaloniaFact]
+    public void Developer_tab_has_this_videos_switches_where_they_apply()
+    {
+        using var r = new Rig();
+        r.Vm.IsIdle = false;
+        var w = new SettingsWindow { DataContext = r.Vm };
+        w.Show();
+        w.GetLogicalDescendants().OfType<TabControl>().Single().SelectedItem = w.FindControl<TabItem>("DeveloperTab");
+        Dispatch();
+        var deinterlace = w.FindControl<StackPanel>("DeinterlaceOptions")!;
+        var hardware = w.FindControl<StackPanel>("HardwareOptions")!;
+        Assert.False(deinterlace.IsVisible);
+        Assert.False(hardware.IsVisible);
+
+        r.Player.State.SourceInterlaced = r.Player.State.DeinterlaceActive = true;
+        r.Player.State.DeinterlaceFilter = "BWDIF";
+        r.Player.RaiseState("deinterlace-active");
+        Dispatch();
+        Assert.True(deinterlace.IsVisible);
+        Assert.Empty(deinterlace.GetLogicalDescendants().OfType<ComboBox>()); // on / off only
+        var toggle = w.FindControl<ToggleSwitch>("DeinterlaceSwitch")!;
+        Assert.True(toggle.IsChecked);
+        toggle.IsChecked = false;
+        Assert.Contains("SetDeinterlacing False", r.Player.Calls);
+
+        r.Player.State.HardwareDecodingApplies = r.Player.State.HardwareDecodingOn = true;
+        r.Player.RaiseState("hardware-decoding");
+        Dispatch();
+        Assert.True(hardware.IsVisible);
+        w.FindControl<ToggleSwitch>("HardwareSwitch")!.IsChecked = false;
+        Assert.Contains("SetHardwareDecoding False", r.Player.Calls);
+
+        // HDR mode, passthrough and the default streaming quality are here too.
+        w.FindControl<ComboBox>("HdrMode")!.SelectedIndex = 1;
+        Assert.Equal(HdrMode.TonemapToSdr, r.Settings.HdrMode);
+        w.FindControl<ToggleSwitch>("PassthroughSwitch")!.IsChecked = true;
+        Assert.True(r.Settings.AudioPassthrough);
+        w.FindControl<ComboBox>("StreamQualityDefault")!.SelectedIndex = 3;
+        Assert.Equal(1080, r.Settings.StreamMaxHeight);
+        w.Close();
     }
 
     [AvaloniaFact]
@@ -196,7 +242,7 @@ public class HeadlessUiTests
     }
 
     [AvaloniaFact]
-    public void Settings_window_offers_passthrough_and_no_bob()
+    public void Settings_window_has_no_bob_and_streaming_quality_left_playback()
     {
         using var r = new Rig();
         var w = new SettingsWindow { DataContext = r.Vm };
@@ -204,12 +250,12 @@ public class HeadlessUiTests
         Dispatch();
         Assert.DoesNotContain(w.GetVisualDescendants().OfType<ComboBox>().SelectMany(c => c.Items.OfType<ComboBoxItem>()),
             i => (i.Content as string)?.StartsWith("Bob") == true);
-
-        w.GetLogicalDescendants().OfType<TabControl>().Single().SelectedIndex = 1;
+        var tabs = w.GetLogicalDescendants().OfType<TabControl>().Single();
+        tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(t => t.Header as string == "Playback");
         Dispatch();
-        var passthrough = w.GetVisualDescendants().OfType<ToggleSwitch>().First(t => (t.OnContent as string)?.Contains("Passthrough") == true);
-        passthrough.IsChecked = true;
-        Assert.True(r.Settings.AudioPassthrough);
+        Assert.DoesNotContain(w.GetVisualDescendants().OfType<ComboBox>(), c => c.Name == "StreamQualityDefault" && c.IsEffectivelyVisible);
+        Assert.DoesNotContain(w.GetVisualDescendants().OfType<ComboBox>().SelectMany(c => c.Items.OfType<ComboBoxItem>()),
+            i => (i.Content as string)?.StartsWith("Up to 1080p") == true);
         w.Close();
     }
 
@@ -264,31 +310,74 @@ public class HeadlessUiTests
     }
 
     [AvaloniaFact]
-    public void Hardware_switch_is_in_the_video_menu_only_where_it_applies_and_not_in_settings()
+    public void Stop_and_the_frame_buttons_and_a_torrents_previous_and_next()
     {
         using var r = new Rig();
         r.Vm.IsIdle = false;
         var bar = new ControlsBar { DataContext = r.Vm, Width = 1280 };
         bar.Show();
-        // The video menu's content takes its bindings once the menu opens.
-        var video = bar.GetVisualDescendants().OfType<Button>().First(b => (ToolTip.GetTip(b) as string)?.StartsWith("Video") == true);
+        bar.FindControl<Button>("StopButton")!.Command!.Execute(null);
+        Assert.Contains("Stop", r.Player.Calls);
+
+        // Audio alone: no frames to step through, and no video menu.
+        Assert.True(bar.FindControl<Button>("FrameBackButton")!.IsVisible);
+        r.Player.State.HasVideo = false;
+        r.Player.RaiseState("has-video");
+        Dispatch();
+        Assert.True(r.Vm.IsAudioOnly);
+        Assert.False(bar.FindControl<Button>("FrameBackButton")!.IsVisible);
+        Assert.False(bar.FindControl<Button>("FrameNextButton")!.IsVisible);
+        Assert.False(bar.FindControl<Button>("VideoMenuButton")!.IsVisible);
+        r.Player.State.HasVideo = true;
+        r.Player.RaiseState("has-video");
+        Dispatch();
+        Assert.True(bar.FindControl<Button>("FrameNextButton")!.IsVisible);
+
+        Assert.False(bar.FindControl<Button>("NextFileButton")!.IsVisible);
+        bar.Close();
+    }
+
+    [AvaloniaFact]
+    public void Video_menu_offers_resize_and_crop_by_the_pictures_shape()
+    {
+        using var r = new Rig();
+        r.Vm.IsIdle = false;
+        var bar = new ControlsBar { DataContext = r.Vm, Width = 1280 };
+        bar.Show();
+        var video = bar.FindControl<Button>("VideoMenuButton")!;
         video.Flyout!.ShowAt(video);
         Dispatch();
-        var hardware = bar.FindControl<StackPanel>("HardwareOptions")!;
-        Assert.False(hardware.IsVisible);
-        r.Player.State.HardwareDecodingApplies = r.Player.State.HardwareDecodingOn = true;
-        r.Player.RaiseState("hardware-decoding");
+        var picture = bar.FindControl<StackPanel>("PictureOptions")!;
+        Assert.False(picture.IsVisible); // shape not known yet
+
+        // 16:9: it can be resized to 4:3, and there's nothing to crop.
+        r.Player.State.DisplayAspect = 16.0 / 9;
+        r.Player.RaiseState("video-params/aspect");
         Dispatch();
-        Assert.True(hardware.IsVisible);
+        Assert.True(picture.IsVisible);
+        Assert.True(bar.FindControl<ToggleSwitch>("ResizeSwitch")!.IsVisible);
+        Assert.False(bar.FindControl<ToggleSwitch>("CropSwitch")!.IsVisible);
+
+        // 4:3: it can be cropped to 16:9, not resized to what it is.
+        r.Player.State.DisplayAspect = 4.0 / 3;
+        r.Player.RaiseState("video-params/aspect");
+        Dispatch();
+        Assert.False(bar.FindControl<ToggleSwitch>("ResizeSwitch")!.IsVisible);
+        var crop = bar.FindControl<ToggleSwitch>("CropSwitch")!;
+        Assert.True(crop.IsVisible);
+        crop.IsChecked = true;
+        Assert.Contains("SetPictureFit Crop16x9", r.Player.Calls);
+
+        // Scope (2.39:1) offers both; one turns the other off.
+        r.Player.State.DisplayAspect = 2.39;
+        r.Player.RaiseState("video-params/aspect");
+        Dispatch();
+        bar.FindControl<ToggleSwitch>("ResizeSwitch")!.IsChecked = true;
+        Assert.Equal(PictureFit.Resize4x3, r.Player.State.PictureFit);
+        Dispatch();
+        Assert.False(crop.IsChecked);
         video.Flyout.Hide();
         bar.Close();
-
-        var w = new SettingsWindow { DataContext = r.Vm };
-        w.Show();
-        Dispatch();
-        Assert.DoesNotContain(w.GetVisualDescendants().OfType<ToggleSwitch>(),
-            t => (t.OnContent as string)?.Contains("Hardware") == true);
-        w.Close();
     }
 
     [AvaloniaFact]

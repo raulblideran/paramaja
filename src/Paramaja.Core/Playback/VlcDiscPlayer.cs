@@ -207,6 +207,7 @@ public sealed partial class VlcDiscPlayer : IPlayer
             {
                 Set("video-params/w", () => State.VideoWidth = (int)w);
                 Set("video-params/h", () => State.VideoHeight = (int)h);
+                Set("video-params/aspect", () => State.DisplayAspect = DisplayAspect(w, h));
             }
             Set("video-format", () => State.VideoFormat = VideoCodec());
             Set("hwdec-current", () => State.HwdecCurrent = _mp.EnableHardwareDecoding ? "auto" : "no");
@@ -239,13 +240,16 @@ public sealed partial class VlcDiscPlayer : IPlayer
         ForgetAudioCd();
         StartFresh();
         PickStereoSoon();
-        _title = Path.GetFileName(root.TrimEnd('/', '\\')) is { Length: > 0 } name ? name : root;
         Chapters = [];
         Titles = [];
         ChaptersChanged?.Invoke();
         // DVDs are standard definition MPEG-2, which the CPU decodes with ease (and software frames
         // go straight to the deinterlacer). Blu-rays are HD: the GPU decodes them.
         UseHardwareDecoding(applies: bluray);
+        Set("has-video", () => State.HasVideo = true);
+        // A folder, a drive, or an image (ISO) of the disc: libVLC opens them all the same way.
+        _title = PlayerService.DiscTitle(root);
+        _titleAspects = bluray ? new Dictionary<int, double>() : Input.DvdAspect.TitleAspects(root);
         Play(new Media(_vlc, (bluray ? "bluray://" : "dvd://") + DiscPath(root), FromType.FromLocation));
         Later(() =>
         {
@@ -274,6 +278,9 @@ public sealed partial class VlcDiscPlayer : IPlayer
     public void Open(string pathOrUrl, string? displayTitle = null, bool streaming = false) =>
         throw new NotSupportedException("VlcDiscPlayer plays discs only; use OpenDisc");
 
+    /// <summary>SACD images play through mpv (Sacd.SacdProtocol).</summary>
+    public void OpenSacd(string image) => throw new NotSupportedException("SACD images play through mpv");
+
     public void Stop() => Later(() =>
     {
         ForgetAudioCd();
@@ -293,14 +300,16 @@ public sealed partial class VlcDiscPlayer : IPlayer
     private readonly ManualResetEventSlim _cdListed = new();
 
     /// <summary>
-    /// An Audio CD from its drive (/dev/sr0, D:\). Its tracks are the chapters: Page Up / Down
+    /// An Audio CD from its drive (/dev/sr0, D:\), or a CD image's cue sheet (BIN/CUE), which
+    /// libVLC's CD reader takes in place of a drive. Its tracks are the chapters: Page Up / Down
     /// and the chapters menu move between them, and playback carries on from one to the next.
     /// </summary>
     public void OpenAudioCd(string device)
     {
         ForgetAudioCd();
         StartFresh();
-        _title = "Audio CD";
+        _title = File.Exists(device) && !Input.InputClassifier.IsOpticalDevice(device) ? Path.GetFileNameWithoutExtension(device) : "Audio CD";
+        Set("has-video", () => State.HasVideo = false);
         Titles = [];
         Chapters = [];
         ChaptersChanged?.Invoke();
@@ -335,12 +344,24 @@ public sealed partial class VlcDiscPlayer : IPlayer
             return;
         }
         if (tracks[0].Meta(MetadataType.Album) is { Length: > 0 } album) _title = album;
+        // A CD image's cue sheet names the album and its tracks, which libVLC leaves out.
+        var sheet = CueSheetOf(device);
+        if (sheet?.Title is { Length: > 0 } cueAlbum) _title = cueAlbum;
         _cdTracks = tracks;
         // Each track is its own item, so there are no times into the disc to show.
-        Chapters = tracks.Select((t, i) => new ChapterInfo(i, TrackTitle(t, i), double.NaN)).ToList();
+        Chapters = tracks.Select((t, i) => new ChapterInfo(i,
+            sheet is not null && i < sheet.Tracks.Count && !string.IsNullOrWhiteSpace(sheet.Tracks[i].Title) ? sheet.Tracks[i].Title! : TrackTitle(t, i),
+            double.NaN)).ToList();
         ChaptersChanged?.Invoke();
         PlayTrack(0);
         FileLoaded?.Invoke();
+    }
+
+    private static CueSheet.Sheet? CueSheetOf(string device)
+    {
+        if (!device.EndsWith(".cue", StringComparison.OrdinalIgnoreCase)) return null;
+        try { return CueSheet.Read(device); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
     }
 
     /// <summary>CD-Text's title where the disc has one, else "Track 3" (libVLC's own is "Audio CD - Track 03").</summary>
@@ -501,6 +522,8 @@ public sealed partial class VlcDiscPlayer : IPlayer
         _lastDisplayed = null;
         ResetDeinterlacing();
         SetStereoChannel(StereoChannel.Both);
+        SetPictureFit(PictureFit.Original);
+        Set("video-params/aspect", () => State.DisplayAspect = null);
         Set("video-format", () => State.VideoFormat = null);
         Set("audio-params/channel-count", () => State.SourceChannels = null);
     }
@@ -522,7 +545,11 @@ public sealed partial class VlcDiscPlayer : IPlayer
         Tracks = list;
         TracksChanged?.Invoke();
         int? playing = channels.TryGetValue(audio, out var c) ? c : null;
-        if (playing != State.SourceChannels) Set("audio-params/channel-count", () => State.SourceChannels = playing);
+        if (playing != State.SourceChannels)
+        {
+            Set("audio-params/channel-count", () => State.SourceChannels = playing);
+            ApplyStereoChannel(); // a 5.1 track plays as 5.1, a stereo one as stereo
+        }
         PickStereo(list, audio);
     }
 
@@ -667,7 +694,8 @@ public sealed partial class VlcDiscPlayer : IPlayer
         _mp.SetMarqueeInt(VideoMarqueeOption.Enable, 1);
         _mp.SetMarqueeInt(VideoMarqueeOption.Position, 5); // top left
         _mp.SetMarqueeInt(VideoMarqueeOption.X, 24);
-        _mp.SetMarqueeInt(VideoMarqueeOption.Y, 24);
+        // The marquee is placed in the video's own pixels.
+        _mp.SetMarqueeInt(VideoMarqueeOption.Y, 24 + (int)Math.Round(_osdInset * (State.VideoHeight ?? 576)));
         _mp.SetMarqueeInt(VideoMarqueeOption.Size, 28);
         _mp.SetMarqueeInt(VideoMarqueeOption.Timeout, durationMs);
         _mp.SetMarqueeString(VideoMarqueeOption.Text, text);
@@ -815,12 +843,59 @@ public sealed partial class VlcDiscPlayer : IPlayer
         ApplyStereoChannel();
     }
 
-    private void ApplyStereoChannel() => _mp.SetChannel(State.StereoChannel switch
+    /// <summary>
+    /// libVLC's "stereo mode". Its Stereo setting isn't neutral: a 5.1 track played under it is
+    /// downmixed to two channels, so where the track has more than two (or isn't known yet) the
+    /// mode is libVLC's "Original" (unset) instead, which leaves the channels as they are.
+    /// </summary>
+    private void ApplyStereoChannel() => _mp.SetChannel(StereoMode(State.StereoChannel, State.SourceChannels));
+
+    /// <summary>libVLC's stereo-mode values (libvlc_audio_output_channel_t, plus 0, "unset").</summary>
+    internal static AudioOutputChannel StereoMode(StereoChannel channel, int? sourceChannels) => channel switch
     {
         StereoChannel.Left => AudioOutputChannel.Left,
         StereoChannel.Right => AudioOutputChannel.Right,
-        _ => AudioOutputChannel.Stereo,
-    });
+        _ when sourceChannels == 2 => AudioOutputChannel.Stereo,
+        _ => OriginalChannels,
+    };
+
+    /// <summary>AOUT_VAR_CHAN_UNSET: libVLC offers it as "Original" for sources with other than two channels.</summary>
+    internal const AudioOutputChannel OriginalChannels = 0;
+
+    // ---- The picture's shape -------------------------------------------------------------------
+
+    /// <summary>The DVD's titles' shapes (4:3, 16:9), from its IFOs; libVLC's title n is the DVD's title n.</summary>
+    private IReadOnlyDictionary<int, double> _titleAspects = new Dictionary<int, double>();
+
+    /// <summary>
+    /// The picture's displayed width over height: a DVD title's as its IFO says (libVLC leaves a
+    /// DVD's pixel shape out), else from its size and the video track's pixel shape.
+    /// </summary>
+    private double? DisplayAspect(uint width, uint height)
+    {
+        if (width == 0 || height == 0) return null;
+        if (_cdTrack < 0 && _titleAspects.TryGetValue(_mp.Title, out var dvd)) return dvd;
+        using var media = _mp.Media;
+        var video = media?.Tracks.LastOrDefault(t => t.TrackType == LibVLCSharp.Shared.TrackType.Video);
+        var (num, den) = video is { } v && v.Data.Video.SarNum > 0 && v.Data.Video.SarDen > 0
+            ? (v.Data.Video.SarNum, v.Data.Video.SarDen)
+            : (1u, 1u);
+        return width * (double)num / (height * (double)den);
+    }
+
+    public void SetPictureFit(PictureFit fit)
+    {
+        _mp.AspectRatio = fit == PictureFit.Resize4x3 ? "4:3" : null;
+        _mp.CropGeometry = fit == PictureFit.Crop16x9 ? "16:9" : null;
+        Set("picture-fit", () => State.PictureFit = fit);
+    }
+
+    // ---- On-screen messages -------------------------------------------------------------------
+
+    /// <summary>The share of the video's height the top bar covers; messages start below it.</summary>
+    private double _osdInset;
+
+    public void SetOsdTopInset(double fraction) => _osdInset = Math.Clamp(fraction, 0, 1);
 
     // ---- Statistics and the log ----------------------------------------------------------------
 
@@ -895,6 +970,7 @@ public sealed partial class VlcDiscPlayer : IPlayer
     public void ApplyRenderQuality() { }
     public double StreamBufferSeconds => 0;
     public void ApplyStreamQuality() { }
+    public void ReloadStream(int maxHeight) { }
     public void ApplyTiming() { }
 
     public void Dispose()

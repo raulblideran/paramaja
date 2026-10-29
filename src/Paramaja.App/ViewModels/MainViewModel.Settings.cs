@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Paramaja.Core.Playback;
 using Paramaja.Core.Settings;
 
@@ -79,6 +80,115 @@ public sealed partial class MainViewModel
             OnPropertyChanged();
             Changed(() => _player?.ApplyStreamQuality());
         }
+    }
+
+    // ---- Streaming quality for the playing web video (the video menu) -------------------------
+
+    /// <summary>The playing web video's qualities, best first: "Best available", then its own heights.</summary>
+    public ObservableCollection<StreamQualityItem> StreamQualities { get; } = [];
+
+    /// <summary>The playing video came from a site yt-dlp reads, and offers more than one quality.</summary>
+    public bool HasStreamQualities => StreamQualities.Count > 2 && _webUrl is not null;
+
+    private CancellationTokenSource? _qualitiesCts;
+    /// <summary>The height the playing web video was asked for; 0 for the best.</summary>
+    private int _streamChoice;
+    private bool _fillingQualities;
+
+    private void ForgetStreamQualities()
+    {
+        _qualitiesCts?.Cancel();
+        _qualitiesCts = null;
+        _streamChoice = Settings.StreamMaxHeight; // each video starts at the default
+        _fillingQualities = true;
+        StreamQualities.Clear();
+        _fillingQualities = false;
+        OnPropertyChanged(nameof(HasStreamQualities));
+        OnPropertyChanged(nameof(StreamQualityChoiceIndex));
+    }
+
+    /// <summary>Asks yt-dlp which qualities the page offers (as the downloader does), in the background.</summary>
+    internal async Task LoadStreamQualitiesAsync(string url)
+    {
+        if (!HasYtDlp) return;
+        var cts = _qualitiesCts = new CancellationTokenSource();
+        try
+        {
+            var info = await Task.Run(() => _ytdlp.GetInfoAsync(url, cts.Token), cts.Token);
+            if (cts.IsCancellationRequested || _webUrl != url) return;
+            _fillingQualities = true;
+            Replace(StreamQualities, StreamQualityItem.For(info.Heights));
+            _fillingQualities = false;
+            OnPropertyChanged(nameof(HasStreamQualities));
+            OnPropertyChanged(nameof(StreamQualityChoiceIndex));
+        }
+        catch (Exception e) when (e is OperationCanceledException or InvalidOperationException
+                                      or System.ComponentModel.Win32Exception or IOException) { }
+    }
+
+    /// <summary>The video menu's choice: the quality asked for, or the highest the video has below it.</summary>
+    public int StreamQualityChoiceIndex
+    {
+        get => StreamQualityItem.IndexFor(StreamQualities, _streamChoice);
+        set
+        {
+            if (_fillingQualities || value < 0 || value >= StreamQualities.Count) return;
+            var height = StreamQualities[value].Height;
+            if (value == StreamQualityChoiceIndex) return;
+            _streamChoice = height;
+            _player?.ReloadStream(height);
+            OnPropertyChanged();
+            Osd($"Quality: {StreamQualities[value].Label}");
+        }
+    }
+
+    // ---- The picture's shape (the video menu, for the playing video) ---------------------------
+
+    /// <summary>Within 2% counts as that shape already (1920×1080 is 16:9, a DVD's 720×576 at 4:3 is 4:3).</summary>
+    private bool ShapeDiffersFrom(double target) =>
+        !IsAudioOnly && !IsIdle && _player?.State.DisplayAspect is { } a and > 0 && Math.Abs(a / target - 1) > 0.02;
+
+    /// <summary>"Resize to 4:3" is offered for any picture that isn't 4:3 already.</summary>
+    public bool CanResizeTo4x3 => ShapeDiffersFrom(4.0 / 3);
+
+    /// <summary>"Crop to 16:9" is offered for any picture that isn't 16:9 already.</summary>
+    public bool CanCropTo16x9 => ShapeDiffersFrom(16.0 / 9);
+
+    public bool HasPictureOptions => CanResizeTo4x3 || CanCropTo16x9;
+
+    private PictureFit Fit => _player?.State.PictureFit ?? PictureFit.Original;
+
+    /// <summary>Stretches the picture to 4:3 (turning a crop off); for the playing video.</summary>
+    public bool ResizeTo4x3
+    {
+        get => Fit == PictureFit.Resize4x3;
+        set => SetFit(value ? PictureFit.Resize4x3 : Fit == PictureFit.Resize4x3 ? PictureFit.Original : Fit,
+            value ? "Resized to 4:3" : "Original shape");
+    }
+
+    /// <summary>Crops the picture to 16:9 (turning a resize off); for the playing video.</summary>
+    public bool CropTo16x9
+    {
+        get => Fit == PictureFit.Crop16x9;
+        set => SetFit(value ? PictureFit.Crop16x9 : Fit == PictureFit.Crop16x9 ? PictureFit.Original : Fit,
+            value ? "Cropped to 16:9" : "Original shape");
+    }
+
+    private void SetFit(PictureFit fit, string osd)
+    {
+        if (_player is null || fit == Fit) return;
+        _player.SetPictureFit(fit);
+        OnPictureChanged();
+        Osd(osd);
+    }
+
+    private void OnPictureChanged()
+    {
+        OnPropertyChanged(nameof(CanResizeTo4x3));
+        OnPropertyChanged(nameof(CanCropTo16x9));
+        OnPropertyChanged(nameof(HasPictureOptions));
+        OnPropertyChanged(nameof(ResizeTo4x3));
+        OnPropertyChanged(nameof(CropTo16x9));
     }
 
     /// <summary>

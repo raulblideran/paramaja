@@ -53,6 +53,15 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
         Log($"Open {pathOrUrl} {displayTitle}".TrimEnd() + (streaming ? " [stream]" : ""));
     public void OpenDisc(string root, bool bluray) => Log($"OpenDisc {(bluray ? "bd" : "dvd")} {root}");
     public void OpenAudioCd(string device) => Log($"OpenAudioCd {device}");
+    public void OpenSacd(string image) => Log($"OpenSacd {image}");
+    public void ReloadStream(int maxHeight) => Log($"ReloadStream {maxHeight}");
+    public void SetOsdTopInset(double fraction) => Log($"SetOsdTopInset {fraction:0.###}");
+    public void SetPictureFit(PictureFit fit)
+    {
+        Log($"SetPictureFit {fit}");
+        State.PictureFit = fit;
+        RaiseState("picture-fit");
+    }
     public void Stop() => Log("Stop");
     public void TogglePause() => Log("TogglePause");
     public void SetPaused(bool paused) => Log($"SetPaused {paused}");

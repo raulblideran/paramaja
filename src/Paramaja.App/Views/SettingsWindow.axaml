@@ -7,40 +7,14 @@
         Width="720" Height="600" MinWidth="560" MinHeight="420"
         WindowStartupLocation="CenterOwner" Background="#15111A">
   <TabControl Margin="12" TabStripPlacement="Left">
-    <TabItem Header="Video">
-      <ScrollViewer>
-        <StackPanel Margin="16,0" Spacing="8">
-          <TextBlock Classes="section" Text="HDR" />
-          <ComboBox SelectedIndex="{Binding HdrModeIndex}" Width="460" HorizontalAlignment="Left">
-            <ComboBoxItem Content="Auto — passthrough on an HDR display, tonemap on SDR (default)" />
-            <ComboBoxItem Content="Always tonemap HDR to SDR" />
-            <ComboBoxItem Content="Always pass HDR through to the display" />
-          </ComboBox>
-          <TextBlock Text="{Binding HdrStatusText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
-
-          <TextBlock Classes="section" Text="Deinterlacing" />
-          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                     Text="Automatic, for interlaced videos only: those flagged as interlaced, and videos the CPU decodes whose picture shows it (tape captures without flags). They're deinterlaced with BWDIF, a motion-adaptive deinterlacer that makes one frame of each field (50i becomes 50p). The video menu has its switch while one plays, for that video." />
-
-          <TextBlock Classes="section" Text="Decoding" />
-          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                     Text="Hardware acceleration is decided for each video: it's on for HEVC (H.265) and AV1 at any size and for every codec from 1080p up, where your graphics card can decode them. Its switch then appears in the video menu, for that video. Smaller videos decode in software and have no switch." />
-          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                     Text="Rendering quality, frame timing and tonemapping are in the Developer tab." />
-        </StackPanel>
-      </ScrollViewer>
-    </TabItem>
-
     <TabItem Header="Audio">
       <StackPanel Margin="16,0" Spacing="8">
         <TextBlock Classes="section" Text="Surround" />
         <ToggleSwitch IsChecked="{Binding DownmixToStereo}" OnContent="Downmix 5.1 / 7.1 to stereo" OffContent="Output original channels (default)" />
         <TextBlock Classes="section" Text="Volume" />
         <ToggleSwitch IsChecked="{Binding NormalizeAudio}" OnContent="Normalize volume (evens out loud and quiet parts)" OffContent="Original dynamics (default)" />
-        <TextBlock Classes="section" Text="Receiver" />
-        <ToggleSwitch IsChecked="{Binding AudioPassthrough}" OnContent="Passthrough Dolby / DTS to an AV receiver" OffContent="Decode audio in the player (default)" />
         <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                   Text="All off by default: the audio plays as-is. The downmix applies only to 5.1 / 7.1 sources. Where a video has several audio tracks, a stereo one plays by default; for a stereo source, the audio menu can play just its left or right channel. No ReplayGain or downmix normalisation is ever applied." />
+                   Text="All off by default: the audio plays as-is, 5.1 and 7.1 with all their channels. The downmix applies only to 5.1 / 7.1 sources. Where a video has several audio tracks, a stereo one plays by default; for a stereo source, the audio menu can play just its left or right channel. No ReplayGain or downmix normalisation is ever applied. Passthrough to an AV receiver is in the Developer tab." />
         <TextBlock Classes="section" Text="Preferred audio languages" />
         <TextBox Text="{Binding PreferredAudioLanguages}" Watermark="e.g. jpn,eng" Width="320" HorizontalAlignment="Left" />
       </StackPanel>
@@ -80,19 +54,7 @@
         <Button Content="Open screenshots folder" Command="{Binding OpenScreenshotsFolderCommand}" />
         <TextBlock Classes="section" Text="YouTube &amp; other sites" />
         <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                   Text="Links from YouTube and ~1800 other sites play through yt-dlp. Sites change often; if one stops working, update it." />
-        <StackPanel Orientation="Horizontal" Spacing="10">
-          <TextBlock Text="Streaming quality" VerticalAlignment="Center" />
-          <ComboBox SelectedIndex="{Binding StreamQualityIndex}" Width="220">
-            <ComboBoxItem Content="Best available (default)" />
-            <ComboBoxItem Content="Up to 2160p (4K)" />
-            <ComboBoxItem Content="Up to 1440p" />
-            <ComboBoxItem Content="Up to 1080p" />
-            <ComboBoxItem Content="Up to 720p" />
-            <ComboBoxItem Content="Up to 480p" />
-            <ComboBoxItem Content="Up to 360p" />
-          </ComboBox>
-        </StackPanel>
+                   Text="Links from YouTube and ~1800 other sites play through yt-dlp. Sites change often; if one stops working, update it. While one plays, the video menu can change its quality." />
         <StackPanel Orientation="Horizontal" Spacing="10">
           <Button Content="Update YouTube support" Command="{Binding UpdateYtDlpCommand}" IsEnabled="{Binding HasYtDlp}" />
           <Button Content="Open downloads folder" Command="{Binding OpenDownloadsFolderCommand}" />
@@ -117,6 +79,23 @@
             <Button Content="Copy diagnostics (Ctrl+I)" Command="{Binding CopyDiagnosticsCommand}"
                     ToolTip.Tip="While the problem video is playing: copies the machine, the video and why it's struggling" />
           </StackPanel>
+
+          <TextBlock Classes="section" Text="This video" />
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding !HasVideoSwitches}"
+                     Text="Nothing to switch for the video playing now. An interlaced video has a deinterlacing switch here, and one your graphics card decodes a hardware decoding switch, for that video." />
+          <StackPanel x:Name="DeinterlaceOptions" Spacing="6" IsVisible="{Binding IsInterlacedVideo}">
+            <ToggleSwitch x:Name="DeinterlaceSwitch" IsChecked="{Binding Deinterlacing}" OnContent="BWDIF deinterlacing (default)"
+                          OffContent="Deinterlacing off (this video)" />
+            <TextBlock Text="{Binding DeinterlaceTip}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+          </StackPanel>
+          <StackPanel x:Name="HardwareOptions" Spacing="6" IsVisible="{Binding HardwareDecodingApplies}">
+            <ToggleSwitch x:Name="HardwareSwitch" IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration (default)"
+                          OffContent="Software decoding (this video)" />
+          </StackPanel>
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="Deinterlacing is automatic, for interlaced videos only: those flagged as interlaced, and videos the CPU decodes whose picture shows it (tape captures without flags). They're deinterlaced with BWDIF, a motion-adaptive deinterlacer that makes one frame of each field (50i becomes 50p). D switches it for the playing video." />
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="Hardware acceleration is decided for each video: it's on for HEVC (H.265) and AV1 at any size and for every codec from 1080p up, where your graphics card can decode them. Smaller videos decode in software." />
 
           <TextBlock Classes="section" Text="Rendering quality" />
           <ComboBox x:Name="RenderQuality" SelectedIndex="{Binding RenderQualityIndex}" Width="420" HorizontalAlignment="Left">
@@ -154,6 +133,14 @@
                        Text="Laptops with built-in and gaming graphics give apps the power-saving one by default, which may be too slow for 1080p and 4K at a high refresh rate. Applies from the next start." />
           </StackPanel>
 
+          <TextBlock Classes="section" Text="HDR" />
+          <ComboBox x:Name="HdrMode" SelectedIndex="{Binding HdrModeIndex}" Width="460" HorizontalAlignment="Left">
+            <ComboBoxItem Content="Auto — passthrough on an HDR display, tonemap on SDR (default)" />
+            <ComboBoxItem Content="Always tonemap HDR to SDR" />
+            <ComboBoxItem Content="Always pass HDR through to the display" />
+          </ComboBox>
+          <TextBlock Text="{Binding HdrStatusText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+
           <TextBlock Classes="section" Text="Tonemapping (HDR to SDR)" />
           <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="10">
             <TextBlock Text="Tonemapping curve" VerticalAlignment="Center" />
@@ -168,7 +155,26 @@
             <Slider Minimum="0" Maximum="1" Value="{Binding HdrContrastRecovery}" Width="320" HorizontalAlignment="Left" />
           </StackPanel>
           <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                     Text="These apply while HDR video is tonemapped to SDR (see HDR in the Video tab)." />
+                     Text="These apply while HDR video is tonemapped to SDR (see HDR above). H switches between tonemapping and passthrough." />
+
+          <TextBlock Classes="section" Text="Audio passthrough" />
+          <ToggleSwitch x:Name="PassthroughSwitch" IsChecked="{Binding AudioPassthrough}" OnContent="Passthrough Dolby / DTS to an AV receiver"
+                        OffContent="Decode audio in the player (default)" />
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="Sends Dolby and DTS bitstreams untouched to a receiver, which decodes them (on Windows the receiver then has the audio device to itself). Such audio can't be downmixed or normalized." />
+
+          <TextBlock Classes="section" Text="Streaming quality" />
+          <ComboBox x:Name="StreamQualityDefault" SelectedIndex="{Binding StreamQualityIndex}" Width="220" HorizontalAlignment="Left">
+            <ComboBoxItem Content="Best available (default)" />
+            <ComboBoxItem Content="Up to 2160p (4K)" />
+            <ComboBoxItem Content="Up to 1440p" />
+            <ComboBoxItem Content="Up to 1080p" />
+            <ComboBoxItem Content="Up to 720p" />
+            <ComboBoxItem Content="Up to 480p" />
+            <ComboBoxItem Content="Up to 360p" />
+          </ComboBox>
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="The quality YouTube and other sites' videos start in. While one plays, the video menu can change it for that video." />
         </StackPanel>
       </ScrollViewer>
     </TabItem>

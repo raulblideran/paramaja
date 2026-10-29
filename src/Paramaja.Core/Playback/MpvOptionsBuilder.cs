@@ -33,7 +33,10 @@ public static class MpvOptionsBuilder
     /// older than the bundled one, and playback shouldn't fail over these.
     /// </summary>
     public static readonly IReadOnlySet<string> OptionalOptions =
-        new HashSet<string> { "directory-filter-types", "display-fps-override", "d3d11-adapter" };
+        new HashSet<string> { "directory-filter-types", "display-fps-override", "d3d11-adapter", "audio-exts" };
+
+    /// <summary>The audio files an opened folder plays (mpv 0.41's list, plus DSD).</summary>
+    public const string AudioExtensions = "aac,ac3,aiff,ape,au,dts,eac3,flac,m4a,mka,mp3,oga,ogg,ogm,opus,thd,wav,wma,wv,dsf,dff";
 
     private static KeyValuePair<string, string> P(string k, string v) => new(k, v);
     private static string F(double d) => d.ToString("0.###", CultureInfo.InvariantCulture);
@@ -77,6 +80,8 @@ public static class MpvOptionsBuilder
         yield return P("drag-and-drop", "no");
         // An opened folder plays as a playlist of its videos, without cover art or subtitles in between.
         yield return P("directory-filter-types", "video,audio");
+        // mpv's own list of audio files lacks DSD (.dsf, .dff), which it plays.
+        yield return P("audio-exts", AudioExtensions);
     }
 
     /// <summary>YouTube and other sites: mpv's ytdl hook hands page URLs to yt-dlp.</summary>
@@ -231,6 +236,30 @@ public static class MpvOptionsBuilder
         yield return P("hdr-contrast-recovery", F(profile == RenderProfile.High ? s.HdrContrastRecovery : 0));
         yield return P("gamut-mapping-mode", s.GamutMapping);
     }
+
+    /// <summary>
+    /// The crop (mpv's video-crop, "WxH+X+Y" in the source's pixels) that leaves the middle of the
+    /// picture at <paramref name="target"/> width over height: the sides of a wider picture, the
+    /// top and bottom of a narrower one. Null where the size isn't known or the shape already fits.
+    /// </summary>
+    public static string? CropTo(int? width, int? height, double? displayAspect, double target)
+    {
+        if (width is not ({ } w and > 0) || height is not ({ } h and > 0) || displayAspect is not ({ } dar and > 0)) return null;
+        if (Math.Abs(dar / target - 1) < 0.01) return null;
+        int cw = w, ch = h;
+        if (dar > target) cw = Even(w * target / dar);
+        else ch = Even(h * dar / target);
+        return $"{cw}x{ch}+{(w - cw) / 2}+{(h - ch) / 2}";
+    }
+
+    private static int Even(double v) => Math.Max(2, (int)Math.Round(v / 2) * 2);
+
+    /// <summary>
+    /// mpv's top margin for its messages that clears the top bar: <paramref name="fraction"/> of the
+    /// window's height is covered by it, and mpv counts in scaled pixels, 720 to the window's height.
+    /// </summary>
+    public static long OsdMarginBelow(double fraction, long baseMargin) =>
+        baseMargin + (long)Math.Round(Math.Clamp(fraction, 0, 1) * 720);
 
     public static IEnumerable<KeyValuePair<string, string>> Deinterlace()
     {

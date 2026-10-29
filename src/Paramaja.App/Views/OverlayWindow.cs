@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Paramaja.App.Services;
 using Paramaja.App.ViewModels;
 
@@ -33,6 +34,11 @@ public class OverlayWindow : Window
         PointerEntered += (_, _) => { if (DataContext is MainViewModel vm) { vm.IsPointerOverControls = true; vm.NotifyActivity(); } };
         PointerExited += (_, _) => { if (DataContext is MainViewModel vm) vm.IsPointerOverControls = false; };
         PointerMoved += (_, _) => (DataContext as MainViewModel)?.NotifyActivity();
+        // A click on a bar (play, the seek bar, the volume) leaves the keyboard with the player
+        // window, so Space and the other keys keep working after the bar hides. Not while one of
+        // its menus is open: a menu closes when its bar loses the keyboard.
+        AddHandler(PointerReleasedEvent, (_, _) => Dispatcher.UIThread.Post(GiveKeyboardBack, DispatcherPriority.Background),
+            RoutingStrategies.Tunnel, handledEventsToo: true);
         if (TryGetPlatformHandle() is { HandleDescriptor: "XID" } x11) X11WindowType.MakeDock(x11.Handle);
     }
 
@@ -70,7 +76,14 @@ public class OverlayWindow : Window
 
     private void MenuClosed(object menu)
     {
-        if (_open.Remove(menu)) (DataContext as MainViewModel)?.MenuClosed();
+        if (!_open.Remove(menu)) return;
+        (DataContext as MainViewModel)?.MenuClosed();
+        if (_open.Count == 0) Dispatcher.UIThread.Post(GiveKeyboardBack, DispatcherPriority.Background);
+    }
+
+    private void GiveKeyboardBack()
+    {
+        if (_open.Count == 0 && IsActive && Owner is Window owner && owner.IsVisible) owner.Activate();
     }
 
     /// <summary>Closes the bar's open menus, before it hides: a menu left open would float on its own.</summary>

@@ -17,7 +17,12 @@
 
       <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,2,0,0">
         <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-          <Button Classes="icon" Command="{Binding FrameBackStepCommand}" ToolTip.Tip="Previous frame ( , )">
+          <Button x:Name="PreviousFileButton" Classes="icon" Command="{Binding PreviousFileCommand}" IsVisible="{Binding HasTorrentFiles}"
+                  ToolTip.Tip="Previous file in this torrent">
+            <PathIcon Data="{StaticResource IconPlaylistPrev}" />
+          </Button>
+          <Button x:Name="FrameBackButton" Classes="icon" Command="{Binding FrameBackStepCommand}" IsVisible="{Binding !IsAudioOnly}"
+                  ToolTip.Tip="Previous frame ( , )">
             <PathIcon Data="{StaticResource IconFramePrev}" />
           </Button>
           <Button Classes="icon big" Command="{Binding TogglePauseCommand}" ToolTip.Tip="Play / Pause (Space)">
@@ -26,8 +31,16 @@
               <PathIcon Data="{StaticResource IconPause}" IsVisible="{Binding !IsPaused}" />
             </Panel>
           </Button>
-          <Button Classes="icon" Command="{Binding FrameStepCommand}" ToolTip.Tip="Next frame ( . )">
+          <Button x:Name="FrameNextButton" Classes="icon" Command="{Binding FrameStepCommand}" IsVisible="{Binding !IsAudioOnly}"
+                  ToolTip.Tip="Next frame ( . )">
             <PathIcon Data="{StaticResource IconFrameNext}" />
+          </Button>
+          <Button x:Name="NextFileButton" Classes="icon" Command="{Binding NextFileCommand}" IsVisible="{Binding HasTorrentFiles}"
+                  ToolTip.Tip="Next file in this torrent">
+            <PathIcon Data="{StaticResource IconPlaylistNext}" />
+          </Button>
+          <Button x:Name="StopButton" Classes="icon" Command="{Binding StopCommand}" ToolTip.Tip="Stop (Ctrl+S)">
+            <PathIcon Data="{StaticResource IconStop}" />
           </Button>
           <Button Classes="icon" Command="{Binding PreviousChapterCommand}" IsVisible="{Binding HasChapters}"
                   ToolTip.Tip="Previous chapter (Page Up)" Margin="6,0,0,0">
@@ -174,42 +187,32 @@
                   <TextBlock Classes="section" Text="Volume" />
                   <ToggleSwitch IsChecked="{Binding NormalizeAudio}" OnContent="Normalize volume (evens out loud and quiet parts)"
                                 OffContent="Original dynamics (default)" />
-                  <ToggleSwitch IsChecked="{Binding AudioPassthrough}" OnContent="Passthrough to AV receiver"
-                                OffContent="Decode here (default)" />
                   <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                             Text="The original audio stream plays as-is unless you choose a downmix, one channel or normalization. A stereo track is picked by default where there is one. Passthrough sends Dolby/DTS untouched to a receiver (and can't be normalized)." />
+                             Text="The original audio stream plays as-is, 5.1 as 5.1, unless you choose a downmix, one channel or normalization. A stereo track is picked by default where there is one. Passthrough to an AV receiver is in Settings → Developer." />
                 </StackPanel>
               </Flyout>
             </Button.Flyout>
           </Button>
 
-          <Button Classes="icon" ToolTip.Tip="Video, HDR &amp; deinterlacing">
+          <Button x:Name="VideoMenuButton" Classes="icon" ToolTip.Tip="Video" IsVisible="{Binding !IsAudioOnly}">
             <PathIcon Data="{StaticResource IconVideo}" />
             <Button.Flyout>
               <Flyout Placement="TopEdgeAlignedRight">
                 <StackPanel Width="340" Spacing="6">
-                  <StackPanel x:Name="HdrOptions" Spacing="6" IsVisible="{Binding IsHdrVideo}">
-                  <TextBlock Classes="section" Text="HDR" Margin="0,0,0,2" />
-                  <ComboBox SelectedIndex="{Binding HdrModeIndex}" HorizontalAlignment="Stretch">
-                    <ComboBoxItem Content="Auto — follows the display (default)" />
-                    <ComboBoxItem Content="Always tonemap to SDR" />
-                    <ComboBoxItem Content="Always pass HDR through" />
-                  </ComboBox>
-                  <TextBlock Text="{Binding HdrStatusText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                  <StackPanel x:Name="PictureOptions" Spacing="6" IsVisible="{Binding HasPictureOptions}">
+                    <TextBlock Classes="section" Text="Picture (this video)" />
+                    <ToggleSwitch x:Name="ResizeSwitch" IsChecked="{Binding ResizeTo4x3}" IsVisible="{Binding CanResizeTo4x3}"
+                                  OnContent="Resized to 4:3" OffContent="Resize to 4:3" />
+                    <ToggleSwitch x:Name="CropSwitch" IsChecked="{Binding CropTo16x9}" IsVisible="{Binding CanCropTo16x9}"
+                                  OnContent="Cropped to 16:9" OffContent="Crop to 16:9" />
                   </StackPanel>
-                  <StackPanel x:Name="DeinterlaceOptions" Spacing="6" IsVisible="{Binding IsInterlacedVideo}">
-                    <TextBlock Classes="section" Text="Deinterlacing" />
-                    <ToggleSwitch IsChecked="{Binding Deinterlacing}" OnContent="BWDIF deinterlacing (default)"
-                                  OffContent="Off (this video)" />
-                    <TextBlock Text="{Binding DeinterlaceTip}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                  </StackPanel>
-                  <StackPanel x:Name="HardwareOptions" Spacing="6" IsVisible="{Binding HardwareDecodingApplies}">
-                    <TextBlock Classes="section" Text="Decoding" />
-                    <ToggleSwitch IsChecked="{Binding HardwareDecoding}" OnContent="Hardware acceleration (default)"
-                                  OffContent="Software decoding (this video)" />
+                  <StackPanel x:Name="StreamQualityOptions" Spacing="6" IsVisible="{Binding HasStreamQualities}">
+                    <TextBlock Classes="section" Text="Streaming quality (this video)" />
+                    <ComboBox x:Name="StreamQuality" ItemsSource="{Binding StreamQualities}"
+                              SelectedIndex="{Binding StreamQualityChoiceIndex}" HorizontalAlignment="Stretch" />
                   </StackPanel>
                   <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                             Text="Rendering, tonemapping and the troubleshooting tools are in Settings → Developer." />
+                             Text="Deinterlacing, hardware decoding, HDR and rendering are in Settings → Developer." />
                 </StackPanel>
               </Flyout>
             </Button.Flyout>

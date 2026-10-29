@@ -11,7 +11,8 @@ public sealed record TrackInfo(
     bool Selected,
     bool External,
     bool Default,
-    int? Channels)
+    int? Channels,
+    bool AlbumArt = false)
 {
     public string Label
     {

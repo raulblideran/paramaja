@@ -132,7 +132,8 @@ public class InputTests
             "  TRACK 02 AUDIO", "    INDEX 00 03:59:70", "FILE \"b.wav\" WAVE", "    INDEX 01 00:00:00", "    TITLE \"Two\"",
             "FILE image.flac WAVE", "  TRACK 03 AUDIO", "    INDEX 01 01:02:15"]);
         Assert.Equal("Album", sheet.Title);
-        Assert.Equal([new CueSheet.Track("a.wav", 0, "One"), new CueSheet.Track("b.wav", 0, "Two"), new CueSheet.Track("image.flac", 62.2, null)],
+        Assert.Equal([new CueSheet.Track("a.wav", 0, "One", "WAVE", "AUDIO"), new CueSheet.Track("b.wav", 0, "Two", "WAVE", "AUDIO"),
+                new CueSheet.Track("image.flac", 62.2, null, "WAVE", "AUDIO")],
             sheet.Tracks);
     }
 

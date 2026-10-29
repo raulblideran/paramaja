@@ -11,7 +11,7 @@
       <TextBlock Text="Open Disc" FontSize="20" FontWeight="SemiBold" />
     </StackPanel>
     <TextBlock Classes="muted" TextWrapping="Wrap"
-               Text="Plays a DVD or Blu-ray with its menus, or an Audio CD, from a drive or from a folder: VIDEO_TS / BDMV, or a CD rip with its .cue sheet. Store-bought DVDs work; encrypted Blu-rays don't." />
+               Text="Plays a DVD or Blu-ray with its menus, or an Audio CD, from a drive, a folder (VIDEO_TS / BDMV, or a CD rip with its .cue sheet) or a disc image: a DVD, Blu-ray or SACD .iso, or an Audio CD's .bin / .cue. Store-bought DVDs work; encrypted Blu-rays don't." />
     <TextBlock Classes="section" Text="Drives" />
     <ItemsControl x:Name="DriveList">
       <ItemsControl.ItemTemplate>
@@ -24,11 +24,13 @@
       </ItemsControl.ItemTemplate>
     </ItemsControl>
     <TextBlock x:Name="NoDrives" Classes="muted" FontSize="12" Text="No CD, DVD or Blu-ray drive found." IsVisible="False" />
-    <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="10">
+    <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="10">
       <Button Classes="ghost" Content="Disc folder…" Click="OnPickFolder"
               ToolTip.Tip="A DVD (VIDEO_TS) or Blu-ray (BDMV) folder, or a CD rip's folder with its .cue sheet" />
-      <Button Grid.Column="1" Classes="ghost" Content="Refresh" Click="OnRefresh" ToolTip.Tip="After inserting a disc" />
-      <Button Grid.Column="3" Classes="ghost" Content="Cancel" Click="OnCancel" IsCancel="True" />
+      <Button x:Name="DiscImageButton" Grid.Column="1" Classes="ghost" Content="Disc image…" Click="OnPickImage"
+              ToolTip.Tip="A DVD, Blu-ray or SACD image (.iso), or an Audio CD image (.cue with its .bin)" />
+      <Button Grid.Column="2" Classes="ghost" Content="Refresh" Click="OnRefresh" ToolTip.Tip="After inserting a disc" />
+      <Button Grid.Column="4" Classes="ghost" Content="Cancel" Click="OnCancel" IsCancel="True" />
     </Grid>
   </StackPanel>
 </Window>

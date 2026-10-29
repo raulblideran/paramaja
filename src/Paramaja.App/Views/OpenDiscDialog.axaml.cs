@@ -5,7 +5,7 @@ using Paramaja.App.Services;
 
 namespace Paramaja.App.Views;
 
-/// <summary>Picks a disc to play: a drive with a disc in it, or a VIDEO_TS / BDMV folder. Returns its path.</summary>
+/// <summary>Picks a disc to play: a drive with a disc in it, a VIDEO_TS / BDMV folder, or a disc image. Returns its path.</summary>
 public partial class OpenDiscDialog : Window
 {
     public OpenDiscDialog()
@@ -36,6 +36,22 @@ public partial class OpenDiscDialog : Window
             AllowMultiple = false,
         });
         if (folders.FirstOrDefault()?.TryGetLocalPath() is { } path) Close(path);
+    }
+
+    private static readonly FilePickerFileType Images = new("Disc images")
+    {
+        Patterns = ["*.iso", "*.cue", "*.bin", "*.img"],
+    };
+
+    private async void OnPickImage(object? sender, RoutedEventArgs e)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "DVD, Blu-ray or SACD image (.iso), or Audio CD image (.cue / .bin)",
+            AllowMultiple = false,
+            FileTypeFilter = [Images, FilePickerFileTypes.All],
+        });
+        if (files.FirstOrDefault()?.TryGetLocalPath() is { } path) Close(path);
     }
 
     private void OnCancel(object? sender, RoutedEventArgs e) => Close(null);
