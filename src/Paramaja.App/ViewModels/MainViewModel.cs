@@ -262,7 +262,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         "duration", "pause", "mute", "volume", "paused-for-cache", "media-title", "deinterlace-active",
         "hwdec-current", "video-params/gamma", "hardware-decoding", "chapter", "video-params/w",
         "audio-params/channel-count", "video-format", "video-codec", "stereo-channel", "has-video",
-        "video-params/aspect", "picture-fit",
+        "video-params/aspect", "picture-fit", "stream-heights",
     ];
 
     /// <summary>Back to the disc's root menu (the Menu button).</summary>
@@ -291,6 +291,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 OnAudioOnlyChanged();
                 break;
             case "has-video": OnAudioOnlyChanged(); break;
+            case "stream-heights": FillStreamQualities(s.StreamHeights); break;
             case "video-params/aspect" or "picture-fit": OnPictureChanged(); break;
             case "eof-reached":
                 // A torrent's files play one after the other (mpv stays at the end of each).
@@ -522,7 +523,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             UseEngine(_mpvPlayer!);
             _player!.Open(value, streaming: InputClassifier.IsStreaming(kind));
-            if (kind == InputKind.Url) _ = LoadStreamQualitiesAsync(value);
         }
     }
 

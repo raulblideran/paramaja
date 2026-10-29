@@ -34,6 +34,16 @@ public class PictureAndOsdTests
         Assert.Contains("audio-exts", MpvOptionsBuilder.OptionalOptions);
     }
 
+    [Fact]
+    public void A_sites_qualities_come_from_what_mpvs_ytdl_hook_kept()
+    {
+        const string json = """{"title": "Clip", "formats": [{"height": 1080, "vcodec": "avc1"}, {"height": 360, "vcodec": "vp9"}, {"vcodec": "none"}]}""";
+        Assert.Equal([1080, 360], PlayerService.HeightsFromYtdlHook(System.Text.Json.JsonSerializer.Serialize(json))); // quoted, as mpv gives it
+        Assert.Equal([1080, 360], PlayerService.HeightsFromYtdlHook(json));
+        Assert.Empty(PlayerService.HeightsFromYtdlHook(null));   // a file or a direct link: yt-dlp never ran
+        Assert.Empty(PlayerService.HeightsFromYtdlHook("\"oops"));
+    }
+
     [Theory]
     [InlineData(StereoChannel.Both, 6, VlcDiscPlayer.OriginalChannels)] // 5.1 as 5.1: not libVLC's "Stereo"
     [InlineData(StereoChannel.Both, null, VlcDiscPlayer.OriginalChannels)]

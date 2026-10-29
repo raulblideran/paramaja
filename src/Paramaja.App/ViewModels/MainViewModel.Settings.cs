@@ -90,40 +90,27 @@ public sealed partial class MainViewModel
     /// <summary>The playing video came from a site yt-dlp reads, and offers more than one quality.</summary>
     public bool HasStreamQualities => StreamQualities.Count > 2 && _webUrl is not null;
 
-    private CancellationTokenSource? _qualitiesCts;
     /// <summary>The height the playing web video was asked for; 0 for the best.</summary>
     private int _streamChoice;
     private bool _fillingQualities;
 
     private void ForgetStreamQualities()
     {
-        _qualitiesCts?.Cancel();
-        _qualitiesCts = null;
         _streamChoice = Settings.StreamMaxHeight; // each video starts at the default
+        FillStreamQualities([]);
+    }
+
+    /// <summary>
+    /// The qualities the engine found for a site's video (yt-dlp's answer, which mpv keeps; see
+    /// PlayerService.ReadStreamHeights). Direct links have none, and no menu.
+    /// </summary>
+    private void FillStreamQualities(IReadOnlyList<int> heights)
+    {
         _fillingQualities = true;
-        StreamQualities.Clear();
+        Replace(StreamQualities, heights.Count == 0 || _webUrl is null ? [] : StreamQualityItem.For(heights));
         _fillingQualities = false;
         OnPropertyChanged(nameof(HasStreamQualities));
         OnPropertyChanged(nameof(StreamQualityChoiceIndex));
-    }
-
-    /// <summary>Asks yt-dlp which qualities the page offers (as the downloader does), in the background.</summary>
-    internal async Task LoadStreamQualitiesAsync(string url)
-    {
-        if (!HasYtDlp) return;
-        var cts = _qualitiesCts = new CancellationTokenSource();
-        try
-        {
-            var info = await Task.Run(() => _ytdlp.GetInfoAsync(url, cts.Token), cts.Token);
-            if (cts.IsCancellationRequested || _webUrl != url) return;
-            _fillingQualities = true;
-            Replace(StreamQualities, StreamQualityItem.For(info.Heights));
-            _fillingQualities = false;
-            OnPropertyChanged(nameof(HasStreamQualities));
-            OnPropertyChanged(nameof(StreamQualityChoiceIndex));
-        }
-        catch (Exception e) when (e is OperationCanceledException or InvalidOperationException
-                                      or System.ComponentModel.Win32Exception or IOException) { }
     }
 
     /// <summary>The video menu's choice: the quality asked for, or the highest the video has below it.</summary>

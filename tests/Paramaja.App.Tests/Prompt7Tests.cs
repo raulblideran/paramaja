@@ -176,8 +176,9 @@ public class Prompt7ViewModelTests
         using var r = new Rig();
         r.Settings.StreamMaxHeight = 1080;
         await r.Vm.OpenInputAsync("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-        Assert.False(r.Vm.HasStreamQualities); // no yt-dlp in the test: nothing to offer
-        foreach (var q in StreamQualityItem.For([360, 2160, 1080, 720, 1080])) r.Vm.StreamQualities.Add(q);
+        Assert.False(r.Vm.HasStreamQualities); // not known until the engine has the page
+        r.Player.State.StreamHeights = [360, 2160, 1080, 720, 1080];
+        r.Player.RaiseState("stream-heights");
         Assert.True(r.Vm.HasStreamQualities);
         Assert.Equal(["Best available", "2160p (4K)", "1080p", "720p", "360p"], r.Vm.StreamQualities.Select(q => q.Label));
         Assert.Equal(2, r.Vm.StreamQualityChoiceIndex); // the setting: up to 1080p
@@ -186,6 +187,18 @@ public class Prompt7ViewModelTests
         Assert.Equal(1080, r.Settings.StreamMaxHeight); // the default stays
         await r.Vm.OpenInputAsync(r.MediaFile());
         Assert.Empty(r.Vm.StreamQualities);
+    }
+
+    [Fact]
+    public async Task A_direct_link_gets_no_quality_menu_and_nothing_else_reads_it()
+    {
+        // MEGA's desktop app streams at http://127.0.0.1:4443/…: its server stalled when a second
+        // client (yt-dlp, asked for qualities) read the file while mpv played it.
+        using var r = new Rig();
+        await r.Vm.OpenInputAsync("http://127.0.0.1:4443/7dhGXQwR/MJ%20in%20Cork%201988_02.mp4");
+        Assert.Contains("Open http://127.0.0.1:4443/7dhGXQwR/MJ%20in%20Cork%201988_02.mp4 [stream]", r.Player.Calls);
+        r.Player.RaiseState("stream-heights"); // none: yt-dlp never ran for it
+        Assert.False(r.Vm.HasStreamQualities);
     }
 
     [Fact]

@@ -46,6 +46,11 @@ public sealed class PlayerState
     /// <summary>The picture's width over its height as displayed (non-square pixels accounted for).</summary>
     public double? DisplayAspect { get; set; }
     public PictureFit PictureFit { get; set; }
+    /// <summary>
+    /// The heights a site's video comes in (2160, 1080…), from yt-dlp's answer when it fetched the
+    /// page; empty for anything else (files, direct links).
+    /// </summary>
+    public IReadOnlyList<int> StreamHeights { get; set; } = [];
     public int? VideoWidth { get; set; }
     public int? VideoHeight { get; set; }
     public string? Title { get; set; }

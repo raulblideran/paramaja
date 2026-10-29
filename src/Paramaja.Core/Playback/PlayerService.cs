@@ -73,6 +73,7 @@ public sealed class PlayerService : IPlayer
         {
             RefreshTracks();
             RefreshChapters();
+            ReadStreamHeights();
             FileLoaded?.Invoke();
         };
         _mpv.StartFile += () =>
@@ -441,6 +442,32 @@ public sealed class PlayerService : IPlayer
     private void ResetStreamQuality()
     {
         if (_streamQualityChanged) ApplyStreamQuality();
+    }
+
+    /// <summary>
+    /// The qualities of a site's video, from what mpv's yt-dlp hook got for the page (it keeps
+    /// yt-dlp's answer in user-data until the file ends). Nothing runs yt-dlp a second time, and
+    /// a direct link (a file on a web server, MEGA's desktop app streaming) is never handed to it:
+    /// MEGA's local server stalled when two clients read the same file at once.
+    /// </summary>
+    private void ReadStreamHeights()
+    {
+        var heights = HeightsFromYtdlHook(_mpv.GetString("user-data/mpv/ytdl/json-subprocess-result/stdout"));
+        if (heights.SequenceEqual(State.StreamHeights)) return;
+        State.StreamHeights = heights;
+        StateChanged?.Invoke("stream-heights");
+    }
+
+    /// <summary>yt-dlp's -J output as the hook kept it; a string inside user-data comes back as a JSON string (quoted, escaped).</summary>
+    internal static IReadOnlyList<int> HeightsFromYtdlHook(string? stdout)
+    {
+        if (string.IsNullOrEmpty(stdout)) return [];
+        try
+        {
+            var json = stdout.StartsWith('"') ? System.Text.Json.JsonSerializer.Deserialize<string>(stdout) ?? "" : stdout;
+            return json.Length == 0 ? [] : YtDlp.ParseInfo(json).Heights;
+        }
+        catch (System.Text.Json.JsonException) { return []; }
     }
 
     /// <summary>
