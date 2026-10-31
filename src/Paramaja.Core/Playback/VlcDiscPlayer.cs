@@ -114,7 +114,7 @@ public sealed partial class VlcDiscPlayer : IPlayer
         _vlc = new LibVLC([
             "--no-video-title-show",   // the app shows the title itself
             "--sub-source=marq",       // on-screen messages (ShowText)
-            "--mouse-hide-timeout=2500", // the pointer hides with the controls (MainViewModel.ControlsHideDelay)
+            "--mouse-hide-timeout=3000", // over its video the pointer hides after 3 s (MainViewModel.CursorHideDelay)
             // Paramaja's libVLC runs BWDIF for this mode (see DeinterlaceModeName below); -1
             // deinterlaces only what the disc flags as interlaced.
             "--deinterlace-mode=" + DeinterlaceModeName,
@@ -195,7 +195,10 @@ public sealed partial class VlcDiscPlayer : IPlayer
         });
         _mp.ChapterChanged += (_, e) =>
         {
-            if (_cdTrack < 0) Set("chapter", () => State.Chapter = e.Chapter);
+            if (_cdTrack >= 0) return;
+            // A title's chapters can become known after it started (no event says so).
+            if (e.Chapter >= Chapters.Count) Later(RefreshChapters);
+            Set("chapter", () => State.Chapter = e.Chapter);
         };
         _mp.ESAdded += (_, _) => Later(RefreshTracksTwice);
         _mp.ESDeleted += (_, _) => Later(RefreshTracks);
@@ -211,6 +214,8 @@ public sealed partial class VlcDiscPlayer : IPlayer
             }
             Set("video-format", () => State.VideoFormat = VideoCodec());
             Set("hwdec-current", () => State.HwdecCurrent = _mp.EnableHardwareDecoding ? "auto" : "no");
+            // Entering or leaving a menu starts a new picture: its chapters (none in a menu) go with it.
+            if (_cdTrack < 0) RefreshChapters();
         });
         _mp.Muted += (_, _) => Set("mute", () => State.IsMuted = true);
         _mp.Unmuted += (_, _) => Set("mute", () => State.IsMuted = false);
@@ -285,6 +290,10 @@ public sealed partial class VlcDiscPlayer : IPlayer
     {
         ForgetAudioCd();
         _mp.Stop();
+        // Nothing plays: no chapters or titles to show the next time the bars come up.
+        Chapters = [];
+        Titles = [];
+        ChaptersChanged?.Invoke();
     });
 
     // ---- Audio CDs ----------------------------------------------------------------------------
@@ -844,18 +853,21 @@ public sealed partial class VlcDiscPlayer : IPlayer
     }
 
     /// <summary>
-    /// libVLC's "stereo mode". Its Stereo setting isn't neutral: a 5.1 track played under it is
-    /// downmixed to two channels, so where the track has more than two (or isn't known yet) the
-    /// mode is libVLC's "Original" (unset) instead, which leaves the channels as they are.
+    /// libVLC's "stereo mode". Its Stereo setting isn't neutral: a 5.1 or 7.1 track played under
+    /// it is downmixed to two channels, which is what the downmix switch asks for. Otherwise, where
+    /// the track has more than two (or isn't known yet), the mode is libVLC's "Original" (unset),
+    /// which leaves the channels as they are.
     /// </summary>
-    private void ApplyStereoChannel() => _mp.SetChannel(StereoMode(State.StereoChannel, State.SourceChannels));
+    private void ApplyStereoChannel() =>
+        _mp.SetChannel(StereoMode(State.StereoChannel, State.SourceChannels, Settings.DownmixToStereo && !Settings.AudioPassthrough));
 
     /// <summary>libVLC's stereo-mode values (libvlc_audio_output_channel_t, plus 0, "unset").</summary>
-    internal static AudioOutputChannel StereoMode(StereoChannel channel, int? sourceChannels) => channel switch
+    internal static AudioOutputChannel StereoMode(StereoChannel channel, int? sourceChannels, bool downmix = false) => channel switch
     {
         StereoChannel.Left => AudioOutputChannel.Left,
         StereoChannel.Right => AudioOutputChannel.Right,
         _ when sourceChannels == 2 => AudioOutputChannel.Stereo,
+        _ when downmix && sourceChannels > 2 => AudioOutputChannel.Stereo,
         _ => OriginalChannels,
     };
 
@@ -955,10 +967,16 @@ public sealed partial class VlcDiscPlayer : IPlayer
         _ => null,
     };
 
-    // ---- Settings that don't apply to discs ----------------------------------------------------
+    // ---- Settings that don't apply to discs (or that apply as above) -----------------------------
 
-    public void SetDownmix(bool stereo) => Settings.DownmixToStereo = stereo;
-    public void ApplyAudio() { }
+    public void SetDownmix(bool stereo)
+    {
+        Settings.DownmixToStereo = stereo;
+        ApplyAudio();
+    }
+
+    /// <summary>The downmix switch (passthrough has none on discs: libVLC decodes everything).</summary>
+    public void ApplyAudio() => Later(ApplyStereoChannel);
     public void ApplySubtitles() { }
     public void SetHdrMode(HdrMode mode) => Settings.HdrMode = mode;
     public void SetDisplayHdr(bool isHdr) { }

@@ -38,6 +38,9 @@ public sealed class PlayerState
     public double? OutputFps { get; set; }
     public int? SourceChannels { get; set; }
     public int? OutputChannels { get; set; }
+    /// <summary>The decoded audio's sample rate (Hz), and the rate handed to the audio device.</summary>
+    public int? SourceSampleRate { get; set; }
+    public int? OutputSampleRate { get; set; }
     /// <summary>
     /// Whether there's a picture to show: false for audio alone (an album's cover art doesn't
     /// count), null until the tracks are known.

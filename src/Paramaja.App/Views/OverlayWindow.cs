@@ -31,9 +31,9 @@ public class OverlayWindow : Window
             if (e.Source is TextBox) return;
             if (DataContext is MainViewModel vm && KeyMapping.ToCanonical(e) is { } k && vm.HandleKey(k)) e.Handled = true;
         }, RoutingStrategies.Tunnel);
-        PointerEntered += (_, _) => { if (DataContext is MainViewModel vm) { vm.IsPointerOverControls = true; vm.NotifyActivity(); } };
+        PointerEntered += (_, _) => { if (DataContext is MainViewModel vm) { vm.IsPointerOverControls = true; vm.NotifyPointerMoved(); } };
         PointerExited += (_, _) => { if (DataContext is MainViewModel vm) vm.IsPointerOverControls = false; };
-        PointerMoved += (_, _) => (DataContext as MainViewModel)?.NotifyActivity();
+        PointerMoved += (_, _) => (DataContext as MainViewModel)?.NotifyPointerMoved();
         // A click on a bar (play, the seek bar, the volume) leaves the keyboard with the player
         // window, so Space and the other keys keep working after the bar hides. Not while one of
         // its menus is open: a menu closes when its bar loses the keyboard.

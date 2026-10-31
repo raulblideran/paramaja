@@ -14,7 +14,14 @@
         <TextBlock Classes="section" Text="Volume" />
         <ToggleSwitch IsChecked="{Binding NormalizeAudio}" OnContent="Normalize volume (evens out loud and quiet parts)" OffContent="Original dynamics (default)" />
         <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                   Text="All off by default: the audio plays as-is, 5.1 and 7.1 with all their channels. The downmix applies only to 5.1 / 7.1 sources. Where a video has several audio tracks, a stereo one plays by default; for a stereo source, the audio menu can play just its left or right channel. No ReplayGain or downmix normalisation is ever applied. Passthrough to an AV receiver is in the Developer tab." />
+                   Text="All off by default: the audio plays as-is, at its own sample rate (DSD and SACDs as 192 kHz PCM), 5.1 and 7.1 with all their channels. The downmix applies only to 5.1 / 7.1 sources. Where a video has several audio tracks, a stereo one plays by default; for a stereo source, the audio menu can play just its left or right channel. No ReplayGain or downmix normalisation is ever applied. Passthrough to an AV receiver is in the Developer tab." />
+        <StackPanel Spacing="8" IsVisible="{Binding IsWindows}">
+          <TextBlock Classes="section" Text="Output" />
+          <ToggleSwitch x:Name="ExclusiveSwitch" IsChecked="{Binding ExclusiveAudio}" OnContent="Exclusive (bit-perfect): the device plays each file's own rate"
+                        OffContent="Shared with other apps (default)" />
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                     Text="Windows mixes every app's sound at one rate (often 48 kHz). With exclusive output the player has the audio device to itself, so it runs at the file's own rate: 96 or 192 kHz for hi-res files, 192 kHz for DSD and SACDs, where the device takes it. Other apps can't play sound meanwhile. Discs (DVDs, Audio CDs) always play shared." />
+        </StackPanel>
         <TextBlock Classes="section" Text="Preferred audio languages" />
         <TextBox Text="{Binding PreferredAudioLanguages}" Watermark="e.g. jpn,eng" Width="320" HorizontalAlignment="Left" />
       </StackPanel>

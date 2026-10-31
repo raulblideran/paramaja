@@ -82,6 +82,11 @@ public sealed class PlayerSettings
     public bool NormalizeAudio { get; set; }
     /// <summary>Send Dolby/DTS bitstreams untouched to an AV receiver (WASAPI exclusive on Windows).</summary>
     public bool AudioPassthrough { get; set; }
+    /// <summary>
+    /// Windows: the audio device is the player's alone (WASAPI exclusive), so it runs at each
+    /// file's own rate (192 kHz for DSD) instead of the system mixer's. Other apps go quiet.
+    /// </summary>
+    public bool ExclusiveAudio { get; set; }
     /// <summary>Slider position, 0-150. Logarithmic: see <see cref="Playback.VolumeCurve"/>.</summary>
     public double Volume { get; set; } = 100;
     public bool Muted { get; set; }

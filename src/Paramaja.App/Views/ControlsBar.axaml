@@ -42,11 +42,11 @@
           <Button x:Name="StopButton" Classes="icon" Command="{Binding StopCommand}" ToolTip.Tip="Stop (Ctrl+S)">
             <PathIcon Data="{StaticResource IconStop}" />
           </Button>
-          <Button Classes="icon" Command="{Binding PreviousChapterCommand}" IsVisible="{Binding HasChapters}"
+          <Button x:Name="PreviousChapterButton" Classes="icon" Command="{Binding PreviousChapterCommand}" IsVisible="{Binding HasChapters}"
                   ToolTip.Tip="Previous chapter (Page Up)" Margin="6,0,0,0">
             <PathIcon Data="{StaticResource IconChapterPrev}" />
           </Button>
-          <Button Classes="icon" Command="{Binding NextChapterCommand}" IsVisible="{Binding HasChapters}"
+          <Button x:Name="NextChapterButton" Classes="icon" Command="{Binding NextChapterCommand}" IsVisible="{Binding HasChapters}"
                   ToolTip.Tip="Next chapter (Page Down)">
             <PathIcon Data="{StaticResource IconChapterNext}" />
           </Button>
@@ -77,7 +77,8 @@
           <Border Classes="badge" IsVisible="{Binding DecoderBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
             <TextBlock Text="{Binding DecoderBadge}" />
           </Border>
-          <Border Classes="badge" IsVisible="{Binding AudioBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <Border x:Name="AudioBadge" Classes="badge" ToolTip.Tip="{Binding AudioTip}"
+                  IsVisible="{Binding AudioBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
             <TextBlock Text="{Binding AudioBadge}" />
           </Border>
           <Border Classes="badge" IsVisible="{Binding DeinterlaceBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"

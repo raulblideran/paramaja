@@ -127,6 +127,9 @@ public static class MpvOptionsBuilder
     public static string AudioChannels(PlayerSettings s, int? sourceChannels) =>
         !s.AudioPassthrough && s.DownmixToStereo && sourceChannels is null or > 2 ? "stereo" : "auto";
 
+    /// <summary>The audio device is the player's alone (WASAPI exclusive): for passthrough, or by the exclusive switch.</summary>
+    public static bool AudioExclusive(PlayerSettings s) => s.AudioPassthrough || s.ExclusiveAudio;
+
     /// <summary>
     /// The audio filters: one channel of a stereo source on both speakers, then the normalizer.
     /// A bitstream sent to a receiver can't be filtered.
@@ -285,15 +288,26 @@ public static class MpvOptionsBuilder
         _ => DeinterlaceFilter,
     };
 
+    /// <summary>
+    /// DSD (DSD files, SACDs) plays as PCM at this rate. FFmpeg's DSD decoder puts out 1/8 of the
+    /// DSD rate (352.8 kHz for DSD64), more than most DACs take.
+    /// </summary>
+    public const int DsdSampleRate = 192_000;
+
+    /// <summary>The rate to resample an audio codec to; null keeps the source's own rate.</summary>
+    public static int? SampleRateFor(string? codec) =>
+        codec is not null && (codec.StartsWith("dsd", StringComparison.Ordinal) || codec == "dst") ? DsdSampleRate : null;
+
     public static IEnumerable<KeyValuePair<string, string>> Audio(PlayerSettings s, int? sourceChannels = null,
         StereoChannel channel = StereoChannel.Both)
     {
         // Downmix only when the user asks; otherwise output the source channel layout.
         yield return P("audio-channels", AudioChannels(s, sourceChannels));
         // Passthrough hands Dolby/DTS bitstreams to the receiver untouched. On Windows that
-        // needs WASAPI exclusive mode, which also bypasses the system mixer.
+        // needs WASAPI exclusive mode, which also bypasses the system mixer; the exclusive
+        // switch uses it for PCM too, so the device runs at the audio's own rate.
         yield return P("audio-spdif", s.AudioPassthrough ? "ac3,eac3,dts,dts-hd,truehd" : "");
-        if (OperatingSystem.IsWindows()) yield return P("audio-exclusive", s.AudioPassthrough ? "yes" : "no");
+        if (OperatingSystem.IsWindows()) yield return P("audio-exclusive", AudioExclusive(s) ? "yes" : "no");
         // Only the user's normalization switch changes loudness: no downmix normalisation, no
         // ReplayGain.
         yield return P("audio-normalize-downmix", "no");

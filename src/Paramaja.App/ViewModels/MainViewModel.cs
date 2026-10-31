@@ -63,6 +63,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isMuted;
     [ObservableProperty] private bool _isFullscreen;
     [ObservableProperty] private bool _controlsVisible = true;
+    /// <summary>The mouse pointer is hidden over the player (see <see cref="CursorHidden"/>).</summary>
+    [ObservableProperty] private bool _isCursorHidden;
     [ObservableProperty] private bool _isPointerOverControls;
     [ObservableProperty] private double _position;
     [ObservableProperty] private double _duration;
@@ -77,6 +79,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _decoderBadge = "";
     [ObservableProperty] private string _resolutionBadge = "";
     [ObservableProperty] private string _audioBadge = "";
+    /// <summary>The audio's channels and rate, and what the device gets where that differs.</summary>
+    [ObservableProperty] private string _audioTip = "";
     [ObservableProperty] private bool _isTorrent;
     [ObservableProperty] private bool _isResolving;
     [ObservableProperty] private string _bufferingText = "";
@@ -108,8 +112,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<ChapterItem> Chapters { get; } = [];
     /// <summary>A DVD's or Blu-ray's titles (main film, extras); empty for ordinary files.</summary>
     public ObservableCollection<ChapterItem> DiscTitles { get; } = [];
-    public bool HasChapters => Chapters.Count > 1;
-    public bool HasDiscTitles => DiscTitles.Count > 1;
+    /// <summary>Chapters to step through: more than one, in what's playing (none while stopped).</summary>
+    public bool HasChapters => !IsIdle && Chapters.Count > 1;
+    public bool HasDiscTitles => !IsIdle && DiscTitles.Count > 1;
     public bool HasChapterMenu => HasChapters || HasDiscTitles;
     public IReadOnlyList<string> ToneMappingCurves => PlayerSettings.ToneMappingCurves;
     public IReadOnlyList<(string Keys, PlayerAction Action)> Shortcuts { get; } = ShortcutMap.Describe().ToList();
@@ -166,7 +171,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         player.TracksChanged += () => Post(SyncTracks);
         player.ChaptersChanged += () => Post(SyncChapters);
         player.KeyPressed += key => Post(() => HandleKey(key));
-        player.MouseMoved += () => Post(NotifyActivity);
+        player.MouseMoved += () => Post(NotifyPointerMoved);
         player.MouseClicked += () => Post(() => { if (!ClicksFromSystem) HandleClick(DateTime.UtcNow); });
         player.FileLoaded += () => Post(() =>
         {
@@ -240,6 +245,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _player = next;
         IsDiscMode = ReferenceEquals(next, _discPlayer);
         if (!IsDiscMode) CanShowDiscMenu = false;
+        next.SetCursorHidden(IsCursorHidden);
         SyncTracks();
         SyncChapters();
         SyncAllState();
@@ -261,7 +267,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [
         "duration", "pause", "mute", "volume", "paused-for-cache", "media-title", "deinterlace-active",
         "hwdec-current", "video-params/gamma", "hardware-decoding", "chapter", "video-params/w",
-        "audio-params/channel-count", "video-format", "video-codec", "stereo-channel", "has-video",
+        "audio-params/channel-count", "audio-params/samplerate", "video-format", "video-codec", "stereo-channel", "has-video",
         "video-params/aspect", "picture-fit", "stream-heights",
     ];
 
@@ -289,8 +295,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 IsIdle = s.IsIdle;
                 OnPropertyChanged(nameof(CanDownload));
                 OnAudioOnlyChanged();
+                UpdateCodecBadge();
                 break;
-            case "has-video": OnAudioOnlyChanged(); break;
+            case "has-video":
+                OnAudioOnlyChanged();
+                UpdateCodecBadge();
+                break;
             case "stream-heights": FillStreamQualities(s.StreamHeights); break;
             case "video-params/aspect" or "picture-fit": OnPictureChanged(); break;
             case "eof-reached":
@@ -298,12 +308,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 if (s.EofReached && IsTorrent) StepTorrentFile(1);
                 break;
             case "media-title": MediaTitle = s.Title ?? ""; break;
-            case "video-format" or "video-codec":
-                var codec = CodecLabels.Describe(s.VideoFormat);
-                // A DVD is what people know it by, more than its MPEG-2.
-                CodecBadge = _openedKind == InputKind.Dvd && codec.Length > 0 ? "DVD" : codec;
-                CodecTip = !string.IsNullOrEmpty(s.VideoCodec) ? s.VideoCodec : CodecBadge == "DVD" ? $"DVD ({codec})" : codec;
-                break;
+            case "video-format" or "video-codec": UpdateCodecBadge(); break;
             case "stereo-channel": OnPropertyChanged(nameof(StereoChannelIndex)); break;
             case "hwdec-current": DecoderBadge = s.IsHardwareDecoding ? $"HW · {s.HwdecCurrent}" : "SW"; break;
             case "video-params/gamma" or "video-params/primaries": UpdateHdrBadge(); break;
@@ -314,7 +319,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 break;
             case "chapter": MarkCurrentChapter(); break;
             case "video-params/h" or "video-params/w": ResolutionBadge = ResolutionLabel(s.VideoWidth, s.VideoHeight); break;
-            case "audio-params/channel-count" or "audio-out-params/channel-count":
+            case "audio-params/channel-count" or "audio-out-params/channel-count" or "audio-params/samplerate"
+                or "audio-out-params/samplerate":
                 UpdateAudioBadge();
                 OnPropertyChanged(nameof(IsSurroundAudio));
                 OnPropertyChanged(nameof(IsStereoAudio));
@@ -397,12 +403,61 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         HdrBadge = HdrPassthrough ? $"{kind} passthrough" : $"{kind} → SDR";
     }
 
+    /// <summary>
+    /// The source's channels, and "→ stereo" only where the downmix switch folds them: the badge
+    /// says what the player does. A device set up with fewer speakers than the source (Windows
+    /// set to stereo) gets a fold-down from the system all the same; the tooltip tells that.
+    /// </summary>
     internal void UpdateAudioBadge()
     {
         var s = _player?.State;
-        if (s?.SourceChannels is not { } src) { AudioBadge = ""; return; }
+        if (s?.SourceChannels is not { } src) { AudioBadge = ""; AudioTip = ""; return; }
         var label = TrackInfo.ChannelLabel(src);
-        AudioBadge = s.OutputChannels is { } o && o != src ? $"{label} → {TrackInfo.ChannelLabel(o)}" : label;
+        var downmixed = DownmixApplies(src);
+        AudioBadge = downmixed ? $"{label} → stereo" : label;
+        AudioTip = AudioDescription(s, src, downmixed);
+    }
+
+    private bool DownmixApplies(int sourceChannels) => Settings.DownmixToStereo && !Settings.AudioPassthrough && sourceChannels > 2;
+
+    internal static string AudioDescription(PlayerState s, int src, bool downmixed)
+    {
+        var label = TrackInfo.ChannelLabel(src);
+        var lines = new List<string> { s.SourceSampleRate is { } rate ? $"{label} · {RateLabel(rate)}" : label };
+        if (downmixed) lines.Add("Downmixed to stereo (Settings → Audio)");
+        else if (s.OutputChannels is { } o && o < src)
+            lines.Add($"Your audio device is set to {TrackInfo.ChannelLabel(o)}, so the system mixes this {label} down for it");
+        if (s.OutputSampleRate is { } outRate && s.SourceSampleRate is { } inRate && outRate != inRate)
+            lines.Add($"Played at {RateLabel(outRate)}");
+        return string.Join("\n", lines);
+    }
+
+    internal static string RateLabel(int hz) =>
+        (hz / 1000.0).ToString(hz % 1000 == 0 ? "0" : "0.#", System.Globalization.CultureInfo.InvariantCulture) + " kHz";
+
+    /// <summary>
+    /// The codec badge: what people know the source by where that's a disc (an Audio CD, an SACD,
+    /// a DVD more than its MPEG-2), otherwise the video's codec.
+    /// </summary>
+    private void UpdateCodecBadge()
+    {
+        var s = _player?.State;
+        var codec = CodecLabels.Describe(s?.VideoFormat);
+        var playing = s is { IsIdle: false };
+        (CodecBadge, CodecTip) = _openedKind switch
+        {
+            InputKind.AudioCd when playing => ("CD", "Audio CD · 44.1 kHz / 16-bit"),
+            InputKind.Sacd when playing => ("SACD", SacdTip()),
+            InputKind.Dvd when codec.Length > 0 => ("DVD", !string.IsNullOrEmpty(s?.VideoCodec) ? s.VideoCodec! : $"DVD ({codec})"),
+            _ => (codec, !string.IsNullOrEmpty(s?.VideoCodec) ? s.VideoCodec! : codec),
+        };
+    }
+
+    private string SacdTip()
+    {
+        var area = _player?.Titles.FirstOrDefault(t => t.Selected)?.Title;
+        var name = area is null ? "" : " · " + area.Split(" (")[0].ToLowerInvariant() + " area";
+        return $"Super Audio CD · DSD64 (2.8 MHz){name}";
     }
 
     internal static string ResolutionLabel(int? w, int? h) => (w, h) switch
@@ -431,6 +486,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Replace(Chapters, _player.Chapters.Select(c => new ChapterItem(c.Index, c.Label)));
         Replace(DiscTitles, _player.Titles.Select(t => new ChapterItem(t.Id, t.Title) { IsCurrent = t.Selected }));
         MarkCurrentChapter();
+        OnChaptersShownChanged();
+        if (_openedKind == InputKind.Sacd) UpdateCodecBadge(); // the area is in its tooltip
+    }
+
+    partial void OnIsIdleChanged(bool value) => OnChaptersShownChanged();
+
+    private void OnChaptersShownChanged()
+    {
         OnPropertyChanged(nameof(HasChapters));
         OnPropertyChanged(nameof(HasDiscTitles));
         OnPropertyChanged(nameof(HasChapterMenu));
@@ -465,6 +528,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
         _openedKind = kind;
+        UpdateCodecBadge();
         ForgetStreamQualities();
         switch (kind)
         {
@@ -526,7 +590,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>What was opened last (a DVD shows as "DVD" rather than by its codec).</summary>
+    /// <summary>What was opened last (a DVD shows as "DVD" rather than by its codec, an Audio CD as "CD", an SACD as "SACD").</summary>
     private InputKind _openedKind;
 
     private async Task OpenMagnetAsync(string magnet)
@@ -1067,6 +1131,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public static readonly TimeSpan ControlsHideDelay = TimeSpan.FromSeconds(2.5);
 
+    /// <summary>In fullscreen the pointer hides this long after it last moved, paused or not.</summary>
+    public static readonly TimeSpan CursorHideDelay = TimeSpan.FromSeconds(3);
+    private DateTime _lastPointerMove = DateTime.UtcNow;
+
     /// <summary>
     /// Set by the view: clicks on the video are read from the OS (VideoClicks), so the engine's own
     /// reports of them, where it makes any, would count each click twice.
@@ -1080,7 +1148,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>A left click on the video; the second of two quick clicks toggles fullscreen.</summary>
     public void HandleClick(DateTime utcNow)
     {
-        NotifyActivity();
+        NotifyPointerMoved();
         // On a disc menu a click presses a button; quick clicks there aren't a double-click.
         if (_player?.IsInDiscMenu == true) return;
         if (utcNow - _lastClick <= DoubleClickTime)
@@ -1093,8 +1161,31 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnControlsVisibleChanged(bool value)
     {
-        _player?.SetCursorHidden(!value);
+        UpdateCursor(DateTime.UtcNow);
         if (value) ShowPosition(force: true); // it isn't kept current while they're hidden
+    }
+
+    partial void OnIsFullscreenChanged(bool value) => UpdateCursor(DateTime.UtcNow);
+
+    partial void OnIsCursorHiddenChanged(bool value) => _player?.SetCursorHidden(value);
+
+    /// <summary>
+    /// Whether the pointer is hidden. In fullscreen: 3 s after it last moved, whether the video
+    /// plays or is paused, but never while a menu is open or the pointer is on the bars (or on
+    /// the welcome screen); only moving it brings it back. In a window it goes with the controls.
+    /// </summary>
+    internal bool CursorHidden(DateTime utcNow) => IsFullscreen
+        ? !IsIdle && !IsMenuOpen && !IsPointerOverControls && utcNow - _lastPointerMove > CursorHideDelay
+        : !ControlsVisible;
+
+    private void UpdateCursor(DateTime utcNow) => IsCursorHidden = CursorHidden(utcNow);
+
+    /// <summary>The mouse moved (or clicked): the pointer shows again, and the controls with it.</summary>
+    public void NotifyPointerMoved()
+    {
+        _lastPointerMove = DateTime.UtcNow;
+        NotifyActivity();
+        UpdateCursor(_lastPointerMove);
     }
 
     // A menu of the bars is open: the bars stay up. They used to hide (Linux) or move off screen
@@ -1130,8 +1221,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         ReconcilePause();
         if (ControlsVisible && _player is { } p && p.State.Position != Position) ShowPosition();
         var keepVisible = IsIdle || IsPaused || IsPointerOverControls || IsResolving || IsBuffering || IsMenuOpen;
-        if (keepVisible) { ControlsVisible = true; return; }
-        if (utcNow - _lastActivity > ControlsHideDelay) ControlsVisible = false;
+        if (keepVisible) ControlsVisible = true;
+        else if (utcNow - _lastActivity > ControlsHideDelay) ControlsVisible = false;
+        UpdateCursor(utcNow);
     }
 
     /// <summary>
@@ -1142,7 +1234,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         var moved = _lastPointer is { } last && last != (x, y);
         _lastPointer = (x, y);
-        if (moved && insideWindow) NotifyActivity();
+        if (moved && insideWindow) NotifyPointerMoved();
     }
 
     /// <summary>

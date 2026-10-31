@@ -29,6 +29,7 @@ public sealed partial class MainViewModel
             }
             OnPropertyChanged();
             Changed(() => _player?.SetDownmix(value));
+            UpdateAudioBadge();
         }
     }
 
@@ -242,6 +243,23 @@ public sealed partial class MainViewModel
             }
             OnPropertyChanged();
             Changed(() => _player?.ApplyAudio(), value ? "Audio passthrough: on" : "Audio passthrough: off");
+            UpdateAudioBadge();
+        }
+    }
+
+    /// <summary>
+    /// Windows: the audio device is the player's alone, so it runs at each file's own rate
+    /// (192 kHz for DSD) rather than the system mixer's. Off by default: other apps go quiet.
+    /// </summary>
+    public bool ExclusiveAudio
+    {
+        get => Settings.ExclusiveAudio;
+        set
+        {
+            if (Settings.ExclusiveAudio == value) return;
+            Settings.ExclusiveAudio = value;
+            OnPropertyChanged();
+            Changed(() => _player?.ApplyAudio(), value ? "Exclusive audio: on" : "Exclusive audio: off");
         }
     }
 

@@ -128,6 +128,7 @@ public class KeyboardTests
     {
         using var r = new Rig();
         Assert.False(r.Vm.HasChapterMenu);
+        r.Vm.IsIdle = false;
         r.Player.Chapters = [new ChapterInfo(0, "Opening", 0), new ChapterInfo(1, "Middle", 120)];
         r.Player.Titles = [new DiscTitleInfo(0, "title: 1 (01:52:00)", true), new DiscTitleInfo(1, "title: 2 (00:03:10)", false)];
         r.Player.State.Chapter = 1;
@@ -636,9 +637,48 @@ public class StateTests
         r.Player.State.OutputChannels = 6;
         r.Player.RaiseState("audio-out-params/channel-count");
         Assert.Equal("5.1", r.Vm.AudioBadge);
+        // A stereo device folds the channels down, but the player doesn't: the badge says what
+        // plays, the tooltip why the speakers get two.
         r.Player.State.OutputChannels = 2;
         r.Player.RaiseState("audio-out-params/channel-count");
+        Assert.Equal("5.1", r.Vm.AudioBadge);
+        Assert.Contains("Your audio device is set to stereo", r.Vm.AudioTip);
+        r.Vm.DownmixToStereo = true;
         Assert.Equal("5.1 → stereo", r.Vm.AudioBadge);
+        Assert.Contains("Downmixed to stereo", r.Vm.AudioTip);
+        r.Vm.DownmixToStereo = false;
+        Assert.Equal("5.1", r.Vm.AudioBadge);
+    }
+
+    [Theory]
+    [InlineData(8, false, "7.1")]
+    [InlineData(8, true, "7.1 → stereo")]
+    [InlineData(6, false, "5.1")]
+    [InlineData(6, true, "5.1 → stereo")]
+    [InlineData(2, true, "stereo")]
+    [InlineData(1, true, "mono")]
+    public void Audio_badge_follows_the_downmix_switch(int source, bool downmix, string badge)
+    {
+        using var r = new Rig(new PlayerSettings { DownmixToStereo = downmix });
+        r.Player.State.SourceChannels = source;
+        r.Player.State.OutputChannels = 2;
+        r.Player.RaiseState("audio-params/channel-count");
+        Assert.Equal(badge, r.Vm.AudioBadge);
+    }
+
+    [Fact]
+    public void Audio_tooltip_tells_the_rates()
+    {
+        using var r = new Rig();
+        r.Player.State.SourceChannels = 2;
+        r.Player.State.SourceSampleRate = 352_800;
+        r.Player.State.OutputSampleRate = 192_000;
+        r.Player.RaiseState("audio-params/samplerate");
+        Assert.Equal("stereo · 352.8 kHz\nPlayed at 192 kHz", r.Vm.AudioTip);
+        r.Player.State.SourceSampleRate = 96_000;
+        r.Player.State.OutputSampleRate = 96_000;
+        r.Player.RaiseState("audio-out-params/samplerate");
+        Assert.Equal("stereo · 96 kHz", r.Vm.AudioTip);
     }
 
     [Fact]

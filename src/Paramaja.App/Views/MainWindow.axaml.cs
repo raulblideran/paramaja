@@ -34,7 +34,7 @@ public partial class MainWindow : Window
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = DragDropEffects.Copy);
         AddHandler(DragDrop.DropEvent, OnDrop);
-        PointerMoved += (_, _) => Vm.NotifyActivity();
+        PointerMoved += (_, _) => Vm.NotifyPointerMoved();
         PointerWheelChanged += (_, e) => Vm.HandleKey(e.Delta.Y > 0 ? "WHEEL_UP" : "WHEEL_DOWN");
 
         PositionChanged += (_, _) =>
@@ -151,7 +151,14 @@ public partial class MainWindow : Window
                 break;
             case nameof(MainViewModel.ControlsVisible):
                 UpdateOverlays();
-                Cursor = Vm.ControlsVisible ? Cursor.Default : new Cursor(StandardCursorType.None);
+                break;
+            case nameof(MainViewModel.IsCursorHidden):
+                var hidden = Vm.IsCursorHidden;
+                Cursor = hidden ? new Cursor(StandardCursorType.None) : Cursor.Default;
+                // On Linux the video surfaces get a blank pointer of their own as well: libVLC's
+                // hiding doesn't work in a window it was given, and mpv's window takes theirs.
+                foreach (var surface in new[] { Video, DiscVideo })
+                    if (surface.Handle is { } xid) X11Cursor.SetHidden(xid, hidden);
                 break;
         }
     }

@@ -120,4 +120,8 @@ fi
 [ -f "$OUT/music_cover.flac" ] || ff -f lavfi -i sine=frequency=550:duration=2 -f lavfi -i testsrc=size=200x200:duration=1 \
   -map 0:a -map 1:v -frames:v 1 -ac 2 -c:a flac -c:v png -disposition:v attached_pic "$OUT/music_cover.flac"
 
+# Hi-res music (96 kHz / 24-bit): it plays at its own rate
+[ -f "$OUT/hires_96k.flac" ] || ff -f lavfi -i sine=frequency=550:sample_rate=96000:duration=2 -ac 2 -sample_fmt s32 \
+  -bits_per_raw_sample 24 -c:a flac "$OUT/hires_96k.flac"
+
 echo "Fixtures in $OUT:"; ls -1 "$OUT"

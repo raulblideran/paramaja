@@ -98,6 +98,14 @@ public sealed class PlayerService : IPlayer
             StateChanged?.Invoke("has-video");
             SetPictureFit(_keepFit);
             _keepFit = PictureFit.Original;
+            // The previous file's chapters don't carry over to one without any: mpv reports a
+            // count that stays 0 as no change at all.
+            if (Chapters.Count > 0 || Titles.Count > 0)
+            {
+                Chapters = [];
+                Titles = [];
+                ChaptersChanged?.Invoke();
+            }
         };
         // The interlace flag and the channel counts are watched, but mpv reports only changes, and
         // between two videos alike (two interlaced, two stereo) its last word could be the gap
@@ -135,7 +143,8 @@ public sealed class PlayerService : IPlayer
             _mpv.ObserveDouble(p);
         foreach (var p in new[] { "pause", "mute", "paused-for-cache", "eof-reached", "idle-active", "seeking", "video-frame-info/interlaced" })
             _mpv.ObserveFlag(p);
-        foreach (var p in new[] { "audio-params/channel-count", "audio-out-params/channel-count", "video-params/w",
+        foreach (var p in new[] { "audio-params/channel-count", "audio-out-params/channel-count", "audio-params/samplerate",
+                     "audio-out-params/samplerate", "video-params/w",
                      "video-params/h", "track-list/count", "chapter", "chapter-list/count", "current-edition" })
             _mpv.ObserveLong(p);
         foreach (var p in new[] { "media-title", "path", "hwdec-current", "video-codec", "video-params/gamma",
@@ -199,6 +208,8 @@ public sealed class PlayerService : IPlayer
                 ApplyAudioFilters();
                 break;
             case "audio-out-params/channel-count": s.OutputChannels = ToInt(value); break;
+            case "audio-params/samplerate": s.SourceSampleRate = ToInt(value); break;
+            case "audio-out-params/samplerate": s.OutputSampleRate = ToInt(value); break;
             case "video-params/w":
                 s.VideoWidth = ToInt(value);
                 if (s.PictureFit == PictureFit.Crop16x9) ApplyCrop();
@@ -232,13 +243,19 @@ public sealed class PlayerService : IPlayer
 
     private static int? ToInt(object? v) => v is long l ? (int)l : null;
 
-    /// <summary>The source's and the output's channel counts and the duration, asked live; a change goes through as an event would.</summary>
+    /// <summary>The source's and the output's channel counts and rates and the duration, asked live; a change goes through as an event would.</summary>
     private void ReadChannelsLive()
     {
-        foreach (var name in new[] { "audio-params/channel-count", "audio-out-params/channel-count" })
+        foreach (var name in new[] { "audio-params/channel-count", "audio-out-params/channel-count", "audio-params/samplerate", "audio-out-params/samplerate" })
         {
             var live = _mpv.GetLong(name);
-            var known = name.StartsWith("audio-params") ? State.SourceChannels : State.OutputChannels;
+            var known = name switch
+            {
+                "audio-params/channel-count" => State.SourceChannels,
+                "audio-out-params/channel-count" => State.OutputChannels,
+                "audio-params/samplerate" => State.SourceSampleRate,
+                _ => State.OutputSampleRate,
+            };
             if (ToInt(live) != known) OnProperty(name, live);
         }
         if (_mpv.GetDouble("duration") is { } duration && Math.Abs(duration - State.Duration) > 0.001) OnProperty("duration", duration);
@@ -761,18 +778,34 @@ public sealed class PlayerService : IPlayer
         _hardwareWanted = MpvOptionsBuilder.UseHardwareDecoding(video.Codec, video.Width, video.Height);
         lock (_deinterlaceLock) SetHwdec(_deinterlaceFilter is not null);
         PublishHardwareDecoding();
-        PickStereoAudio();
+        var tracks = ReadTracks();
+        var aid = PickStereoAudio(tracks);
+        SetSampleRate(tracks, aid);
         StartInterlaceProbe(video);
     }
 
     /// <summary>
     /// A stereo track where the file has several audio tracks (concert discs often carry the
     /// stereo mix beside 5.1 and DTS). File-local, so it doesn't carry over to the next file.
+    /// Returns the track picked, if any.
     /// </summary>
-    private void PickStereoAudio()
+    private int? PickStereoAudio(IReadOnlyList<TrackInfo> tracks)
     {
-        if (MpvOptionsBuilder.StereoTrack(ReadTracks(), Settings.PreferredAudioLanguages) is { } id)
-            _mpv.TrySetProperty("file-local-options/aid", id.ToString(CultureInfo.InvariantCulture));
+        if (MpvOptionsBuilder.StereoTrack(tracks, Settings.PreferredAudioLanguages) is not { } id) return null;
+        _mpv.TrySetProperty("file-local-options/aid", id.ToString(CultureInfo.InvariantCulture));
+        return id;
+    }
+
+    /// <summary>
+    /// DSD (DSD files, SACDs) plays as 192 kHz PCM; everything else at its own rate. File-local,
+    /// set before the audio starts, so nothing carries over to the next file.
+    /// </summary>
+    private void SetSampleRate(IReadOnlyList<TrackInfo> tracks, int? aid)
+    {
+        var audio = tracks.Where(t => t.Type == TrackType.Audio).ToList();
+        var playing = audio.FirstOrDefault(t => t.Id == aid) ?? audio.FirstOrDefault(t => t.Default) ?? audio.FirstOrDefault();
+        if (MpvOptionsBuilder.SampleRateFor(playing?.Codec) is { } rate)
+            _mpv.TrySetProperty("file-local-options/audio-samplerate", rate.ToString(CultureInfo.InvariantCulture));
     }
 
     /// <summary>
@@ -1013,7 +1046,8 @@ public sealed class PlayerService : IPlayer
         _mpv.SetProperty("force-media-title", sacd.AlbumArtist is { } artist ? $"{artist} — {title}" : title);
         // mpv lets a timeline (EDL) open only its own protocols, unless told otherwise; for this
         // file only, it may open sacd://, which is ours.
-        LoadWithOptions(Sacd.SacdProtocol.EdlFor(sacd, area), "load-unsafe-playlists=yes");
+        LoadWithOptions(Sacd.SacdProtocol.EdlFor(sacd, area),
+            "load-unsafe-playlists=yes,audio-samplerate=" + MpvOptionsBuilder.DsdSampleRate.ToString(CultureInfo.InvariantCulture));
         _mpv.SetProperty("pause", false);
     }
 

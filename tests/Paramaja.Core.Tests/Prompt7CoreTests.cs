@@ -78,6 +78,15 @@ public class PictureAndOsdTests
     [InlineData(StereoChannel.Right, 2, AudioOutputChannel.Right)]
     public void Discs_keep_their_channels(StereoChannel channel, int? source, AudioOutputChannel mode) =>
         Assert.Equal(mode, VlcDiscPlayer.StereoMode(channel, source));
+
+    [Theory]
+    [InlineData(8, false, VlcDiscPlayer.OriginalChannels)] // 7.1 as 7.1
+    [InlineData(8, true, AudioOutputChannel.Stereo)]       // the downmix switch: libVLC's Stereo folds it
+    [InlineData(6, true, AudioOutputChannel.Stereo)]
+    [InlineData(null, true, VlcDiscPlayer.OriginalChannels)] // not known yet
+    [InlineData(2, true, AudioOutputChannel.Stereo)]
+    public void Discs_downmix_only_with_the_switch(int? source, bool downmix, AudioOutputChannel mode) =>
+        Assert.Equal(mode, VlcDiscPlayer.StereoMode(StereoChannel.Both, source, downmix));
 }
 
 public class Prompt7PlaybackTests
@@ -167,7 +176,14 @@ public class Prompt7PlaybackTests
             PlayerHarness.WaitUntil(() => Math.Abs(h.Player.State.Duration - 2) < 0.05, $"{Path.GetExtension(path)} duration");
             Assert.False(h.Player.State.HasVideo);
             Assert.StartsWith("dsd", h.Player.Mpv.GetString("audio-codec-name"));
+            // FFmpeg decodes DSD64 to 352.8 kHz; it plays as 192 kHz.
+            PlayerHarness.WaitUntil(() => h.Player.State.OutputSampleRate == MpvOptionsBuilder.DsdSampleRate, $"{Path.GetExtension(path)} at 192 kHz");
+            Assert.Equal(352_800, h.Player.State.SourceSampleRate);
         }
+        // The next file keeps its own rate.
+        h.OpenAndWait(TestEnvironment.Media("music.flac"));
+        PlayerHarness.WaitUntil(() => h.Player.State.OutputSampleRate is { } r && r != MpvOptionsBuilder.DsdSampleRate, "music.flac at its own rate");
+        Assert.Equal(h.Player.State.SourceSampleRate, h.Player.State.OutputSampleRate);
     }
 
     [MpvFact]
@@ -183,6 +199,7 @@ public class Prompt7PlaybackTests
         Assert.Equal(3, h.Player.State.Duration, 1);
         Assert.Equal("Michael Jackson — Thriller", h.Player.State.Title);
         PlayerHarness.WaitUntil(() => h.Player.State.SourceChannels == 2, "stereo audio");
+        PlayerHarness.WaitUntil(() => h.Player.State.OutputSampleRate == MpvOptionsBuilder.DsdSampleRate, "192 kHz");
         Assert.Equal(["Stereo (00:03)", "Multichannel 5.1 (00:02)"], h.Player.Titles.Select(t => t.Title));
         Assert.True(h.Player.Titles[0].Selected);
 

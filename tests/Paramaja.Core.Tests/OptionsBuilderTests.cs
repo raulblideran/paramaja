@@ -24,6 +24,32 @@ public class OptionsBuilderTests
         Assert.DoesNotContain(o.Values, v => v.Contains("loudnorm") || v.Contains("dynaudnorm") || v.Contains("acompressor"));
     }
 
+    [Theory]
+    [InlineData("dsd_lsbf_planar", 192_000)]
+    [InlineData("dsd_msbf", 192_000)]
+    [InlineData("dst", 192_000)]
+    [InlineData("flac", null)]
+    [InlineData("pcm_s24le", null)]
+    [InlineData(null, null)]
+    public void Dsd_plays_at_192_khz_and_the_rest_at_its_own_rate(string? codec, int? rate)
+    {
+        Assert.Equal(rate, MpvOptionsBuilder.SampleRateFor(codec));
+        Assert.DoesNotContain("audio-samplerate", Build(new PlayerSettings()).Keys);
+    }
+
+    [Fact]
+    public void Exclusive_audio_is_off_by_default_and_on_for_passthrough_or_the_switch()
+    {
+        Assert.False(MpvOptionsBuilder.AudioExclusive(new PlayerSettings()));
+        Assert.True(MpvOptionsBuilder.AudioExclusive(new PlayerSettings { ExclusiveAudio = true }));
+        Assert.True(MpvOptionsBuilder.AudioExclusive(new PlayerSettings { AudioPassthrough = true }));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal("no", Build(new PlayerSettings())["audio-exclusive"]);
+            Assert.Equal("yes", Build(new PlayerSettings { ExclusiveAudio = true })["audio-exclusive"]);
+        }
+    }
+
     [Fact]
     public void Downmix_is_off_by_default_and_opt_in()
     {
@@ -88,6 +114,7 @@ public class OptionsBuilderTests
     [InlineData(false, false, 6, "auto")]
     [InlineData(true, false, 6, "stereo")]   // stereo downmix: surround only
     [InlineData(true, false, 8, "stereo")]
+    [InlineData(false, false, 8, "auto")]   // 7.1 is never downmixed unless asked
     [InlineData(true, false, 2, "auto")]
     [InlineData(false, false, 2, "auto")]   // nothing downmixes stereo any more (mono is gone)
     [InlineData(true, true, 6, "auto")]       // passthrough leaves the bitstream alone
