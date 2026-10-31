@@ -37,7 +37,7 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
 
     public RipDialogViewModel(MainViewModel main, IReadOnlyList<OpticalDrive> drives, string? drive = null,
         Func<string, ICdDrive>? openCd = null, Func<string, DvdInfo>? readDvd = null, string? flac = null, string? ffmpeg = null,
-        bool online = true)
+        bool online = true, string? ffprobe = null)
     {
         Main = main;
         _online = online;
@@ -47,7 +47,7 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
         // Null finds the encoder; "" means there's none (tests).
         Flac = flac is null ? FlacEncoder.Find() : flac.Length == 0 ? null : flac;
         Ffmpeg = ffmpeg ?? RipTools.Find("ffmpeg");
-        Ffprobe = RipTools.Find("ffprobe", Ffmpeg is null ? null : Path.GetDirectoryName(Ffmpeg));
+        Ffprobe = ffprobe ?? RipTools.Find("ffprobe", Ffmpeg is null ? null : Path.GetDirectoryName(Ffmpeg));
         CdFolder = main.Paths.Music;
         DvdFolder = main.Paths.Videos;
         main.PropertyChanged += OnMainChanged;

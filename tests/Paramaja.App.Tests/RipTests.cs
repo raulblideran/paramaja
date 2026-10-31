@@ -41,7 +41,8 @@ public class RipDialogTests
     };
 
     private static RipDialogViewModel Dialog(Rig r, OpticalDrive drive, ImageCdDrive? cd = null) =>
-        new(r.Vm, [drive], drive.Root, _ => cd ?? CdDrive(), _ => DvdDisc(), flac: "", ffmpeg: "/usr/bin/ffmpeg", online: false);
+        new(r.Vm, [drive], drive.Root, _ => cd ?? CdDrive(), _ => DvdDisc(), flac: "", ffmpeg: "/usr/bin/ffmpeg", online: false,
+            ffprobe: "/usr/bin/ffprobe"); // named, so no machine's own tools (or their absence, on Windows) count
 
     private static async Task Until(Func<bool> condition)
     {

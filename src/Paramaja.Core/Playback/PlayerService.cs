@@ -98,6 +98,7 @@ public sealed class PlayerService : IPlayer
             StateChanged?.Invoke("has-video");
             SetPictureFit(_keepFit);
             _keepFit = PictureFit.Original;
+            _leavingResize = false; // a new file's 4:3 is its own
             // The previous file's chapters don't carry over to one without any: mpv reports a
             // count that stays 0 as no change at all.
             if (Chapters.Count > 0 || Titles.Count > 0)
@@ -181,8 +182,12 @@ public sealed class PlayerService : IPlayer
             case "container-fps": s.ContainerFps = value as double?; break;
             case "estimated-vf-fps": s.OutputFps = value as double?; break;
             case "video-params/aspect":
-                // The source's own shape: with the picture stretched to 4:3 mpv reports 4:3.
+                // The source's own shape: with the picture stretched to 4:3 mpv reports 4:3, and
+                // just after the stretch is undone it may still do so once. Only a picture that
+                // isn't 4:3 can be stretched to it, so a 4:3 then is that stale report.
                 if (s.PictureFit == PictureFit.Resize4x3) return;
+                if (_leavingResize && value is double a && Math.Abs(a - 4.0 / 3) < 0.01) return;
+                _leavingResize = false;
                 s.DisplayAspect = value as double?;
                 if (s.PictureFit == PictureFit.Crop16x9) ApplyCrop(); // the crop needs the shape
                 break;
@@ -509,8 +514,12 @@ public sealed class PlayerService : IPlayer
     /// <summary>Carried over a reload of the same video at another quality.</summary>
     private PictureFit _keepFit;
 
+    /// <summary>The 4:3 stretch was just undone: mpv's next aspect report may still be the stretched one.</summary>
+    private volatile bool _leavingResize;
+
     public void SetPictureFit(PictureFit fit)
     {
+        if (State.PictureFit == PictureFit.Resize4x3 && fit != PictureFit.Resize4x3) _leavingResize = true;
         State.PictureFit = fit;
         _mpv.TrySetProperty("video-aspect-override", fit == PictureFit.Resize4x3
             ? "4:3"

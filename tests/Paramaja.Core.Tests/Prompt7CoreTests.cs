@@ -131,6 +131,10 @@ public class Prompt7PlaybackTests
         if (h.Player.Mpv.GetString("video-crop") is { } crop) // mpv 0.38+
             Assert.Equal("720x404+0+86", crop);
         PlayerHarness.WaitUntil(() => Math.Abs((h.Player.Mpv.GetDouble("video-params/aspect") ?? 0) - 1.25) < 0.01, "the aspect override gone");
+        // mpv's last report of the stretched 4:3 may come in after the stretch is undone: it isn't the source's shape.
+        Thread.Sleep(500);
+        Assert.Equal(1.25, h.Player.State.DisplayAspect!.Value, 3);
+        if (h.Player.Mpv.GetString("video-crop") is { } still) Assert.Equal("720x404+0+86", still);
 
         h.OpenAndWait(TestEnvironment.Media("progressive_576.mp4"), paused: true);
         Assert.Equal(PictureFit.Original, h.Player.State.PictureFit);

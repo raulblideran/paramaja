@@ -3,6 +3,14 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.10.1 — 2026-10-31
+
+- **Crop to 16:9** chosen right after **Resize to 4:3** could crop by the stretched 4:3 shape
+  instead of the video's own (cutting too little off a 1.25:1 picture): the player's last
+  report of the stretch is no longer taken for the video's shape.
+- The Linux build (Flatpak), which 1.10.0's release couldn't attach (a download failed while it
+  was built). Everything in 1.10.0 is in it.
+
 ## 1.10.0 — 2026-10-31
 
 - **Rip Disc** (Open → Rip Disc…, or a drive's **Rip…** button in Open Disc):

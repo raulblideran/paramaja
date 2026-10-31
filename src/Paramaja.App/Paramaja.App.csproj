@@ -12,7 +12,7 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>1.10.0</Version>
+    <Version>1.10.1</Version>
     <Product>Paramaja</Product>
     <Description>Modern portable video player with HDR tonemapping and magnet streaming</Description>
     <Company>Raul Blideran</Company>
