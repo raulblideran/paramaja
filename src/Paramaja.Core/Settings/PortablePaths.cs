@@ -59,37 +59,48 @@ public sealed partial class PortablePaths
     public string Logs { get; }
     /// <summary>Where downloaded videos are saved: the system's Downloads folder.</summary>
     public string Downloads { get; init; } = SystemDownloads();
+    /// <summary>Where ripped CDs go: the system's Music folder.</summary>
+    public string Music { get; init; } = SystemFolder(FolderIdMusic, "XDG_MUSIC_DIR", "Music");
+    /// <summary>Where ripped DVDs go: the system's Videos folder.</summary>
+    public string Videos { get; init; } = SystemFolder(FolderIdVideos, "XDG_VIDEOS_DIR", "Videos");
 
-    internal static string SystemDownloads()
+    internal static string SystemDownloads() => SystemFolder(FolderIdDownloads, "XDG_DOWNLOAD_DIR", "Downloads");
+
+    /// <summary>A user folder: Windows' known folder, or the XDG user directory, else ~/<paramref name="fallback"/>.</summary>
+    private static string SystemFolder(Guid windowsId, string xdgKey, string fallback)
     {
         try
         {
-            if (OperatingSystem.IsWindows() && WindowsDownloads() is { } win) return win;
-            if (!OperatingSystem.IsWindows() && XdgDownloads(Path.Combine(Home, ".config", "user-dirs.dirs"), Home) is { } xdg) return xdg;
+            if (OperatingSystem.IsWindows() && WindowsFolder(windowsId) is { } win) return win;
+            if (!OperatingSystem.IsWindows() && XdgUserDir(Path.Combine(Home, ".config", "user-dirs.dirs"), Home, xdgKey) is { } xdg) return xdg;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or DllNotFoundException) { }
-        return Path.Combine(Home, "Downloads");
+        return Path.Combine(Home, fallback);
     }
 
     /// <summary>XDG_DOWNLOAD_DIR from user-dirs.dirs, e.g. <c>"$HOME/Téléchargements"</c>.</summary>
-    internal static string? XdgDownloads(string userDirsFile, string home)
+    internal static string? XdgDownloads(string userDirsFile, string home) => XdgUserDir(userDirsFile, home, "XDG_DOWNLOAD_DIR");
+
+    internal static string? XdgUserDir(string userDirsFile, string home, string key)
     {
         if (!File.Exists(userDirsFile)) return null;
-        var line = File.ReadLines(userDirsFile).FirstOrDefault(l => l.TrimStart().StartsWith("XDG_DOWNLOAD_DIR=", StringComparison.Ordinal));
+        var line = File.ReadLines(userDirsFile).FirstOrDefault(l => l.TrimStart().StartsWith(key + "=", StringComparison.Ordinal));
         if (line is null) return null;
         var value = line.Split('=', 2)[1].Trim().Trim('"').Replace("$HOME", home);
         return Path.IsPathRooted(value) && value.TrimEnd('/') != home.TrimEnd('/') ? value : null;
     }
 
     private static readonly Guid FolderIdDownloads = new("374DE290-123F-4565-9164-39C4925E467B");
+    private static readonly Guid FolderIdMusic = new("4BD8D571-6D19-48D3-BE97-422220080E43");
+    private static readonly Guid FolderIdVideos = new("18989B1D-99B5-455B-841C-AB7C74E4DDFC");
 
     [LibraryImport("shell32.dll")]
     private static partial int SHGetKnownFolderPath(in Guid id, uint flags, IntPtr token, out IntPtr path);
 
     [SupportedOSPlatform("windows")]
-    private static string? WindowsDownloads()
+    private static string? WindowsFolder(Guid id)
     {
-        if (SHGetKnownFolderPath(FolderIdDownloads, 0, IntPtr.Zero, out var p) < 0) return null;
+        if (SHGetKnownFolderPath(id, 0, IntPtr.Zero, out var p) < 0) return null;
         try { return Marshal.PtrToStringUni(p); }
         finally { Marshal.FreeCoTaskMem(p); }
     }

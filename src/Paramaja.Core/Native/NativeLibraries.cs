@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace Paramaja.Core.Native;
 
 /// <summary>
-/// Resolves the native libraries (libmpv, libvlc and paramaja_torrent) from the app folder first, so the
+/// Resolves the native libraries (libmpv, libvlc, libdvdread and paramaja_torrent) from the app folder first, so the
 /// portable build only needs the DLLs sitting next to the exe, then from well-known system paths.
 /// </summary>
 public static class NativeLibraries
@@ -14,6 +14,8 @@ public static class NativeLibraries
     public const string Vlc = "libvlc";
     /// <summary>libVLC's core, for the one setting libVLC's API can't make (see VlcDiscPlayer).</summary>
     public const string VlcCore = "libvlccore";
+    /// <summary>libdvdread (with libdvdcss), for copying a DVD's files decrypted (Ripping.Dvd.DvdRead).</summary>
+    public const string DvdRead = "dvdread";
 
     /// <summary>
     /// Where libVLC lives: on Windows a "libvlc" folder next to the exe, holding libvlc.dll,
@@ -48,6 +50,9 @@ public static class NativeLibraries
         VlcCore when OperatingSystem.IsWindows() => [Path.Combine("libvlc", "libvlccore.dll"), "libvlccore.dll"],
         VlcCore when OperatingSystem.IsMacOS() => ["libvlccore.dylib"],
         VlcCore => ["libvlccore.so.9", "libvlccore.so"],
+        DvdRead when OperatingSystem.IsWindows() => ["libdvdread-8.dll"],
+        DvdRead when OperatingSystem.IsMacOS() => ["libdvdread.8.dylib", "libdvdread.dylib"],
+        DvdRead => ["libdvdread.so.8", "libdvdread.so"],
         _ => [library],
     };
 
@@ -87,7 +92,7 @@ public static class NativeLibraries
 
     private static IntPtr Resolve(string library, Assembly assembly, DllImportSearchPath? searchPath)
     {
-        if (library is not (Mpv or Torrent or Vlc or VlcCore)) return IntPtr.Zero;
+        if (library is not (Mpv or Torrent or Vlc or VlcCore or DvdRead)) return IntPtr.Zero;
         foreach (var probe in ProbeOrder(library))
         {
             if (probe.StartsWith("dir:"))

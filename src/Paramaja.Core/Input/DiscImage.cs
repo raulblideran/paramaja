@@ -99,6 +99,18 @@ public static class DiscImage
         return bytes;
     }
 
+    /// <summary>The files in an image's VIDEO_TS folder (names upper case), through ISO 9660; empty if it has none.</summary>
+    internal static IReadOnlyList<(string Name, long Length)> VideoTsFiles(Stream image) =>
+        IsoEntry(image, IsoRoot(image), "VIDEO_TS", directory: true) is { } videoTs
+            ? Entries(image, videoTs).Where(e => !e.Directory).Select(e => (e.Name, e.Extent.Length)).ToList()
+            : [];
+
+    /// <summary>The volume's name (ISO 9660 volume identifier), e.g. "THE_ONE"; null without ISO 9660.</summary>
+    internal static string? VolumeLabel(Stream image) =>
+        Sector(image, IsoPrimaryVolumeSector) is { } pvd && pvd[0] == 1 && Encoding.ASCII.GetString(pvd, 1, 5) == "CD001"
+            ? Encoding.ASCII.GetString(pvd, 40, 32).Trim() is { Length: > 0 } label ? label : null
+            : null;
+
     /// <summary>A folder's directory records: name (upper case, without ";1"), whether it's a folder, and where its data is.</summary>
     private static List<(string Name, bool Directory, Extent Extent)> Entries(Stream image, Extent folder)
     {

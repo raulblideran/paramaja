@@ -22,5 +22,8 @@ public class NativeLibrariesTests
     {
         var names = NativeLibraries.CandidateNames(NativeLibraries.Mpv).ToList();
         Assert.Contains(OperatingSystem.IsWindows() ? "libmpv-2.dll" : "libmpv.so.2", names);
+        // libdvdread as the Windows build bundles it (packaging/dvd/win64) and as the Flatpak builds it.
+        Assert.Contains(OperatingSystem.IsWindows() ? "libdvdread-8.dll" : "libdvdread.so.8",
+            NativeLibraries.CandidateNames(NativeLibraries.DvdRead));
     }
 }
