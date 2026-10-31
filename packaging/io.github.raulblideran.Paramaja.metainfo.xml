@@ -76,7 +76,7 @@
   <releases>
     <release version="1.10.0" date="2026-10-31">
       <description>
-        <p>CD and DVD ripping, DSD at 192 kHz, CD and SACD badges, fullscreen pointer</p>
+        <p>CD and DVD ripping (AccurateRip, MusicBrainz, FLAC; DVD to MKV or VIDEO_TS), DSD and SACDs at 192 kHz, CD and SACD badges in the controls bar, a channels badge that follows the downmix switch, the pointer hidden in fullscreen</p>
       </description>
     </release>
     <release version="1.9.0" date="2026-10-29">

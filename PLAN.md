@@ -135,3 +135,14 @@ paramaja/
 - [x] Codec badge; Recent list removed (and no longer stored); Developer tab with the advanced options; Create log
 - [x] Menus stay put: the bars don't hide or park while one of their menus is open
 - [ ] Friend's laptop: confirm the lag is gone, or read the log from Create log
+
+### Phase 10 — 1.10.0: ripping, sample rates, badges, the fullscreen pointer
+- [x] DSD/SACD at 192 kHz (file-local audio-samplerate), others at their own rate; Exclusive (WASAPI) switch on Windows
+- [x] CD / SACD badges; audio badge by the downmix switch, with rates and the device's fold-down in its tooltip; discs honour the downmix switch
+- [x] Chapter buttons only with chapters (cleared on each file, on a disc's stop, while idle)
+- [x] Fullscreen pointer hidden 3 s after the mouse last moved (blank X cursor on the video surfaces on Linux)
+- [x] CD ripper: SG_IO / SPTI, test & copy with cache defeat and re-reads, AccurateRip v1/v2 and drive offsets, gaps from the Q sub-channel, MusicBrainz + Cover Art Archive, FLAC -8 / WAV, cue sheet, log with a score
+- [x] Verified on the Dangerous rip's audio through a simulated +48 drive: EAC's CRCs, all tracks accurate
+- [x] DVD ripper: VIDEO_TS decrypted (libdvdread + libdvdcss; Windows DLLs cross-built), one title to MKV (FFmpeg's dvdvideo reader, LPCM → FLAC); verified lossless on a DVD image
+- [ ] A real CD and a real (CSS) DVD in a drive, on Linux and Windows
+

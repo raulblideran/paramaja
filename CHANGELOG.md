@@ -5,7 +5,51 @@ also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
 ## 1.10.0 — 2026-10-31
 
-- CD and DVD ripping, DSD at 192 kHz, CD and SACD badges, fullscreen pointer
+- **Rip Disc** (Open → Rip Disc…, or a drive's **Rip…** button in Open Disc):
+  - **Audio CDs** are read securely: every track twice (test and copy) with the drive's cache
+    defeated, every block that reads differently read again until two reads agree. The drive's
+    read offset comes from AccurateRip's list of drives (or, for a drive it doesn't list, from the
+    disc itself), the gaps between tracks from the disc's sub-channel. Each track is checked
+    against **AccurateRip** (v1 and v2). The tags (and the cover, 1200 px) come from **MusicBrainz**,
+    or from the disc's CD-Text, and can be edited before ripping. Saved as **FLAC level 8**
+    (the reference encoder, verified) or **WAV** (with RIFF tags, no ID3), in Music → Artist →
+    Album (Year), with a cue sheet (gaps appended to the previous track), cover.jpg and a log.
+  - **The log** has the layout rip logs use (settings, TOC, each track's test and copy CRCs,
+    AccurateRip, the summary) and scores itself with the deductions tracker log checkers make:
+    100% for a clean secure rip. It's Paramaja's own: those checkers only accept EAC's, XLD's and
+    whipper's logs, so it won't pass for one of them on a tracker.
+  - Checked on the audio of the Dangerous rip in the Michael Jackson discography, read through a
+    simulated drive with a +48 offset: the copy CRCs and AccurateRip checksums are exactly the
+    ones in its EAC log, and all 14 tracks come out accurately ripped. **Not yet tried with a
+    real drive**: no machine here has one.
+  - **DVDs**, from a drive, an `.iso` or a VIDEO_TS folder: either **the VIDEO_TS folder as it
+    is, decrypted** (menus and all, in Videos → the disc's name; it plays like the disc), or **one
+    title as an MKV** (the longest, the main film, picked), nothing re-encoded: the MPEG-2 video,
+    every audio and subtitle track with its language, and the chapters. LPCM audio becomes FLAC,
+    bit for bit the same audio, as MakeMKV does. Checked on a DVD image: the copy is identical to
+    its files, and the MKV's video frames, AC-3 and LPCM are the disc's own. Decrypting a
+    store-bought (CSS) disc uses the same libdvdcss as playback, but wasn't tried here.
+  - The rip carries on with its window closed, with its progress and Cancel at the top of the
+    player. A cancelled rip leaves nothing behind. A disc playing stops first.
+- **DSD and SACDs play at 192 kHz** (FFmpeg decodes DSD64 to 352.8 kHz, more than most DACs
+  take); everything else plays at its own sample rate. On Windows, the system mixes every app at
+  one rate (often 48 kHz): **Settings → Audio → Exclusive** gives the player the audio device to
+  itself, so the DAC runs at the file's rate. Off by default (other apps go quiet). The audio
+  badge's tooltip tells the rates.
+- **CD and SACD badges** in the controls bar: an Audio CD (or CD image) shows "CD" where a video
+  shows its codec and a DVD "DVD", an SACD "SACD" (its area in the tooltip). The downmix switch
+  doesn't touch them: it's the channels badge beside them that it changes.
+- **The channels badge** shows what the player does: "5.1" or "7.1" for the original channels, and
+  "5.1 → stereo" / "7.1 → stereo" only with the downmix switch on. 7.1 is never downmixed unless
+  asked: it plays as 8 channels. Where the audio device itself is set up with fewer speakers
+  (Windows set to stereo), the tooltip says the system mixes it down for them. On discs the
+  downmix switch now works too (it did nothing there).
+- **Chapter buttons** show only while something with chapters plays: a file without chapters
+  after one with them, a stopped player or a disc's menu no longer keep them.
+- **In fullscreen the pointer hides after 3 seconds** without moving, paused or not; moving the
+  mouse brings it back (a key doesn't). Not over the bars or with a menu open. On Linux it now
+  also hides over discs.
+- The Windows zip's FFmpeg is now BtbN's GPL build, which reads DVDs: the zip is larger.
 
 ## 1.9.0 — 2026-10-29
 

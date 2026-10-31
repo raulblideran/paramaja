@@ -8,7 +8,7 @@ namespace Paramaja.App.Tests;
 
 public class Prompt8ViewModelTests
 {
-    private static string CdImage(Rig r)
+    internal static string CdImage(Rig r)
     {
         File.WriteAllBytes(Path.Combine(r.Root, "Dangerous.bin"), new byte[2352 * 4]);
         var cue = Path.Combine(r.Root, "Dangerous.cue");
@@ -16,7 +16,7 @@ public class Prompt8ViewModelTests
         return cue;
     }
 
-    private static string SacdImage(Rig r)
+    internal static string SacdImage(Rig r)
     {
         var iso = Path.Combine(r.Root, "Thriller.iso");
         var data = new byte[600 * 2048];
@@ -25,7 +25,7 @@ public class Prompt8ViewModelTests
         return iso;
     }
 
-    private static void Play(FakePlayer p)
+    internal static void Play(FakePlayer p)
     {
         p.State.IsIdle = false;
         p.RaiseState("idle-active");
@@ -186,6 +186,43 @@ public class Prompt8ViewModelTests
 
 public class Prompt8UiTests
 {
+    [AvaloniaFact]
+    public async Task Cd_and_sacd_show_in_the_controls_bars_codec_badge_whatever_the_downmix()
+    {
+        using var r = new Rig(discEngine: true);
+        var bar = new ControlsBar { DataContext = r.Vm, Width = 1280 };
+        bar.Show();
+        string Text(string name) => (string?)((TextBlock)bar.FindControl<Border>(name)!.Child!).Text ?? "";
+
+        await r.Vm.OpenInputAsync(Prompt8ViewModelTests.CdImage(r));
+        Prompt8ViewModelTests.Play(r.DiscPlayer!);
+        r.DiscPlayer!.State.SourceChannels = 2;
+        r.DiscPlayer.RaiseState("audio-params/channel-count");
+        Dispatch();
+        Assert.True(bar.FindControl<Border>("CodecBadge")!.IsVisible);
+        Assert.Equal("CD", Text("CodecBadge"));
+        Assert.Equal("stereo", Text("AudioBadge"));
+
+        await r.Vm.OpenInputAsync(Prompt8ViewModelTests.SacdImage(r));
+        Prompt8ViewModelTests.Play(r.Player);
+        r.Player.State.SourceChannels = 6;
+        r.Player.RaiseState("audio-params/channel-count");
+        Dispatch();
+        Assert.Equal("SACD", Text("CodecBadge"));
+        Assert.Equal("5.1", Text("AudioBadge"));
+
+        // The downmix switch is the channels badge's business only.
+        r.Vm.DownmixToStereo = true;
+        Dispatch();
+        Assert.Equal("SACD", Text("CodecBadge"));
+        Assert.Equal("5.1 → stereo", Text("AudioBadge"));
+        r.Vm.DownmixToStereo = false;
+        Dispatch();
+        Assert.Equal("SACD", Text("CodecBadge"));
+        Assert.Equal("5.1", Text("AudioBadge"));
+        bar.Close();
+    }
+
     [AvaloniaFact]
     public void Chapter_buttons_show_only_with_chapters()
     {
