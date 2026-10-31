@@ -23,6 +23,8 @@ public sealed partial class PortablePaths
         Screenshots = Path.GetFullPath(screenshots);
         TorrentCache = Path.GetFullPath(torrentCache);
         Logs = Path.GetFullPath(logs);
+        // Beside the logs (the app folder, or the sandbox's cache): the torrent cache is emptied on exit.
+        RipCache = Path.Combine(Path.GetDirectoryName(Logs)!, "ripping");
     }
 
     public static PortablePaths ForApp() =>
@@ -57,6 +59,8 @@ public sealed partial class PortablePaths
     /// <summary>mpv's own config dir (mpv.conf, input.conf, shaders) — optional power-user hook.</summary>
     public string MpvConfig => Path.Combine(Root, "portable_config");
     public string Logs { get; }
+    /// <summary>What ripping keeps between runs: AccurateRip's list of drive offsets.</summary>
+    public string RipCache { get; }
     /// <summary>Where downloaded videos are saved: the system's Downloads folder.</summary>
     public string Downloads { get; init; } = SystemDownloads();
     /// <summary>Where ripped CDs go: the system's Music folder.</summary>

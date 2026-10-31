@@ -863,6 +863,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (await Dialogs.PickFolderAsync() is { } f) await OpenInputAsync(f);
     }
 
+    /// <summary>Before a drive's path, from the Open Disc window: rip that disc.</summary>
+    public const string RipPrefix = "rip:";
+
     /// <summary>
     /// A DVD or Blu-ray (with its menus) or an Audio CD, from a drive, a folder or a disc image (an
     /// SACD's too); a CD rip's folder plays its cue sheet, with the tracks as chapters.
@@ -872,6 +875,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         if (Dialogs is null) return;
         if (await Dialogs.PickDiscAsync() is not { } root) return;
+        // The dialog's Rip button: the disc goes to the ripper instead.
+        if (root.StartsWith(RipPrefix, StringComparison.Ordinal))
+        {
+            await Dialogs.ShowRipperAsync(root[RipPrefix.Length..]);
+            return;
+        }
         var (kind, value) = InputClassifier.Classify(root);
         var cueSheet = kind == InputKind.File && Path.GetExtension(value).Equals(".cue", StringComparison.OrdinalIgnoreCase);
         if (kind is InputKind.Dvd or InputKind.Bluray or InputKind.AudioCd or InputKind.Sacd || cueSheet) await OpenInputAsync(root);
@@ -1313,6 +1322,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         // Stop yt-dlp rather than leave it running without us; cancelling kills it.
         _downloadCts?.Cancel();
         try { _downloadTask?.Wait(TimeSpan.FromSeconds(3)); }
+        catch (AggregateException) { }
+        // A rip that didn't finish is cleaned up (its files deleted) before the app goes.
+        _ripCts?.Cancel();
+        try { _ripTask?.Wait(TimeSpan.FromSeconds(10)); }
         catch (AggregateException) { }
         _mpvPlayer?.Dispose();
         _discPlayer?.Dispose();

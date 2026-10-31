@@ -1,0 +1,156 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Paramaja.App.ViewModels"
+        xmlns:s="using:Paramaja.App.Services"
+        xmlns:cd="using:Paramaja.Core.Ripping.Cd"
+        xmlns:dvd="using:Paramaja.Core.Ripping.Dvd"
+        x:Class="Paramaja.App.Views.RipDialog"
+        x:DataType="vm:RipDialogViewModel"
+        Title="Rip Disc" Icon="/Assets/paramaja.ico"
+        Width="720" SizeToContent="Height" MaxHeight="900" CanResize="False"
+        WindowStartupLocation="CenterOwner" Background="#15111A">
+  <ScrollViewer>
+    <StackPanel Margin="24" Spacing="12">
+      <StackPanel Orientation="Horizontal" Spacing="10">
+        <PathIcon Data="{StaticResource IconDisc}" Width="22" Height="22" Foreground="{StaticResource ParamajaAccentBright}" />
+        <TextBlock Text="Rip Disc" FontSize="20" FontWeight="SemiBold" />
+      </StackPanel>
+      <TextBlock Classes="muted" TextWrapping="Wrap"
+                 Text="Audio CDs: read securely (test and copy, every block until two reads agree), checked against AccurateRip, tagged from MusicBrainz and saved as FLAC (level 8) or WAV, with a cue sheet and a log. DVDs: the VIDEO_TS folder as it is, decrypted, or one title as an MKV with every track and the chapters, nothing re-encoded." />
+
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+        <TextBlock Text="Drive" VerticalAlignment="Center" />
+        <ComboBox x:Name="DriveList" Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding Drives}"
+                  SelectedItem="{Binding SelectedDrive}" IsEnabled="{Binding HasDrives}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="s:OpticalDrive">
+              <TextBlock Text="{Binding Description}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+          <Button Classes="ghost" Content="DVD image…" Click="OnPickDvdImage" ToolTip.Tip="A DVD-Video image (.iso), to rip like a disc" />
+          <Button Classes="ghost" Content="DVD folder…" Click="OnPickDvdFolder" ToolTip.Tip="A VIDEO_TS folder" />
+        </StackPanel>
+      </Grid>
+      <TextBlock Classes="muted" FontSize="12" Text="No CD or DVD drive found." IsVisible="{Binding !HasDrives}" />
+      <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
+      <TextBlock Text="{Binding Message}" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource ParamajaAccentBright}"
+                 IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+      <!-- Audio CD -->
+      <StackPanel Spacing="10" IsVisible="{Binding IsCd}">
+        <TextBlock Classes="muted" FontSize="12" Text="{Binding DiscNote}" TextWrapping="Wrap" />
+        <ComboBox x:Name="Releases" HorizontalAlignment="Stretch" ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease}"
+                  IsVisible="{Binding HasReleases}" ToolTip.Tip="MusicBrainz knows this disc in several releases">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="cd:AlbumTags">
+              <TextBlock Text="{Binding Description}" TextTrimming="CharacterEllipsis" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="6">
+            <TextBlock Text="Album artist" VerticalAlignment="Center" />
+            <TextBox x:Name="AlbumArtist" Grid.Column="1" Text="{Binding AlbumArtist}" />
+            <TextBlock Grid.Row="1" Text="Album" VerticalAlignment="Center" />
+            <TextBox x:Name="Album" Grid.Row="1" Grid.Column="1" Text="{Binding Album}" />
+            <TextBlock Grid.Row="2" Text="Date" VerticalAlignment="Center" />
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Date}" Watermark="1991-11-26" />
+            <TextBlock Grid.Row="3" Text="Genre" VerticalAlignment="Center" />
+            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Genre}" />
+          </Grid>
+          <Border Grid.Column="1" Width="132" Height="132" Background="#221A2A" CornerRadius="6" ClipToBounds="True">
+            <Panel>
+              <TextBlock Text="No cover" Classes="muted" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <Image Source="{Binding CoverImage}" Stretch="UniformToFill" />
+            </Panel>
+          </Border>
+        </Grid>
+        <TextBlock Classes="section" Text="Tracks" />
+        <ScrollViewer MaxHeight="240">
+          <ItemsControl x:Name="Tracks" ItemsSource="{Binding Tracks}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:RipTrackRow">
+                <Grid ColumnDefinitions="34,*,200" ColumnSpacing="8" Margin="0,2">
+                  <TextBlock Text="{Binding Number, StringFormat='{}{0:00}'}" VerticalAlignment="Center" Classes="muted" />
+                  <TextBox Grid.Column="1" Text="{Binding Title}" />
+                  <TextBox Grid.Column="2" Text="{Binding Artist}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="10">
+          <TextBlock Text="Format" VerticalAlignment="Center" />
+          <ComboBox x:Name="Format" Grid.Column="1" Width="220" SelectedIndex="{Binding FormatIndex}">
+            <ComboBoxItem Content="FLAC, level 8 (lossless)" IsEnabled="{Binding HasFlac}" />
+            <ComboBoxItem Content="WAV (uncompressed)" />
+          </ComboBox>
+        </Grid>
+        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="10">
+          <TextBlock Text="Read offset" VerticalAlignment="Center" />
+          <TextBox x:Name="Offset" Grid.Column="1" Width="80" Text="{Binding OffsetText}" Watermark="auto" />
+          <TextBlock Grid.Column="2" Classes="muted" FontSize="12" Text="{Binding OffsetNote}" TextWrapping="Wrap" VerticalAlignment="Center" />
+        </Grid>
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+          <TextBlock Text="Save in" VerticalAlignment="Center" />
+          <TextBox Grid.Column="1" Text="{Binding CdFolder}" />
+          <Button Grid.Column="2" Classes="ghost" Content="Change…" Click="OnPickCdFolder" />
+        </Grid>
+        <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                   Text="Each album goes in Artist / Album (Year), with its cue sheet, its log and cover.jpg. The log uses rip logs' layout and scores itself as tracker log checkers would, but it's Paramaja's: those checkers only accept EAC's, XLD's and whipper's own logs." />
+      </StackPanel>
+
+      <!-- DVD -->
+      <StackPanel Spacing="10" IsVisible="{Binding IsDvd}">
+        <TextBlock Classes="muted" FontSize="12" Text="{Binding Source}" TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" Spacing="16">
+          <RadioButton x:Name="MkvMode" GroupName="dvdmode" Content="One title as MKV (lossless)" IsEnabled="{Binding CanMkv}"
+                       IsChecked="{Binding IsMkv, Mode=OneWay}" Click="OnMkvMode" />
+          <RadioButton x:Name="DecryptMode" GroupName="dvdmode" Content="The VIDEO_TS folder, decrypted" IsEnabled="{Binding CanDecrypt}"
+                       IsChecked="{Binding !IsMkv, Mode=OneWay}" Click="OnDecryptMode" />
+        </StackPanel>
+        <ListBox x:Name="Titles" ItemsSource="{Binding Titles}" SelectedItem="{Binding SelectedTitle}" MaxHeight="220"
+                 IsVisible="{Binding IsMkv}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="dvd:DvdTitle">
+              <TextBlock Text="{Binding Label}" TextWrapping="Wrap" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding IsMkv}"
+                   Text="The longest title, the main film, is picked. The MKV keeps the MPEG-2 video as it is, every audio and subtitle track with its language, and the chapters; LPCM audio becomes FLAC, the same audio bit for bit." />
+        <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding !IsMkv}"
+                   Text="Every file of the disc's VIDEO_TS folder, menus included, decrypted, in its own folder: it plays like the disc." />
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+          <TextBlock Text="Save in" VerticalAlignment="Center" />
+          <TextBox Grid.Column="1" Text="{Binding DvdFolder}" />
+          <Button Grid.Column="2" Classes="ghost" Content="Change…" Click="OnPickDvdOutput" />
+        </Grid>
+      </StackPanel>
+
+      <!-- The rip -->
+      <StackPanel Spacing="6" IsVisible="{Binding Main.IsRipping}">
+        <ProgressBar Minimum="0" Maximum="1" Value="{Binding Main.RipFraction}" />
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Text="{Binding Main.RipStatus}" VerticalAlignment="Center" Foreground="{StaticResource ParamajaLeaf}" />
+          <Button Grid.Column="1" Classes="ghost" Content="Cancel rip" Command="{Binding Main.CancelRipCommand}" />
+        </Grid>
+        <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                   Text="You can close this window: the rip carries on, with its progress at the top of the player." />
+      </StackPanel>
+      <TextBlock x:Name="RipResult" Text="{Binding Main.RipResult}" FontSize="12" TextWrapping="Wrap"
+                 IsVisible="{Binding Main.RipResult, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Button Classes="ghost" Content="Open folder" Command="{Binding Main.OpenRipFolderCommand}"
+                IsVisible="{Binding Main.LastRipFolder, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
+          <Button Classes="ghost" Content="Close" Click="OnClose" IsCancel="True" />
+          <Button x:Name="StartButton" Classes="accent" Content="Rip" Command="{Binding StartCommand}" IsDefault="True" />
+        </StackPanel>
+      </Grid>
+    </StackPanel>
+  </ScrollViewer>
+</Window>

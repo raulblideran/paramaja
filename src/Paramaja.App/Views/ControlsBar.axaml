@@ -241,6 +241,8 @@
                 <MenuItem Header="Open folder" InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
                 <MenuItem Header="Open Disc" Command="{Binding OpenDiscCommand}"
                           ToolTip.Tip="DVD, Blu-ray or Audio CD, from a drive or a folder" />
+                <MenuItem Header="Rip Disc…" Command="{Binding OpenRipperCommand}"
+                          ToolTip.Tip="Rip an Audio CD to FLAC or WAV (AccurateRip, MusicBrainz), or a DVD to MKV or its VIDEO_TS folder" />
                 <Separator />
                 <MenuItem Header="Screenshots folder" Command="{Binding OpenScreenshotsFolderCommand}" />
               </MenuFlyout>

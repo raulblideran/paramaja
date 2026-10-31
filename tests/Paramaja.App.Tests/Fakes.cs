@@ -203,6 +203,8 @@ public sealed class FakeDialogs : IDialogService
     public Task ShowDownloaderAsync(string? url) { DownloaderOpenedWith.Add(url); return Task.CompletedTask; }
     public string? NextDisc { get; set; }
     public Task<string?> PickDiscAsync() => Task.FromResult(NextDisc);
+    public List<string?> RipperOpenedWith { get; } = [];
+    public Task ShowRipperAsync(string? drive) { RipperOpenedWith.Add(drive); return Task.CompletedTask; }
     public Task<string?> ReadClipboardTextAsync() => Task.FromResult(Clipboard);
     public Task ShowSettingsAsync() { SettingsShown++; return Task.CompletedTask; }
     public void OpenFolder(string path) => OpenedFolders.Add(path);

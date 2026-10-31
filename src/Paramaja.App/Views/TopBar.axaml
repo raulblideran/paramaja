@@ -29,6 +29,10 @@
                    Foreground="{StaticResource ParamajaLeaf}" />
         <Button Classes="ghost" Content="Cancel" Command="{Binding CancelDownloadCommand}" IsVisible="{Binding IsDownloading}"
                 ToolTip.Tip="Stop the download and delete the partial file" />
+        <TextBlock x:Name="RipStatus" Text="{Binding RipStatus}" FontSize="12" VerticalAlignment="Center" IsVisible="{Binding IsRipping}"
+                   Foreground="{StaticResource ParamajaLeaf}" />
+        <Button Classes="ghost" Content="Cancel rip" Command="{Binding CancelRipCommand}" IsVisible="{Binding IsRipping}"
+                ToolTip.Tip="Stop ripping and delete what was ripped so far" />
       </StackPanel>
     </Grid>
   </Border>

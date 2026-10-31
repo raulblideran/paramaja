@@ -63,6 +63,9 @@ public sealed class DialogService(Window owner, Func<MainViewModel> vm) : IDialo
 
     public Task<string?> PickDiscAsync() => new OpenDiscDialog().ShowDialog<string?>(owner);
 
+    public Task ShowRipperAsync(string? drive) =>
+        new RipDialog { DataContext = new RipDialogViewModel(vm(), OpticalDrives.Find(), drive) }.ShowDialog(owner);
+
     public async Task ShowDownloaderAsync(string? url)
     {
         var initial = url ?? await ReadClipboardTextAsync();

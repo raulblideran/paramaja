@@ -28,6 +28,11 @@ public partial class OpenDiscDialog : Window
         if (sender is Button { Tag: string root }) Close(root);
     }
 
+    private void OnRipDrive(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string root }) Close(ViewModels.MainViewModel.RipPrefix + root);
+    }
+
     private async void OnPickFolder(object? sender, RoutedEventArgs e)
     {
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions

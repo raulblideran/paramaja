@@ -16,9 +16,11 @@
     <ItemsControl x:Name="DriveList">
       <ItemsControl.ItemTemplate>
         <DataTemplate x:DataType="s:OpticalDrive">
-          <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="0,2">
             <TextBlock Text="{Binding Description}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-            <Button Grid.Column="1" Classes="accent" Content="Play" IsEnabled="{Binding HasDisc}" Click="OnPlayDrive" Tag="{Binding Root}" />
+            <Button Grid.Column="1" Classes="ghost" Content="Rip…" IsEnabled="{Binding HasDisc}" Click="OnRipDrive" Tag="{Binding Root}"
+                    ToolTip.Tip="Rip this CD or DVD" />
+            <Button Grid.Column="2" Classes="accent" Content="Play" IsEnabled="{Binding HasDisc}" Click="OnPlayDrive" Tag="{Binding Root}" />
           </Grid>
         </DataTemplate>
       </ItemsControl.ItemTemplate>

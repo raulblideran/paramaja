@@ -26,7 +26,10 @@ public sealed class Rig : IDisposable
     {
         Directory.CreateDirectory(Root);
         // Downloads go to the test folder, never the real one.
-        Paths = new PortablePaths(Root) { Downloads = Path.Combine(Root, "Downloads") };
+        Paths = new PortablePaths(Root)
+        {
+            Downloads = Path.Combine(Root, "Downloads"), Music = Path.Combine(Root, "Music"), Videos = Path.Combine(Root, "Videos"),
+        };
         Store = new SettingsStore(Paths.SettingsFile);
         Settings = settings ?? new PlayerSettings();
         Player = new FakePlayer(Settings);

@@ -291,7 +291,7 @@ public class HeadlessUiTests
         Assert.Contains("Open Link", texts);
         Assert.Contains("Download Video", texts);
         Assert.DoesNotContain("Paste", texts);
-        Assert.Equal(["Open file", "Open folder", "Open Disc"], MenuHeaders(w.FindControl<Button>("OpenMenu")!));
+        Assert.Equal(["Open file", "Open folder", "Open Disc", "Rip Disc…"], MenuHeaders(w.FindControl<Button>("OpenMenu")!));
         w.Close();
     }
 
@@ -302,7 +302,7 @@ public class HeadlessUiTests
         r.Vm.IsIdle = false;
         var bar = new ControlsBar { DataContext = r.Vm, Width = 1280 };
         bar.Show();
-        Assert.Equal(["Open file", "Open folder", "Open Disc", "Screenshots folder"], MenuHeaders(bar.FindControl<Button>("OpenMenuButton")!));
+        Assert.Equal(["Open file", "Open folder", "Open Disc", "Rip Disc…", "Screenshots folder"], MenuHeaders(bar.FindControl<Button>("OpenMenuButton")!));
         var download = bar.FindControl<Button>("DownloadVideoButton")!;
         Assert.StartsWith("Download Video", ToolTip.GetTip(download) as string);
         Assert.Same(r.Vm.OpenDownloaderCommand, download.Command);
