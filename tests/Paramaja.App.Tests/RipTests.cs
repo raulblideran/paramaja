@@ -85,7 +85,8 @@ public class RipDialogTests
         Assert.True(vm.IsDvd);
         Assert.Equal(2, vm.SelectedTitle!.Number);
         Assert.True(vm.IsMkv);
-        Assert.Equal("/dev/sr1", vm.Source); // the raw drive, for its keys
+        // The raw drive on Linux, for libdvdcss's keys; on Windows the drive by its name ("D:").
+        Assert.Equal(OperatingSystem.IsWindows() ? "sr1" : "/dev/sr1", vm.Source);
         Assert.Equal(r.Paths.Videos, vm.DvdFolder);
         vm.DvdModeIndex = 1;
         Assert.False(vm.IsMkv);
