@@ -148,10 +148,41 @@ modules:
         url: https://download.videolan.org/pub/videolan/libudfread/libudfread-1.2.0.tar.xz
         sha256: bb477cbd4cfbfc7787d9d05b71ee5e70430f5cfebf1297497f7e83547958050f
 
+  # ---- x264 and x265: the DVD ripper's H.264 and H.265 MKVs ---------------
+  # Only the libraries (no command-line tools): FFmpeg encodes with them. Neither is in the
+  # runtime (it ships no encoders of either); both are GPL, as the bundle is.
+  - name: x264
+    config-opts:
+      - --enable-shared
+      - --enable-pic
+      - --disable-cli
+    sources:
+      # The stable branch.
+      - type: git
+        url: https://code.videolan.org/videolan/x264.git
+        commit: b35605ace3ddf7c1a5d67a2eb553f034aef41d55
+
+  - name: x265
+    buildsystem: cmake-ninja
+    subdir: source
+    config-opts:
+      - -DENABLE_SHARED=ON
+      - -DENABLE_CLI=OFF
+      # x265 4.1 asks for CMake 2.8 and two policies CMake 4 no longer has (removed below).
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: archive
+        url: https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.1.tar.gz
+        sha256: a31699c6a89806b74b0151e5e6a7df65de4b49050482fe5ebf8a4379d7af8f29
+      - type: shell
+        commands:
+          - sed -i -e '/cmake_policy(SET CMP0025 OLD)/d' -e '/cmake_policy(SET CMP0054 OLD)/d' source/CMakeLists.txt
+
   # ---- ffmpeg, with every decoder ----------------------------------------
   # The ffmpeg and ffprobe programs are built too: yt-dlp needs them to merge the
   # separate video and audio streams of a download and to embed its cover art, and the
-  # DVD ripper reads DVDs with them (so the DVD libraries above come first).
+  # DVD ripper reads DVDs and encodes with them (so the DVD libraries, x264 and x265 above
+  # come first).
   - name: ffmpeg
     config-opts:
       - --enable-shared
@@ -171,6 +202,9 @@ modules:
       # FFmpeg's DVD-Video reader, for the DVD ripper's MKVs (libdvdread decrypts with libdvdcss).
       - --enable-libdvdread
       - --enable-libdvdnav
+      # The DVD ripper's MKVs in H.264 and H.265 (the modules above).
+      - --enable-libx264
+      - --enable-libx265
       # NVENC off: the 25.08 runtime's nv-codec-headers 13 renamed a field
       # ffmpeg 8.0's nvenc.c still writes, so it fails to compile (the same
       # fix Apricot Studio needed). A player only decodes, and NVDEC/CUVID are

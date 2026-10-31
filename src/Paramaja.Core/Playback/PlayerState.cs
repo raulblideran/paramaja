@@ -15,6 +15,11 @@ public sealed class PlayerState
     public bool IsPaused { get; set; }
     public bool IsMuted { get; set; }
     public bool IsBuffering { get; set; }
+    /// <summary>
+    /// A stream (link, torrent, MEGA) is opening and hasn't played yet: yt-dlp, the connection and
+    /// its first seconds of buffer. Reported as "stream-starting".
+    /// </summary>
+    public bool IsStartingStream { get; set; }
     public bool IsSeeking { get; set; }
     public bool DeinterlaceActive { get; set; }
     /// <summary>The current chapter's index, when the video has chapters.</summary>

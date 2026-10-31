@@ -39,6 +39,8 @@ public interface IPlayer : IDisposable
     event Action<EndFileReason, string?>? EndFile;
 
     void Open(string pathOrUrl, string? displayTitle = null, bool streaming = false);
+    /// <summary>Queues a file to play after the current one (and those queued before it), as a folder's do.</summary>
+    void Append(string path);
     void OpenDisc(string root, bool bluray);
     /// <summary>An Audio CD from its drive, or a CD image's cue sheet; its tracks are the chapters.</summary>
     void OpenAudioCd(string device);

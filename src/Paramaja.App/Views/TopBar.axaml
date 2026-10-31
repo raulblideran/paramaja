@@ -12,8 +12,10 @@
         <StackPanel Orientation="Horizontal" Spacing="12">
           <TextBlock Text="{Binding TorrentStatus}" FontSize="12" Foreground="{StaticResource ParamajaLeaf}"
                      IsVisible="{Binding IsTorrent}" />
+          <TextBlock x:Name="OpeningText" Text="Opening…" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource ParamajaLeaf}"
+                     IsVisible="{Binding IsStartingStream}" />
           <TextBlock Text="{Binding BufferingText}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource ParamajaAccentBright}"
-                     IsVisible="{Binding IsBuffering}" />
+                     IsVisible="{Binding ShowsBufferingText}" />
           <TextBlock Text="{Binding StatusMessage}" FontSize="12" Classes="muted" />
         </StackPanel>
       </StackPanel>

@@ -8,15 +8,38 @@ public enum DvdRipMode
 {
     /// <summary>The VIDEO_TS folder as it is on the disc, decrypted: menus, extras, everything.</summary>
     Decrypt,
-    /// <summary>One title as one MKV, nothing re-encoded.</summary>
+    /// <summary>One title as one MKV: its video copied (<see cref="DvdVideo.Copy"/>) or encoded.</summary>
     Mkv,
 }
+
+/// <summary>
+/// An MKV's video: the disc's own, or encoded to look the same in less space. Settings from trials
+/// on a PAL concert DVD (576i), against the disc's frames: x264 at 66% of the size, VMAF 98.6;
+/// x265 at 50% (progressive) and 64% (interlaced, as 50p), VMAF 98.7 and 97.6.
+/// </summary>
+public enum DvdVideo
+{
+    /// <summary>The disc's MPEG-2 as it is: lossless.</summary>
+    Copy,
+    /// <summary>H.264 (x264, CRF 16): interlaced video stays interlaced, both fields as on the disc.</summary>
+    X264,
+    /// <summary>
+    /// H.265 (x265, CRF 18). HEVC has no interlaced mode players handle (x265's field coding comes
+    /// back with the field order flag swapping every frame), so interlaced video is deinterlaced to
+    /// 50p (59.94p) with BWDIF, as Paramaja plays DVDs, at CRF 16.
+    /// </summary>
+    X265,
+}
+
+/// <summary>How a title's video is scanned, which the encoders need to know.</summary>
+public enum VideoScan { Progressive, TopFieldFirst, BottomFieldFirst }
 
 public sealed record DvdRipOptions
 {
     /// <summary>A drive ("D:", "/dev/sr0"), an image (.iso) or a VIDEO_TS folder.</summary>
     public required string Source { get; init; }
     public DvdRipMode Mode { get; init; } = DvdRipMode.Mkv;
+    public DvdVideo Video { get; init; } = DvdVideo.Copy;
     /// <summary>The title for an MKV (DVD title numbers start at 1).</summary>
     public int Title { get; init; } = 1;
     /// <summary>The folder the rip goes in (the Videos folder).</summary>
@@ -32,11 +55,12 @@ public sealed record DvdRipResult(string Output, IReadOnlyList<string> Problems,
 
 /// <summary>
 /// Rips a DVD: either its VIDEO_TS folder as it is, decrypted (libdvdread and libdvdcss, as
-/// dvdbackup does), or one title as an MKV with every audio and subtitle track and the chapters,
-/// nothing re-encoded (FFmpeg's DVD-Video reader, which uses the same libraries and also brings
-/// the subtitles' palette and the streams' languages). The one conversion is LPCM audio, which
-/// Matroska doesn't take as it is on DVDs: it becomes FLAC, bit for bit the same audio, as MakeMKV
-/// does.
+/// dvdbackup does), or one title as an MKV with every audio and subtitle track and the chapters
+/// (FFmpeg's DVD-Video reader, which uses the same libraries and also brings the subtitles'
+/// palette and the streams' languages). The audio and subtitles are never re-encoded; the video is
+/// copied, or encoded with x264 or x265 when asked (<see cref="DvdVideo"/>). The one audio
+/// conversion is LPCM, which Matroska doesn't take as it is on DVDs: it becomes FLAC, bit for bit
+/// the same audio, as MakeMKV does.
 /// </summary>
 public static class DvdRipper
 {
@@ -189,8 +213,31 @@ public static class DvdRipper
         return (_dvdvideo = output.ToString().Contains(" dvdvideo ", StringComparison.Ordinal)).Value;
     }
 
+    private static readonly Dictionary<string, HashSet<string>> _encoders = [];
+
+    /// <summary>The video encoders of this ffmpeg the MKVs can use: libx264, libx265 (none if it won't run).</summary>
+    public static async Task<IReadOnlySet<string>> FfmpegEncodersAsync(string ffmpeg, CancellationToken ct = default)
+    {
+        lock (_encoders)
+            if (_encoders.TryGetValue(ffmpeg, out var known)) return known;
+        var output = new StringBuilder();
+        try { await RipTools.RunAsync(ffmpeg, ["-hide_banner", "-encoders"], ct, line => output.AppendLine(line)).ConfigureAwait(false); }
+        catch (Exception e) when (e is IOException or System.ComponentModel.Win32Exception) { return new HashSet<string>(); }
+        var found = ParseEncoders(output.ToString());
+        lock (_encoders) _encoders[ffmpeg] = found;
+        return found;
+    }
+
+    /// <summary>The encoders in <c>ffmpeg -encoders</c>' list (" V....D libx264  …").</summary>
+    internal static HashSet<string> ParseEncoders(string list) =>
+        list.Split('\n').Select(l => l.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            .Where(w => w.Length >= 2 && w[0].Length == 6 && w[0][0] == 'V').Select(w => w[1])
+            .Where(n => n is "libx264" or "libx265").ToHashSet();
+
+    public static string EncoderFor(DvdVideo video) => video == DvdVideo.X265 ? "libx265" : "libx264";
+
     /// <summary>FFmpeg's reading options: the title and angle, and for a folder or image the exact chapter marks (a second, quick pass over it).</summary>
-    internal static IEnumerable<string> InputArguments(DvdRipOptions o, bool preindex)
+    internal static IEnumerable<string> InputArguments(DvdRipOptions o, bool preindex, int? chapter = null)
     {
         yield return "-f";
         yield return "dvdvideo";
@@ -198,6 +245,11 @@ public static class DvdRipper
         yield return o.Title.ToString(CultureInfo.InvariantCulture);
         yield return "-angle";
         yield return "1";
+        if (chapter is { } c)
+        {
+            yield return "-chapter_start";
+            yield return c.ToString(CultureInfo.InvariantCulture);
+        }
         if (preindex)
         {
             yield return "-preindex";
@@ -208,7 +260,9 @@ public static class DvdRipper
     }
 
     /// <param name="lpcm">Which of the title's audio tracks (counted among audio, from 0) are LPCM.</param>
-    internal static IEnumerable<string> MkvArguments(DvdRipOptions o, bool preindex, IReadOnlyList<int> lpcm, string title, string output)
+    /// <param name="scan">How the video is scanned, for x264 and x265 (copied video stays as it is).</param>
+    internal static IEnumerable<string> MkvArguments(DvdRipOptions o, bool preindex, IReadOnlyList<int> lpcm, string title, string output,
+        VideoScan scan = VideoScan.Progressive)
     {
         yield return "-hide_banner";
         yield return "-nostdin";
@@ -229,11 +283,43 @@ public static class DvdRipper
             yield return $"-compression_level:a:{k}";
             yield return "8";
         }
+        foreach (var a in VideoArguments(o.Video, scan)) yield return a;
         yield return "-metadata";
         yield return $"title={title}";
         yield return "-f";
         yield return "matroska";
         yield return output;
+    }
+
+    /// <summary>The video's options after <c>-c copy</c>: nothing for a copy, else the encoder's.</summary>
+    internal static IEnumerable<string> VideoArguments(DvdVideo video, VideoScan scan)
+    {
+        var interlaced = scan is VideoScan.TopFieldFirst or VideoScan.BottomFieldFirst;
+        switch (video)
+        {
+            case DvdVideo.X264:
+                string[] x264 = ["-c:v", "libx264", "-preset", "slow", "-crf", "16"];
+                foreach (var a in x264) yield return a;
+                if (interlaced)
+                {
+                    // Interlaced coding (MBAFF), with the disc's field order: the same two fields per frame.
+                    yield return "-flags:v";
+                    yield return "+ilme+ildct";
+                    yield return "-x264-params";
+                    yield return scan == VideoScan.TopFieldFirst ? "tff=1" : "bff=1";
+                }
+                break;
+            case DvdVideo.X265:
+                if (interlaced)
+                {
+                    yield return "-filter:v";
+                    yield return "bwdif=mode=send_field:parity=auto:deint=all";
+                }
+                string[] x265 = ["-c:v", "libx265", "-preset", "slow", "-crf", interlaced ? "16" : "18",
+                    "-x265-params", "no-sao=1:aq-mode=3:log-level=error"];
+                foreach (var a in x265) yield return a;
+                break;
+        }
     }
 
     /// <summary>The title's streams as FFmpeg reads them: (type, codec) in order, and its length in seconds.</summary>
@@ -250,6 +336,78 @@ public static class DvdRipper
         return (streams, duration);
     }
 
+    /// <summary>The first video stream's field order as ffprobe tells it ("tt", "progressive"…), if it does.</summary>
+    internal static string? ParseFieldOrder(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("streams", out var list)) return null;
+        foreach (var s in list.EnumerateArray())
+            if (s.TryGetProperty("codec_type", out var t) && t.GetString() == "video")
+                return s.TryGetProperty("field_order", out var f) ? f.GetString() : null;
+        return null;
+    }
+
+    /// <summary>
+    /// What the frames themselves look like: FFmpeg's idet over a sample, its multi-frame counts
+    /// summed (a filter graph set up twice prints twice). Null when it couldn't tell (black, titles).
+    /// </summary>
+    internal static VideoScan? ParseIdet(string log)
+    {
+        long tff = 0, bff = 0, progressive = 0;
+        foreach (var line in log.Split('\n'))
+        {
+            var at = line.IndexOf("Multi frame detection:", StringComparison.Ordinal);
+            if (at < 0) continue;
+            var words = line[(at + 22)..].Split([' ', ':'], StringSplitOptions.RemoveEmptyEntries);
+            for (var i = 0; i + 1 < words.Length; i += 2)
+                if (long.TryParse(words[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var n))
+                    switch (words[i])
+                    {
+                        case "TFF": tff += n; break;
+                        case "BFF": bff += n; break;
+                        case "Progressive": progressive += n; break;
+                    }
+        }
+        if (tff + bff + progressive == 0) return null;
+        if (progressive >= tff + bff) return VideoScan.Progressive;
+        return tff >= bff ? VideoScan.TopFieldFirst : VideoScan.BottomFieldFirst;
+    }
+
+    /// <summary>
+    /// The flags say, the picture confirms: plenty of films are flagged interlaced but progressive.
+    /// Flags that say progressive are taken as they are; flagged interlaced, the sample decides,
+    /// unless it couldn't tell.
+    /// </summary>
+    internal static VideoScan Decide(string? fieldOrder, VideoScan? sample)
+    {
+        VideoScan? flagged = fieldOrder switch
+        {
+            "tt" or "tb" => VideoScan.TopFieldFirst,
+            "bb" or "bt" => VideoScan.BottomFieldFirst,
+            _ => null,
+        };
+        if (flagged is null) return VideoScan.Progressive;
+        return sample ?? flagged.Value;
+    }
+
+    /// <summary>A third of the way in: past the opening titles, where the picture is the film's own.</summary>
+    internal static int SampleChapter(int chapters) => Math.Max(1, (chapters + 2) / 3);
+
+    private static async Task<VideoScan> ScanAsync(string ffmpeg, DvdRipOptions o, DvdTitle title, string? fieldOrder, CancellationToken ct)
+    {
+        if (Decide(fieldOrder, null) == VideoScan.Progressive) return VideoScan.Progressive;
+        var log = new StringBuilder();
+        try
+        {
+            await RipTools.RunAsync(ffmpeg,
+                ["-hide_banner", "-nostdin", "-nostats", .. InputArguments(o, preindex: false, SampleChapter(title.Chapters)),
+                    "-t", "20", "-map", "0:v:0", "-vf", "idet", "-an", "-sn", "-f", "null", "-"],
+                ct, onStderr: line => log.AppendLine(line)).ConfigureAwait(false);
+        }
+        catch (IOException) { } // the flags alone, then
+        return Decide(fieldOrder, ParseIdet(log.ToString()));
+    }
+
     public static async Task<DvdRipResult> RemuxAsync(DvdInfo info, DvdRipOptions o, IProgress<RipProgress>? progress = null,
         CancellationToken ct = default)
     {
@@ -262,12 +420,26 @@ public static class DvdRipper
         progress?.Report(new RipProgress("Reading the title", 0, 0, 0));
         var probe = new StringBuilder();
         await RipTools.RunAsync(ffprobe,
-            ["-v", "error", .. InputArguments(o, preindex: false), "-show_entries", "stream=codec_type,codec_name:format=duration", "-of", "json"],
+            ["-v", "error", .. InputArguments(o, preindex: false), "-show_entries", "stream=codec_type,codec_name,field_order:format=duration", "-of", "json"],
             ct, line => probe.AppendLine(line)).ConfigureAwait(false);
         var (streams, duration) = ParseProbe(probe.ToString());
         var lpcm = streams.Where(s => s.Type == "audio").Select((s, i) => (s.Codec, i)).Where(x => x.Codec.StartsWith("pcm", StringComparison.Ordinal))
             .Select(x => x.i).ToList();
         if (duration <= 0) duration = title.Duration.TotalSeconds;
+        var scan = VideoScan.Progressive;
+        if (o.Video != DvdVideo.Copy)
+        {
+            if (!(await FfmpegEncodersAsync(ffmpeg, ct).ConfigureAwait(false)).Contains(EncoderFor(o.Video)))
+                throw new InvalidOperationException($"this FFmpeg has no {EncoderFor(o.Video)}");
+            progress?.Report(new RipProgress("Looking at the picture", 0, 0, 0));
+            scan = await ScanAsync(ffmpeg, o, title, ParseFieldOrder(probe.ToString()), ct).ConfigureAwait(false);
+        }
+        var stage = o.Video switch
+        {
+            DvdVideo.X264 => $"Encoding title {title.Number} (x264)",
+            DvdVideo.X265 => $"Encoding title {title.Number} (x265)",
+            _ => $"Writing title {title.Number}",
+        };
 
         var name = RipNames.Safe(o.Name ?? info.Name);
         var main = info.MainTitle?.Number == title.Number;
@@ -275,11 +447,17 @@ public static class DvdRipper
         var output = RipNames.NewFile(o.OutputRoot, main ? name : $"{name} - Title {title.Number}", ".mkv");
         try
         {
-            await RipTools.RunAsync(ffmpeg, MkvArguments(o, preindex, lpcm, o.Name ?? info.Name, output), ct, line =>
+            double speed = 0;
+            await RipTools.RunAsync(ffmpeg, MkvArguments(o, preindex, lpcm, o.Name ?? info.Name, output, scan), ct, line =>
             {
+                // -progress writes a block of key=value lines per update, speed= before out_time_us=.
+                if (line.StartsWith("speed=", StringComparison.Ordinal)
+                    && double.TryParse(line.AsSpan(6).TrimEnd('x'), NumberStyles.Float, CultureInfo.InvariantCulture, out var x))
+                    speed = x;
                 if (line.StartsWith("out_time_us=", StringComparison.Ordinal)
                     && long.TryParse(line.AsSpan(12), NumberStyles.Integer, CultureInfo.InvariantCulture, out var us) && duration > 0)
-                    progress?.Report(new RipProgress($"Writing title {title.Number}", 0, 0, Math.Clamp(us / 1e6 / duration, 0, 1)));
+                    progress?.Report(new RipProgress(stage, 0, 0, Math.Clamp(us / 1e6 / duration, 0, 1),
+                        o.Video == DvdVideo.Copy ? 0 : speed));
             }).ConfigureAwait(false);
             return new DvdRipResult(output, [], new FileInfo(output).Length);
         }

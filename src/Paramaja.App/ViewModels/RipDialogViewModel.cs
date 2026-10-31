@@ -37,7 +37,7 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
 
     public RipDialogViewModel(MainViewModel main, IReadOnlyList<OpticalDrive> drives, string? drive = null,
         Func<string, ICdDrive>? openCd = null, Func<string, DvdInfo>? readDvd = null, string? flac = null, string? ffmpeg = null,
-        bool online = true, string? ffprobe = null)
+        bool online = true, string? ffprobe = null, IReadOnlySet<string>? encoders = null)
     {
         Main = main;
         _online = online;
@@ -50,6 +50,9 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
         Ffprobe = ffprobe ?? RipTools.Find("ffprobe", Ffmpeg is null ? null : Path.GetDirectoryName(Ffmpeg));
         CdFolder = main.Paths.Music;
         DvdFolder = main.Paths.Videos;
+        // Null asks this ffmpeg which encoders it has (tests say).
+        if (encoders is not null) UseEncoders(encoders);
+        else if (Ffmpeg is { } ff) _ = FindEncodersAsync(ff);
         main.PropertyChanged += OnMainChanged;
         SelectedDrive = drives.FirstOrDefault(d => drive is not null && d.Root == drive) ?? drives.FirstOrDefault(d => d.HasDisc);
     }
@@ -111,16 +114,76 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
 
     /// <summary>0 MKV (one title), 1 the VIDEO_TS folder decrypted.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsMkv))]
+    [NotifyPropertyChangedFor(nameof(IsMkv), nameof(MkvNote))]
     [NotifyCanExecuteChangedFor(nameof(StartCommand))]
     private int _dvdModeIndex;
+
+    /// <summary>The MKV's video: 0 copied, 1 x264, 2 x265 (<see cref="DvdVideo"/>).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MkvNote))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand))]
+    private int _dvdVideoIndex;
 
     [ObservableProperty] private string _dvdFolder;
     private string? _dvdSource;
 
+    /// <summary>
+    /// The DVD is a VIDEO_TS folder picked in the window: already decrypted, so the only rip is an
+    /// MKV (copying it decrypted again would just copy it).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowDecrypt))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand))]
+    private bool _isFolderSource;
+
+    public bool ShowDecrypt => !IsFolderSource;
+
     public bool IsMkv => DvdModeIndex == 0;
     public bool CanMkv => Ffmpeg is not null && Ffprobe is not null;
     public bool CanDecrypt => DvdRead.Available;
+    public DvdVideo Video => (DvdVideo)Math.Clamp(DvdVideoIndex, 0, 2);
+
+    [ObservableProperty] private bool _hasX264;
+    [ObservableProperty] private bool _hasX265;
+
+    private async Task FindEncodersAsync(string ffmpeg)
+    {
+        var found = await DvdRipper.FfmpegEncodersAsync(ffmpeg);
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => UseEncoders(found));
+    }
+
+    private void UseEncoders(IReadOnlySet<string> encoders)
+    {
+        HasX264 = encoders.Contains("libx264");
+        HasX265 = encoders.Contains("libx265");
+        if (Video == DvdVideo.X264 && !HasX264 || Video == DvdVideo.X265 && !HasX265) DvdVideoIndex = 0;
+        StartCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanEncode => Video switch
+    {
+        DvdVideo.X264 => HasX264,
+        DvdVideo.X265 => HasX265,
+        _ => true,
+    };
+
+    /// <summary>What the MKV will hold, for the choice made.</summary>
+    public string MkvNote => Video switch
+    {
+        DvdVideo.X264 =>
+            "The video is encoded with x264 (CRF 16): it looks the same as the disc's in about two thirds of the space, and "
+            + "interlaced video stays interlaced, both fields as on the disc. Every audio and subtitle track keeps its language, "
+            + "the chapters are kept, LPCM audio becomes FLAC (the same audio bit for bit). x264 is quick: on a recent PC, a "
+            + "fraction of the film's length.",
+        DvdVideo.X265 =>
+            "The video is encoded with x265 (CRF 18): it looks the same as the disc's in about half the space. HEVC can't keep "
+            + "interlaced video as it is, so interlaced video becomes 50 frames a second (BWDIF, as Paramaja plays DVDs), in "
+            + "about two thirds of the space: for an interlaced disc, x264 stays closer to it. Every audio and subtitle track and "
+            + "the chapters are kept (LPCM becomes FLAC). x265 is slow: about as long as the film, longer on an older PC.",
+        _ =>
+            "The longest title, the main film, is picked. The MKV keeps the MPEG-2 video as it is, every audio and subtitle track "
+            + "with its language, and the chapters; LPCM audio becomes FLAC, the same audio bit for bit.",
+    };
 
     // ---- Loading a disc ------------------------------------------------------------------------------
 
@@ -139,7 +202,8 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
     public void UseDvdSource(string path)
     {
         SelectedDrive = null;
-        LoadDvd(path, path);
+        // A drive's mount point is a folder too, but drives come through OnSelectedDriveChanged.
+        LoadDvd(path, path, folder: Directory.Exists(path));
     }
 
     private void Reset(RipDiscKind kind, string message)
@@ -260,9 +324,10 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
         ? o
         : null;
 
-    private void LoadDvd(string infoSource, string ripSource)
+    private void LoadDvd(string infoSource, string ripSource, bool folder = false)
     {
         Reset(RipDiscKind.None, "");
+        IsFolderSource = folder;
         Source = ripSource;
         try
         {
@@ -273,8 +338,9 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
             foreach (var t in dvd.Titles) Titles.Add(t);
             SelectedTitle = dvd.MainTitle;
             Kind = RipDiscKind.Dvd;
-            DvdModeIndex = CanMkv ? 0 : 1;
-            Message = !CanMkv && !CanDecrypt ? "This build can't rip DVDs: it has neither FFmpeg's DVD reader nor libdvdread."
+            DvdModeIndex = CanMkv || folder ? 0 : 1;
+            Message = folder ? (CanMkv ? "" : "This folder is already a decrypted VIDEO_TS; an MKV of a title needs FFmpeg, which isn't installed.")
+                : !CanMkv && !CanDecrypt ? "This build can't rip DVDs: it has neither FFmpeg's DVD reader nor libdvdread."
                 : !CanMkv ? "MKV needs FFmpeg, which isn't installed: the VIDEO_TS copy only."
                 : !CanDecrypt ? "The VIDEO_TS copy needs libdvdread, which isn't installed: MKV only." : "";
         }
@@ -289,7 +355,7 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
     private bool CanStart() => !IsBusy && !Main.IsRipping && Kind switch
     {
         RipDiscKind.Cd => _disc is not null && _drive is not null,
-        RipDiscKind.Dvd => _dvd is not null && (IsMkv ? CanMkv && SelectedTitle is not null : CanDecrypt),
+        RipDiscKind.Dvd => _dvd is not null && (IsMkv ? CanMkv && CanEncode && SelectedTitle is not null : CanDecrypt && !IsFolderSource),
         _ => false,
     };
 
@@ -310,20 +376,26 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
                 Flac = Flac,
             });
         }
-        else if (Kind == RipDiscKind.Dvd && _dvd is { } dvd && _dvdSource is { } source)
+        else if (Kind == RipDiscKind.Dvd && _dvd is { } dvd && DvdOptions() is { } options)
         {
-            _ = Main.StartDvdRipAsync(dvd, new DvdRipOptions
-            {
-                Source = source,
-                Mode = IsMkv ? DvdRipMode.Mkv : DvdRipMode.Decrypt,
-                Title = SelectedTitle?.Number ?? dvd.MainTitle?.Number ?? 1,
-                OutputRoot = DvdFolder,
-                Ffmpeg = Ffmpeg,
-                Ffprobe = Ffprobe,
-            });
+            _ = Main.StartDvdRipAsync(dvd, options);
         }
         StartCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>The DVD rip as chosen in the window; null without a DVD.</summary>
+    internal DvdRipOptions? DvdOptions() => _dvd is { } dvd && _dvdSource is { } source
+        ? new DvdRipOptions
+        {
+            Source = source,
+            Mode = IsMkv ? DvdRipMode.Mkv : DvdRipMode.Decrypt,
+            Video = IsMkv ? Video : DvdVideo.Copy,
+            Title = SelectedTitle?.Number ?? dvd.MainTitle?.Number ?? 1,
+            OutputRoot = DvdFolder,
+            Ffmpeg = Ffmpeg,
+            Ffprobe = Ffprobe,
+        }
+        : null;
 
     private void OnMainChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {

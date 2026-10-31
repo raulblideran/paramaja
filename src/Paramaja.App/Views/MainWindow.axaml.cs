@@ -12,8 +12,6 @@ namespace Paramaja.App.Views;
 
 public partial class MainWindow : Window
 {
-    private static readonly string[] SubtitleExtensions = [".srt", ".ass", ".ssa", ".sub", ".vtt", ".sup", ".idx"];
-
     private ControlsBar? _bottom;
     private TopBar? _top;
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
@@ -59,6 +57,10 @@ public partial class MainWindow : Window
                 Vm.ReportPointer(p.X, p.Y, inside);
             }
             Vm.TickAutoHide(DateTime.UtcNow);
+            // mpv's video window takes drops and refuses them (Windows); without it they reach ours.
+            if (OperatingSystem.IsWindows())
+                foreach (var surface in new[] { Video, DiscVideo })
+                    if (surface.Handle is { } host) Win32DropTargets.RevokeInside((IntPtr)host);
             // Cheap when nothing changed, and heals anything an event missed (e.g. a
             // fullscreen switch that moved the video after the last layout pass).
             UpdateOverlays();
@@ -104,6 +106,12 @@ public partial class MainWindow : Window
         };
         Deactivated += (_, _) => Dispatcher.UIThread.Post(UpdateOverlays);
         _tick.Start();
+        // Avalonia's X11 backend has no drag and drop of its own (X11DragDrop).
+        if (OperatingSystem.IsLinux())
+        {
+            X11DragDrop.OnDrop(Vm.DropAsync);
+            X11DragDrop.Register(this);
+        }
         UpdateOverlays();
         ProbeHdr();
         // Double-click fullscreen, from clicks the OS reports; where it can't, the engine's own.
@@ -123,6 +131,7 @@ public partial class MainWindow : Window
     {
         _tick.Stop();
         _clicks?.Dispose();
+        Win32Pointer.SetHidden(false);
         _bottom?.Close();
         _top?.Close();
         // A resize or move already queued would otherwise try to show the closed bars again.
@@ -159,6 +168,8 @@ public partial class MainWindow : Window
                 // hiding doesn't work in a window it was given, and mpv's window takes theirs.
                 foreach (var surface in new[] { Video, DiscVideo })
                     if (surface.Handle is { } xid) X11Cursor.SetHidden(xid, hidden);
+                // On Windows the engines' video windows are their threads': see Win32Pointer.
+                Win32Pointer.SetHidden(hidden);
                 break;
         }
     }
@@ -245,16 +256,12 @@ public partial class MainWindow : Window
         if (KeyMapping.ToCanonical(e) is { } key && Vm.HandleKey(key)) e.Handled = true;
     }
 
-    private async void OnDrop(object? sender, DragEventArgs e)
+    private async void OnDrop(object? sender, DragEventArgs e) => await DropOn(Vm, e);
+
+    /// <summary>What was dropped on the window or a bar, to the view model (files first, else text).</summary>
+    internal static Task DropOn(MainViewModel vm, DragEventArgs e)
     {
-        var path = e.DataTransfer.TryGetFiles()?.Select(f => f.TryGetLocalPath()).FirstOrDefault(p => p is not null);
-        if (path is not null)
-        {
-            var isSub = SubtitleExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
-            if (isSub && !Vm.IsIdle && Vm.Player is { } p) p.AddSubtitle(path);
-            else await Vm.OpenInputAsync(path);
-            return;
-        }
-        if (e.DataTransfer.TryGetText() is { } text) await Vm.OpenInputAsync(text);
+        var paths = e.DataTransfer.TryGetFiles()?.Select(f => f.TryGetLocalPath()).OfType<string>().ToList() ?? [];
+        return vm.DropAsync(paths, paths.Count == 0 ? e.DataTransfer.TryGetText() : null);
     }
 }

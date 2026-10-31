@@ -33,13 +33,21 @@ public class OverlayWindow : Window
         }, RoutingStrategies.Tunnel);
         PointerEntered += (_, _) => { if (DataContext is MainViewModel vm) { vm.IsPointerOverControls = true; vm.NotifyPointerMoved(); } };
         PointerExited += (_, _) => { if (DataContext is MainViewModel vm) vm.IsPointerOverControls = false; };
-        PointerMoved += (_, _) => (DataContext as MainViewModel)?.NotifyPointerMoved();
+        PointerMoved += (_, _) => (DataContext as MainViewModel)?.NotifyPointerMoved("a bar");
         // A click on a bar (play, the seek bar, the volume) leaves the keyboard with the player
         // window, so Space and the other keys keep working after the bar hides. Not while one of
         // its menus is open: a menu closes when its bar loses the keyboard.
         AddHandler(PointerReleasedEvent, (_, _) => Dispatcher.UIThread.Post(GiveKeyboardBack, DispatcherPriority.Background),
             RoutingStrategies.Tunnel, handledEventsToo: true);
         if (TryGetPlatformHandle() is { HandleDescriptor: "XID" } x11) X11WindowType.MakeDock(x11.Handle);
+        // Files dropped on a bar open as on the video (on Linux through X11DragDrop).
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = DragDropEffects.Copy);
+        AddHandler(DragDrop.DropEvent, async (_, e) =>
+        {
+            if (DataContext is MainViewModel vm) await MainWindow.DropOn(vm, e);
+        });
+        if (OperatingSystem.IsLinux()) X11DragDrop.Register(this);
     }
 
     private readonly List<FlyoutBase> _menus = [];

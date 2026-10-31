@@ -63,6 +63,16 @@ public class PackagingTests
     }
 
     [Fact]
+    public void Ffmpeg_encodes_with_x264_and_x265_built_before_it()
+    {
+        var m = Manifest;
+        Assert.Contains("- --enable-libx264", m);
+        Assert.Contains("- --enable-libx265", m);
+        Assert.True(m.IndexOf("- name: x264", StringComparison.Ordinal) < m.IndexOf("- name: ffmpeg", StringComparison.Ordinal));
+        Assert.True(m.IndexOf("- name: x265", StringComparison.Ordinal) < m.IndexOf("- name: ffmpeg", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Every_downloaded_archive_is_pinned_by_hash_and_every_git_source_by_commit()
     {
         var lines = Manifest.Split('\n').Select(l => l.Trim()).ToList();

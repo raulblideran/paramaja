@@ -25,10 +25,11 @@
                   ToolTip.Tip="Previous frame ( , )">
             <PathIcon Data="{StaticResource IconFramePrev}" />
           </Button>
-          <Button Classes="icon big" Command="{Binding TogglePauseCommand}" ToolTip.Tip="Play / Pause (Space)">
+          <Button x:Name="PlayButton" Classes="icon big" Command="{Binding TogglePauseCommand}" ToolTip.Tip="{Binding PlayButtonTip}">
             <Panel>
-              <PathIcon Data="{StaticResource IconPlay}" IsVisible="{Binding IsPaused}" />
-              <PathIcon Data="{StaticResource IconPause}" IsVisible="{Binding !IsPaused}" />
+              <PathIcon Data="{StaticResource IconPlay}" IsVisible="{Binding ShowPlayIcon}" />
+              <PathIcon Data="{StaticResource IconPause}" IsVisible="{Binding ShowPauseIcon}" />
+              <PathIcon x:Name="OpeningSpinner" Classes="spin" Data="{StaticResource IconSpinner}" IsVisible="{Binding IsStartingStream}" />
             </Panel>
           </Button>
           <Button x:Name="FrameNextButton" Classes="icon" Command="{Binding FrameStepCommand}" IsVisible="{Binding !IsAudioOnly}"

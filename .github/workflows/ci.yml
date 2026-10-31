@@ -67,7 +67,13 @@ jobs:
         working-directory: native/paramaja-torrent
         run: cargo test --lib
       - name: UI and view model tests
-        run: dotnet test tests/Paramaja.App.Tests --logger GitHubActions
+        run: dotnet test tests/Paramaja.App.Tests --filter "Category!=desktop" --logger GitHubActions
+      # Real windows on the runner's desktop: the fullscreen pointer hidden over a child window of
+      # another thread (as mpv's video is) and a drop target revoked there. A runner's session may
+      # show no pointer at all, so this step reports (annotations) without failing the run.
+      - name: Pointer and drop targets on real windows
+        continue-on-error: true
+        run: dotnet test tests/Paramaja.App.Tests --filter "Category=desktop" --logger GitHubActions
       # The DVD ripper's libdvdread and libdvdcss, as the Windows zip ships them (build/build-dvdread-win.sh).
       - name: DVD reading (libdvdread)
         env:

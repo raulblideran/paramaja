@@ -138,9 +138,10 @@ public sealed partial class MainViewModel
     {
         var inv = CultureInfo.InvariantCulture;
         var percent = string.Create(inv, $"{p.Fraction * 100:0}%");
-        if (p.Tracks == 0) return $"{p.Stage} · {percent}";
-        if (p.Track == 0) return p.Stage + "…";
         var speed = p.Speed >= 0.1 ? string.Create(inv, $" · {p.Speed:0.0}×") : "";
+        // A DVD's encode: its speed against the film's (1.0× takes as long as the film).
+        if (p.Tracks == 0) return $"{p.Stage} · {percent}{speed}";
+        if (p.Track == 0) return p.Stage + "…";
         return $"Track {p.Track}/{p.Tracks} · {p.Stage} · {percent}{speed}";
     }
 

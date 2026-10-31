@@ -78,6 +78,7 @@ public sealed class PlayerService : IPlayer
         };
         _mpv.StartFile += () =>
         {
+            _streamOpening = false;
             // Every file is judged on its own frames, and the switches made for the previous one
             // (deinterlacing, hardware decoding, a stereo channel) don't carry over.
             lock (_deinterlaceLock)
@@ -116,10 +117,20 @@ public sealed class PlayerService : IPlayer
         {
             if (_mpv.GetFlag("video-frame-info/interlaced") == true) MarkInterlaced(PlayerState.ByFlags, null);
             ReadChannelsLive();
+            // A stream has started once playback has restarted and its first buffer is in: mpv
+            // reports the restart while it still waits (cache-pause-initial), so that wait's end
+            // (paused-for-cache going off) can come after it.
+            if (!State.IsStartingStream || _streamOpening) return;
+            _streamRestarted = true;
+            if (_mpv.GetFlag("paused-for-cache") != true) SetStartingStream(false);
         };
         _mpv.AudioReconfig += ReadChannelsLive;
         _mpv.EndFile += (reason, err) =>
+        {
+            // Not the end of the file played before the stream: that comes after Open.
+            if (!_streamOpening) SetStartingStream(false);
             EndFile?.Invoke(reason, reason == EndFileReason.Error ? MpvClient.ErrorString(err) : null);
+        };
         _mpv.ClientMessage += args =>
         {
             if (args.Length >= 2 && args[0] == KeyMessage) KeyPressed?.Invoke(args[1]);
@@ -195,8 +206,11 @@ public sealed class PlayerService : IPlayer
             case "mute": s.IsMuted = value as bool? ?? false; break;
             case "paused-for-cache":
                 var buffering = value as bool? ?? false;
-                if (buffering && !s.IsBuffering && _streaming) GrowStreamBuffer();
+                // Only a stall counts: the wait before a stream first plays is its starting buffer
+                // (counted, it doubled every link's start to 10 s).
+                if (buffering && !s.IsBuffering && _streaming && !s.IsStartingStream) GrowStreamBuffer();
                 s.IsBuffering = buffering;
+                if (!buffering && s.IsStartingStream && _streamRestarted && !_streamOpening) SetStartingStream(false);
                 break;
             case "eof-reached": s.EofReached = value as bool? ?? false; break;
             case "idle-active": s.IsIdle = value as bool? ?? true; break;
@@ -279,9 +293,27 @@ public sealed class PlayerService : IPlayer
         _mpv.TrySetProperty("ytdl-format", YtDlp.FormatFor(pathOrUrl, Settings.StreamMaxHeight));
         if (displayTitle is not null) _mpv.SetProperty("force-media-title", displayTitle);
         else _mpv.SetProperty("force-media-title", "");
+        _streamOpening = streaming;
+        SetStartingStream(streaming);
         if (streaming) LoadWithOptions(pathOrUrl, MpvOptionsBuilder.StreamingFileOptions);
         else _mpv.Command("loadfile", pathOrUrl, "replace");
         _mpv.SetProperty("pause", false);
+    }
+
+    public void Append(string path) => _mpv.Command("loadfile", path, "append");
+
+    /// <summary>A stream was asked for and its file hasn't started yet.</summary>
+    private volatile bool _streamOpening;
+
+    /// <summary>The starting stream's playback has restarted (it may still be filling its first buffer).</summary>
+    private volatile bool _streamRestarted;
+
+    private void SetStartingStream(bool starting)
+    {
+        _streamRestarted = false;
+        if (State.IsStartingStream == starting) return;
+        State.IsStartingStream = starting;
+        StateChanged?.Invoke("stream-starting");
     }
 
     /// <summary>
@@ -293,6 +325,8 @@ public sealed class PlayerService : IPlayer
         _streaming = false;
         _stalls = 0;
         ForgetSacd();
+        _streamOpening = false;
+        SetStartingStream(false);
         _mpv.SetProperty(bluray ? "bluray-device" : "dvd-device", root);
         _mpv.SetProperty("force-media-title", DiscTitle(root));
         _mpv.Command("loadfile", bluray ? "bd://" : "dvd://", "replace");
@@ -308,6 +342,8 @@ public sealed class PlayerService : IPlayer
         _streaming = false;
         _stalls = 0;
         ForgetSacd();
+        _streamOpening = false;
+        SetStartingStream(false);
         _mpv.SetProperty("cdda-device", device);
         _mpv.SetProperty("force-media-title", "Audio CD");
         _mpv.Command("loadfile", "cdda://", "replace");
@@ -497,6 +533,8 @@ public sealed class PlayerService : IPlayer
         _mpv.TrySetProperty("ytdl-format", YtDlp.Format(maxHeight));
         _keepFit = State.PictureFit;
         _stalls = 0;
+        _streamOpening = true;
+        SetStartingStream(true); // buffers again from where it was
         LoadWithOptions(url, MpvOptionsBuilder.StreamingFileOptions
                              + ",start=" + position.ToString("0.###", CultureInfo.InvariantCulture));
     }
@@ -1051,6 +1089,8 @@ public sealed class PlayerService : IPlayer
         _stalls = 0;
         _sacd = sacd;
         _sacdArea = kind;
+        _streamOpening = false;
+        SetStartingStream(false);
         var title = sacd.AlbumTitle ?? Path.GetFileNameWithoutExtension(sacd.Path);
         _mpv.SetProperty("force-media-title", sacd.AlbumArtist is { } artist ? $"{artist} — {title}" : title);
         // mpv lets a timeline (EDL) open only its own protocols, unless told otherwise; for this

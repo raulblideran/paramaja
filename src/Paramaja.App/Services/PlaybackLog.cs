@@ -22,7 +22,8 @@ public sealed record PlaybackLogInput(
     DateTime Now,
     IReadOnlyList<GpuAdapter>? Adapters = null,
     IReadOnlyList<string>? Displays = null,
-    string? Power = null);
+    string? Power = null,
+    string? Pointer = null);
 
 /// <summary>
 /// The log Create Log saves: the machine, the video and how it's played, every second's playback
@@ -76,6 +77,7 @@ public static class PlaybackLog
             sb.AppendLine($"Graphics adapters: {GpuAdapters.Describe(adapters)}; high-performance GPU preferred: {(s.PreferHighPerformanceGpu ? "yes" : "no")}");
         foreach (var d in input.Displays ?? SystemInfo.Displays) sb.AppendLine($"Display: {d}");
         sb.AppendLine($"Power: {input.Power ?? SystemInfo.Power}");
+        if (input.Pointer is { } pointer) sb.AppendLine($"Pointer: {pointer}");
         sb.AppendLine();
 
         sb.AppendLine("Settings");

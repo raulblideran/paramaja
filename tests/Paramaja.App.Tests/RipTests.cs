@@ -14,7 +14,7 @@ namespace Paramaja.App.Tests;
 public class RipDialogTests
 {
     private static readonly OpticalDrive Cd = new("/dev/sr0", "sr0", "Audio CD");
-    private static readonly OpticalDrive Dvd = new("/run/media/me/CONCERT", "sr1", "CONCERT");
+    internal static readonly OpticalDrive Dvd = new("/run/media/me/CONCERT", "sr1", "CONCERT");
 
     /// <summary>Three tracks of seeded noise standing in for a CD in a drive.</summary>
     private static ImageCdDrive CdDrive()
@@ -29,7 +29,7 @@ public class RipDialogTests
         };
     }
 
-    private static DvdInfo DvdDisc() => new()
+    internal static DvdInfo DvdDisc() => new()
     {
         Name = "Concert",
         Titles =
@@ -40,9 +40,10 @@ public class RipDialogTests
         Files = [("VIDEO_TS.IFO", 2048L)],
     };
 
-    private static RipDialogViewModel Dialog(Rig r, OpticalDrive drive, ImageCdDrive? cd = null) =>
+    internal static RipDialogViewModel Dialog(Rig r, OpticalDrive drive, ImageCdDrive? cd = null, IReadOnlySet<string>? encoders = null) =>
         new(r.Vm, [drive], drive.Root, _ => cd ?? CdDrive(), _ => DvdDisc(), flac: "", ffmpeg: "/usr/bin/ffmpeg", online: false,
-            ffprobe: "/usr/bin/ffprobe"); // named, so no machine's own tools (or their absence, on Windows) count
+            ffprobe: "/usr/bin/ffprobe", // named, so no machine's own tools (or their absence, on Windows) count
+            encoders: encoders ?? new HashSet<string> { "libx264", "libx265" });
 
     private static async Task Until(Func<bool> condition)
     {

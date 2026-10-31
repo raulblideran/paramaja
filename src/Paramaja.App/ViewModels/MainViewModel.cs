@@ -58,8 +58,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // ---- Observable state -----------------------------------------------------------------
 
     [ObservableProperty] private bool _isIdle = true;
-    [ObservableProperty] private bool _isPaused;
-    [ObservableProperty] private bool _isBuffering;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowPlayIcon), nameof(ShowPauseIcon))]
+    private bool _isPaused;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsBufferingText))]
+    private bool _isBuffering;
+    /// <summary>
+    /// A link (or a torrent's or MEGA's stream) is opening and hasn't played yet. It used to look
+    /// like nothing happened: a black picture and a pause button, which then paused it.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsBufferingText), nameof(PlayButtonTip), nameof(ShowPlayIcon), nameof(ShowPauseIcon))]
+    private bool _isStartingStream;
+    /// <summary>The play button's icon: play while paused, pause while playing, a spinner while a link opens.</summary>
+    public bool ShowPlayIcon => IsPaused && !IsStartingStream;
+    public bool ShowPauseIcon => !IsPaused && !IsStartingStream;
     [ObservableProperty] private bool _isMuted;
     [ObservableProperty] private bool _isFullscreen;
     [ObservableProperty] private bool _controlsVisible = true;
@@ -84,6 +98,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isTorrent;
     [ObservableProperty] private bool _isResolving;
     [ObservableProperty] private string _bufferingText = "";
+    /// <summary>The top bar's buffering line: while a stream stalls, and while one opens.</summary>
+    public bool ShowsBufferingText => IsBuffering || IsStartingStream;
+    public string PlayButtonTip => IsStartingStream ? "Opening: it plays as soon as a few seconds are buffered" : "Play / Pause (Space)";
     [ObservableProperty] private string _deinterlaceBadge = "";
     [ObservableProperty] private string _deinterlaceTip = "";
     [ObservableProperty] private string _ytDlpStatus = "";
@@ -171,17 +188,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         player.TracksChanged += () => Post(SyncTracks);
         player.ChaptersChanged += () => Post(SyncChapters);
         player.KeyPressed += key => Post(() => HandleKey(key));
-        player.MouseMoved += () => Post(NotifyPointerMoved);
+        player.MouseMoved += () => Post(() => NotifyPointerMoved("the engine"));
         player.MouseClicked += () => Post(() => { if (!ClicksFromSystem) HandleClick(DateTime.UtcNow); });
         player.FileLoaded += () => Post(() =>
         {
             _health.Reset();
             _recorder.Reset();
+            AddDroppedSubtitles();
         });
         player.RenderProfileChanged += p => Post(() => RenderProfileText = DescribeProfile(p));
         player.EndFile += (reason, error) => Post(() =>
         {
-            if (reason == EndFileReason.Error) ShowStatus($"Can't play this: {error}");
+            if (reason != EndFileReason.Error) return;
+            ShowStatus($"Can't play this: {error}");
+            _droppedSubtitles.Clear(); // they were for this file
         });
     }
 
@@ -267,7 +287,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [
         "duration", "pause", "mute", "volume", "paused-for-cache", "media-title", "deinterlace-active",
         "hwdec-current", "video-params/gamma", "hardware-decoding", "chapter", "video-params/w",
-        "audio-params/channel-count", "audio-params/samplerate", "video-format", "video-codec", "stereo-channel", "has-video",
+        "audio-params/channel-count", "audio-params/samplerate", "video-format", "video-codec", "stereo-channel", "has-video", "stream-starting",
         "video-params/aspect", "picture-fit", "stream-heights",
     ];
 
@@ -291,6 +311,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case "volume": Volume = s.Volume; break;
             case "deinterlace-active": UpdateDeinterlace(s); break;
             case "paused-for-cache": IsBuffering = s.IsBuffering; break;
+            case "stream-starting": IsStartingStream = s.IsStartingStream; break;
             case "idle-active":
                 IsIdle = s.IsIdle;
                 OnPropertyChanged(nameof(CanDownload));
@@ -819,7 +840,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     // ---- Commands -------------------------------------------------------------------------
 
-    [RelayCommand] private void TogglePause() => _player?.TogglePause();
+    [RelayCommand] private void TogglePause() => Execute(PlayerAction.TogglePause);
     [RelayCommand] private void Stop() => Execute(PlayerAction.Stop);
     [RelayCommand] private void FrameStep() => _player?.FrameStep();
     [RelayCommand] private void FrameBackStep() => _player?.FrameBackStep();
@@ -901,6 +922,61 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var text = await Dialogs.ReadClipboardTextAsync();
         if (string.IsNullOrWhiteSpace(text)) ShowStatus("Clipboard is empty.");
         else await OpenInputAsync(text);
+    }
+
+    // ---- Drag and drop ------------------------------------------------------------------------
+
+    public static readonly string[] SubtitleExtensions = [".srt", ".ass", ".ssa", ".sub", ".vtt", ".sup", ".idx"];
+
+    private static bool IsSubtitle(string path) => SubtitleExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
+
+    /// <summary>Subtitles dropped with a video: added once it has loaded (mpv takes them only then).</summary>
+    private readonly List<string> _droppedSubtitles = [];
+
+    /// <summary>
+    /// Something dropped on the player (its window or bars; on Linux through X11's drag and drop):
+    /// subtitles join the video playing, or the one dropped with them. The first other file,
+    /// folder, disc or image opens as it would from Open, and the files and folders after it play
+    /// on after it, as a folder's do. Text (a link or a magnet, as a browser drops one) opens.
+    /// </summary>
+    public async Task DropAsync(IReadOnlyList<string> paths, string? text)
+    {
+        var media = paths.Where(p => !IsSubtitle(p)).ToList();
+        var subtitles = paths.Where(IsSubtitle).ToList();
+        if (paths.Count == 0)
+        {
+            if (!string.IsNullOrWhiteSpace(text)) await OpenInputAsync(text);
+            return;
+        }
+        if (media.Count == 0)
+        {
+            if (IsIdle || _player is null) ShowStatus("Open a video first: subtitles join the one that's playing.");
+            else foreach (var sub in subtitles) AddSubtitleFile(sub);
+            return;
+        }
+        _droppedSubtitles.Clear();
+        _droppedSubtitles.AddRange(subtitles);
+        await OpenInputAsync(media[0]);
+        // Discs play on their own engine, which has no queue; files and folders go after the first.
+        foreach (var more in media.Skip(1))
+            if (!IsDiscMode && _player is not null && InputClassifier.Classify(more) is (InputKind.File or InputKind.Folder, var value)
+                && !value.EndsWith(".cue", StringComparison.OrdinalIgnoreCase))
+                _player.Append(value);
+    }
+
+    private void AddDroppedSubtitles()
+    {
+        foreach (var sub in _droppedSubtitles) AddSubtitleFile(sub);
+        _droppedSubtitles.Clear();
+    }
+
+    private void AddSubtitleFile(string path)
+    {
+        try { _player?.AddSubtitle(path); }
+        catch (Exception e) when (e is MpvException or UriFormatException or InvalidOperationException)
+        {
+            ShowStatus($"Couldn't load subtitles: {e.Message}");
+        }
     }
 
     [RelayCommand]
@@ -996,7 +1072,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     internal string BuildLog() => PlaybackLog.Build(new PlaybackLogInput(
         _player is null || IsIdle ? null : _player.State, Settings, _player?.RenderProfile, _health, _recorder.Samples,
         _source, TorrentStatus, IsDiscMode ? "libVLC (disc)" : "mpv",
-        _player is null || IsIdle ? [] : _player.Details(), _player?.RecentMessages() ?? [], DateTime.Now));
+        _player is null || IsIdle ? [] : _player.Details(), _player?.RecentMessages() ?? [], DateTime.Now, Pointer: PointerReport()));
 
     [RelayCommand]
     private void OpenLogsFolder()
@@ -1076,6 +1152,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var p = _player;
         switch (action)
         {
+            case PlayerAction.TogglePause when IsStartingStream && p is not null:
+                // Play pressed while a link opens means play: it isn't paused, it's buffering.
+                p.SetPaused(false);
+                Osd("Opening: it plays as soon as a few seconds are buffered");
+                break;
             case PlayerAction.TogglePause: p?.TogglePause(); break;
             case PlayerAction.SeekForward: p?.SeekRelative(Settings.SeekSeconds); break;
             case PlayerAction.SeekBackward: p?.SeekRelative(-Settings.SeekSeconds); break;
@@ -1157,7 +1238,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>A left click on the video; the second of two quick clicks toggles fullscreen.</summary>
     public void HandleClick(DateTime utcNow)
     {
-        NotifyPointerMoved();
+        NotifyPointerMoved("a click");
         // On a disc menu a click presses a button; quick clicks there aren't a double-click.
         if (_player?.IsInDiscMenu == true) return;
         if (utcNow - _lastClick <= DoubleClickTime)
@@ -1187,14 +1268,39 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         ? !IsIdle && !IsMenuOpen && !IsPointerOverControls && utcNow - _lastPointerMove > CursorHideDelay
         : !ControlsVisible;
 
-    private void UpdateCursor(DateTime utcNow) => IsCursorHidden = CursorHidden(utcNow);
+    private void UpdateCursor(DateTime utcNow)
+    {
+        var hidden = CursorHidden(utcNow);
+        if (hidden != IsCursorHidden)
+        {
+            if (hidden) _pointerHiddenAt = utcNow;
+            else (_pointerShownAt, _pointerShownBy) = (utcNow, utcNow - _lastPointerMove < TimeSpan.FromSeconds(1)
+                ? _pointerMovedBy : "a menu, the bars or leaving fullscreen");
+        }
+        IsCursorHidden = hidden;
+    }
 
     /// <summary>The mouse moved (or clicked): the pointer shows again, and the controls with it.</summary>
-    public void NotifyPointerMoved()
+    /// <param name="by">Who noticed, for the log: the window, a bar, the engine, the OS pointer position.</param>
+    public void NotifyPointerMoved(string by = "the window")
     {
         _lastPointerMove = DateTime.UtcNow;
+        _pointerMovedBy = by;
         NotifyActivity();
         UpdateCursor(_lastPointerMove);
+    }
+
+    // For the log: when the pointer last hid and showed, and what showed it (a pointer that stays is
+    // either never hidden or shown again by something that thinks the mouse moved).
+    private string _pointerMovedBy = "";
+    private DateTime? _pointerHiddenAt, _pointerShownAt;
+    private string _pointerShownBy = "";
+
+    internal string PointerReport()
+    {
+        static string At(DateTime? t) => t is { } u ? u.ToLocalTime().ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) : "never";
+        return $"{(IsCursorHidden ? "hidden" : "shown")} ({(IsFullscreen ? "fullscreen" : "windowed")}); last hidden {At(_pointerHiddenAt)}; "
+               + $"last shown {At(_pointerShownAt)}" + (_pointerShownAt is null ? "" : $", by {_pointerShownBy}");
     }
 
     // A menu of the bars is open: the bars stay up. They used to hide (Linux) or move off screen
@@ -1229,7 +1335,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         UpdateBufferingText(utcNow);
         ReconcilePause();
         if (ControlsVisible && _player is { } p && p.State.Position != Position) ShowPosition();
-        var keepVisible = IsIdle || IsPaused || IsPointerOverControls || IsResolving || IsBuffering || IsMenuOpen;
+        var keepVisible = IsIdle || IsPaused || IsPointerOverControls || IsResolving || IsBuffering || IsStartingStream || IsMenuOpen;
         if (keepVisible) ControlsVisible = true;
         else if (utcNow - _lastActivity > ControlsHideDelay) ControlsVisible = false;
         UpdateCursor(utcNow);
@@ -1243,7 +1349,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         var moved = _lastPointer is { } last && last != (x, y);
         _lastPointer = (x, y);
-        if (moved && insideWindow) NotifyPointerMoved();
+        if (moved && insideWindow) NotifyPointerMoved("the OS pointer position");
     }
 
     /// <summary>
@@ -1261,7 +1367,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void UpdateBufferingText(DateTime utcNow)
     {
-        if (!IsBuffering && !IsResolving)
+        if (!IsBuffering && !IsResolving && !IsStartingStream)
         {
             BufferingText = "";
             _lastQuip = DateTime.MinValue;
