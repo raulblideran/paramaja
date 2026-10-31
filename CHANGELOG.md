@@ -13,9 +13,9 @@ also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
     against **AccurateRip** (v1 and v2). The tags (and the cover, 1200 px) come from **MusicBrainz**,
     or from the disc's CD-Text, and can be edited before ripping. Where MusicBrainz only knows
     discs that look like it (as many tracks, similar lengths), they're offered but never picked
-    by themselves. Saved as **FLAC level 8**
-    (the reference encoder, verified) or **WAV** (with RIFF tags, no ID3), in Music → Artist →
-    Album (Year), with a cue sheet (gaps appended to the previous track), cover.jpg and a log.
+    by themselves. Saved as **FLAC level 8** (the reference encoder, verified) or **WAV** (with
+    RIFF tags, no ID3), in Music → Artist → Album (Year), with a cue sheet (gaps appended to the
+    previous track), cover.jpg and a log.
   - **The log** has the layout rip logs use (settings, TOC, each track's test and copy CRCs,
     AccurateRip, the summary) and scores itself with the deductions tracker log checkers make:
     100% for a clean secure rip. It's Paramaja's own: those checkers only accept EAC's, XLD's and
