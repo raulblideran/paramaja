@@ -74,6 +74,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.10.0" date="2026-10-31">
+      <description>
+        <p>CD and DVD ripping, DSD at 192 kHz, CD and SACD badges, fullscreen pointer</p>
+      </description>
+    </release>
     <release version="1.9.0" date="2026-10-29">
       <description>
         <p>Stop button, torrent playlists, Resize 4:3 / Crop 16:9, streaming quality in the video menu, DVD / Blu-ray / CD / SACD images, DSD files, fixes for Space, double-click and overlapping messages</p>

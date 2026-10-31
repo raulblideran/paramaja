@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stages native libraries into libs/<rid>:
-#   win-x64   : libmpv-2.dll from shinchiro/mpv-winbuild-cmake (pinned) + paramaja_torrent.dll (cross-built)
+#   win-x64   : libmpv-2.dll from shinchiro/mpv-winbuild-cmake (pinned) + paramaja_torrent.dll (cross-built),
+#               libVLC, yt-dlp, QuickJS, FFmpeg, flac and libdvdread (pinned or committed)
 #   linux-x64 : libparamaja_torrent.so (libmpv comes from the system / Homebrew)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,11 +14,16 @@ YTDLP_VERSION=2026.08.19
 YTDLP_SHA256=66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a
 QJS_VERSION=v0.17.0
 QJS_SHA256=2aeabf0092c3262d6b2609824418f7dd7ed1f1df939f73b2b15645230cac0d77
-# ffmpeg.exe and ffprobe.exe, which yt-dlp needs to merge the separate video and audio
-# streams of a download and to embed its cover art. Gyan's "essentials" release build,
-# pinned by version and SHA-256.
-FFMPEG_VERSION=9.0.2
-FFMPEG_SHA256=4705843ccaaf54257c16ad90f3e952ece33c17df964ecf7bfdbb0f49c7171077
+# ffmpeg.exe and ffprobe.exe: yt-dlp needs them to merge the separate video and audio streams
+# of a download and to embed its cover art, and the DVD ripper reads DVDs with FFmpeg's DVD-Video
+# reader. BtbN's GPL build has it (libdvdnav, libdvdread with libdvdcss built in); a month-end
+# autobuild, which BtbN keeps, pinned by its name and SHA-256 (as GitHub's API gives it).
+FFMPEG_TAG=autobuild-2026-09-30-13-08
+FFMPEG_BUILD=ffmpeg-n9.0.2-17-g2a571b6068-win64-gpl-9.0
+FFMPEG_SHA256=a0e45723c72141975f51d8666302e614711745f3102b704ca3f82c897a58d278
+# The reference FLAC encoder (flac -8) for CD rips, from Xiph's release (flac.exe needs its libFLAC.dll).
+FLAC_VERSION=1.5.0
+FLAC_SHA256=53f1500f0d6e7c61379d7fee50d4a9f7f504c650009506d9ba015530d76c0dde
 # libVLC plays discs with their menus, and Audio CDs. Taken from VideoLAN's own VLC release for
 # Windows, which (unlike the libVLC NuGet package) has the DVD and CD readers; pinned by version
 # and SHA-256. Its deinterlacer is swapped for the BWDIF one (build/build-vlc-bwdif-win.sh).
@@ -93,15 +99,24 @@ case "$RID" in
     fi
     # VLC's deinterlacer with BWDIF added (packaging/vlc/vlc-bwdif.patch), built for this libVLC.
     cp "$ROOT/packaging/vlc/win64/libdeinterlace_plugin.dll" "$OUT/libvlc/plugins/video_filter/"
-    if [ ! -f "$OUT/ffmpeg.exe" ] || [ ! -f "$OUT/ffprobe.exe" ]; then
+    # Re-fetched when it's the old build without the DVD-Video reader (before 1.10.0).
+    if [ ! -f "$OUT/ffmpeg.exe" ] || [ ! -f "$OUT/ffprobe.exe" ] || ! grep -q -a -- "--enable-libdvdnav" "$OUT/ffmpeg.exe"; then
       DL="$(mktemp -d)"
-      fetch_checked "https://github.com/GyanD/codexffmpeg/releases/download/$FFMPEG_VERSION/ffmpeg-$FFMPEG_VERSION-essentials_build.7z" \
-        "$FFMPEG_SHA256" "$DL/ffmpeg.7z"
-      (cd "$DL" && 7z e -y -ox ffmpeg.7z "ffmpeg-$FFMPEG_VERSION-essentials_build/bin/ffmpeg.exe" \
-        "ffmpeg-$FFMPEG_VERSION-essentials_build/bin/ffprobe.exe" >/dev/null)
+      fetch_checked "https://github.com/BtbN/FFmpeg-Builds/releases/download/$FFMPEG_TAG/$FFMPEG_BUILD.zip" \
+        "$FFMPEG_SHA256" "$DL/ffmpeg.zip"
+      (cd "$DL" && 7z e -y -ox ffmpeg.zip "$FFMPEG_BUILD/bin/ffmpeg.exe" "$FFMPEG_BUILD/bin/ffprobe.exe" >/dev/null)
       cp "$DL/x/ffmpeg.exe" "$DL/x/ffprobe.exe" "$OUT/"
       rm -rf "$DL"
     fi
+    if [ ! -f "$OUT/flac.exe" ] || [ ! -f "$OUT/libFLAC.dll" ]; then
+      DL="$(mktemp -d)"
+      fetch_checked "https://ftp.osuosl.org/pub/xiph/releases/flac/flac-$FLAC_VERSION-win.zip" "$FLAC_SHA256" "$DL/flac.zip"
+      (cd "$DL" && 7z e -y -ox flac.zip "flac-$FLAC_VERSION-win/Win64/flac.exe" "flac-$FLAC_VERSION-win/Win64/libFLAC.dll" >/dev/null)
+      cp "$DL/x/flac.exe" "$DL/x/libFLAC.dll" "$OUT/"
+      rm -rf "$DL"
+    fi
+    # libdvdread and libdvdcss for the DVD ripper's VIDEO_TS copy (build/build-dvdread-win.sh).
+    cp "$ROOT/packaging/dvd/win64/libdvdcss-2.dll" "$ROOT/packaging/dvd/win64/libdvdread-8.dll" "$OUT/"
     ;;
   linux-x64)
     cargo build --release

@@ -706,3 +706,45 @@ public class DvdRipTests
         Assert.Equal(2382, duration);
     }
 }
+
+/// <summary>
+/// libdvdread itself, on a VIDEO_TS folder: the copy is the folder, byte for byte. Skips where the
+/// library isn't installed, unless PARAMAJA_REQUIRE_DVDREAD is set (CI's Windows job, which tests
+/// the committed DLLs from packaging/dvd/win64).
+/// </summary>
+public class DvdReadNativeTests
+{
+    [Fact]
+    public async Task A_video_ts_folder_copies_through_libdvdread()
+    {
+        if (!DvdRead.Available)
+        {
+            Assert.True(Environment.GetEnvironmentVariable("PARAMAJA_REQUIRE_DVDREAD") is null, "libdvdread didn't load");
+            return;
+        }
+        var root = Path.Combine(TestEnvironment.TempDir(), "CONCERT");
+        var videoTs = Directory.CreateDirectory(Path.Combine(root, "VIDEO_TS")).FullName;
+        foreach (var (name, data) in DvdRipTests.Ifos())
+        {
+            File.WriteAllBytes(Path.Combine(videoTs, name), data);
+            File.WriteAllBytes(Path.Combine(videoTs, Path.ChangeExtension(name, ".BUP")), data);
+        }
+        var vob = new byte[40 * DvdRead.BlockBytes];
+        new Random(5).NextBytes(vob);
+        // Each sector's PES header byte (0x14) as on any unencrypted disc: the "10" marker and scrambling bits 0.
+        for (var b = 0; b < 40; b++) vob[b * DvdRead.BlockBytes + 0x14] &= 0x8F;
+        File.WriteAllBytes(Path.Combine(videoTs, "VTS_01_1.VOB"), vob[..(24 * DvdRead.BlockBytes)]);
+        File.WriteAllBytes(Path.Combine(videoTs, "VTS_01_2.VOB"), vob[(24 * DvdRead.BlockBytes)..]);
+        var info = DvdInfo.Read(root);
+        var output = TestEnvironment.TempDir();
+        var result = await DvdRipper.BackupAsync(info, new DvdRipOptions { Source = root, Mode = DvdRipMode.Decrypt, OutputRoot = output });
+        Assert.Empty(result.Problems);
+        foreach (var file in Directory.GetFiles(videoTs))
+        {
+            var (a, b) = (File.ReadAllBytes(file), File.ReadAllBytes(Path.Combine(result.Output, "VIDEO_TS", Path.GetFileName(file))));
+            var at = a.Zip(b).Select((p, i) => (p, i)).FirstOrDefault(x => x.p.First != x.p.Second).i;
+            Assert.True(a.SequenceEqual(b), $"{Path.GetFileName(file)} differs at {at} (0x{at % 2048:X} in its block): {a[at]:X2} vs {b[at]:X2}");
+        }
+        Assert.True(Directory.Exists(Path.Combine(result.Output, "AUDIO_TS")));
+    }
+}

@@ -47,9 +47,19 @@ public class PackagingTests
     {
         var m = Manifest;
         foreach (var arg in new[] { "--socket=x11", "--device=dri", "--socket=pulseaudio", "--share=network",
-                     "--filesystem=host:ro", "--filesystem=xdg-pictures" })
+                     "--filesystem=host:ro", "--filesystem=xdg-pictures", "--filesystem=xdg-music", "--filesystem=xdg-videos" })
             Assert.Contains($"- {arg}", m);
         Assert.Contains("command: paramaja", m);
+    }
+
+    [Fact]
+    public void Ffmpeg_reads_dvds_with_the_dvd_libraries_built_before_it()
+    {
+        var m = Manifest;
+        Assert.Contains("- --enable-libdvdread", m);
+        Assert.Contains("- --enable-libdvdnav", m);
+        Assert.True(m.IndexOf("- name: libdvdread", StringComparison.Ordinal) < m.IndexOf("- name: ffmpeg", StringComparison.Ordinal));
+        Assert.True(m.IndexOf("- name: libdvdnav", StringComparison.Ordinal) < m.IndexOf("- name: ffmpeg", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -3,6 +3,10 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.10.0 — 2026-10-31
+
+- CD and DVD ripping, DSD at 192 kHz, CD and SACD badges, fullscreen pointer
+
 ## 1.9.0 — 2026-10-29
 
 - **Disc images:** a DVD or Blu-ray `.iso` plays like the disc, menus included (Open Disc →

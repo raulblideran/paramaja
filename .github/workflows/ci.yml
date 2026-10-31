@@ -68,3 +68,9 @@ jobs:
         run: cargo test --lib
       - name: UI and view model tests
         run: dotnet test tests/Paramaja.App.Tests --logger GitHubActions
+      # The DVD ripper's libdvdread and libdvdcss, as the Windows zip ships them (build/build-dvdread-win.sh).
+      - name: DVD reading (libdvdread)
+        env:
+          PARAMAJA_NATIVE_DIR: ${{ github.workspace }}/packaging/dvd/win64
+          PARAMAJA_REQUIRE_DVDREAD: "1"
+        run: dotnet test tests/Paramaja.Core.Tests --filter "FullyQualifiedName~DvdReadNativeTests" --logger GitHubActions

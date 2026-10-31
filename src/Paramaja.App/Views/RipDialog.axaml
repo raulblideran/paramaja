@@ -108,7 +108,7 @@
         <StackPanel Orientation="Horizontal" Spacing="16">
           <RadioButton x:Name="MkvMode" GroupName="dvdmode" Content="One title as MKV (lossless)" IsEnabled="{Binding CanMkv}"
                        IsChecked="{Binding IsMkv, Mode=OneWay}" Click="OnMkvMode" />
-          <RadioButton x:Name="DecryptMode" GroupName="dvdmode" Content="The VIDEO_TS folder, decrypted" IsEnabled="{Binding CanDecrypt}"
+          <RadioButton x:Name="DecryptMode" GroupName="dvdmode" Content="The VIDEO__TS folder, decrypted" IsEnabled="{Binding CanDecrypt}"
                        IsChecked="{Binding !IsMkv, Mode=OneWay}" Click="OnDecryptMode" />
         </StackPanel>
         <ListBox x:Name="Titles" ItemsSource="{Binding Titles}" SelectedItem="{Binding SelectedTitle}" MaxHeight="220"
