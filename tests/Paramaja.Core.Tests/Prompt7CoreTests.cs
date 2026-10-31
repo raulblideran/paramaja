@@ -83,10 +83,19 @@ public class PictureAndOsdTests
     [InlineData(8, false, VlcDiscPlayer.OriginalChannels)] // 7.1 as 7.1
     [InlineData(8, true, AudioOutputChannel.Stereo)]       // the downmix switch: libVLC's Stereo folds it
     [InlineData(6, true, AudioOutputChannel.Stereo)]
-    [InlineData(null, true, VlcDiscPlayer.OriginalChannels)] // not known yet
+    [InlineData(null, true, AudioOutputChannel.Stereo)]       // not known yet: Stereo leaves stereo be
+    [InlineData(null, false, VlcDiscPlayer.OriginalChannels)]
     [InlineData(2, true, AudioOutputChannel.Stereo)]
     public void Discs_downmix_only_with_the_switch(int? source, bool downmix, AudioOutputChannel mode) =>
         Assert.Equal(mode, VlcDiscPlayer.StereoMode(StereoChannel.Both, source, downmix));
+
+    [Theory]
+    [InlineData(0xBD81, 1)]   // AC-3, stream 1 (The One's 5.1)
+    [InlineData(0xBDA0, 0)]   // LPCM, stream 0
+    [InlineData(0xBD8A, 2)]   // DTS, stream 2
+    [InlineData(0xC1, 1)]     // MPEG audio, stream 1
+    [InlineData(0x1100, null)]
+    public void Dvd_tracks_are_their_ifo_audio_streams(int id, int? index) => Assert.Equal(index, VlcDiscPlayer.DvdAudioIndex(id));
 }
 
 public class Prompt7PlaybackTests

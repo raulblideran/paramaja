@@ -573,6 +573,25 @@ public class CdRipTests
         Assert.Equal("r1", album.ReleaseId);
     }
 
+    [Fact]
+    public void A_release_that_only_looks_like_the_disc_is_offered_but_never_taken()
+    {
+        var toc = TestDisc.Toc(1900, 1900);
+        const string json = """
+        {"releases": [{"id": "r9", "title": "Ik vind je leuk", "artist-credit": [{"name": "De Raggende Manne", "joinphrase": ""}],
+          "media": [{"position": 1, "discs": [{"id": "someone-elses-disc-id"}], "tracks": [
+            {"id": "t1", "title": "Ik vind je leuk", "recording": {"id": "a"}}, {"id": "t2", "title": "I Think You're Nice", "recording": {"id": "b"}}]}]}]}
+        """;
+        var release = Assert.Single(CdMetadata.Parse(json, toc));
+        Assert.False(release.ExactDisc);
+        Assert.EndsWith("a similar disc, not this one", release.Description);
+        var text = new CdText("Dangerous", "Michael Jackson", new Dictionary<int, string>(), new Dictionary<int, string>());
+        var disc = new CdDisc(toc, new DriveIdentity("A", "B", "1"), DriveFeatures.Unknown, text, null, [release], [], null,
+            new Dictionary<int, int>());
+        Assert.Equal("Dangerous", disc.DefaultTags.Album); // the disc's CD-Text, not the look-alike
+        Assert.Equal("CD-Text", disc.DefaultTags.Source);
+    }
+
     [Theory]
     [InlineData("AC/DC: Live", "AC - DC - Live")]
     [InlineData("What?*", "What")]

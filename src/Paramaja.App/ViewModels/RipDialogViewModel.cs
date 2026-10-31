@@ -98,7 +98,8 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _discNote = "";
 
     public bool HasFlac => Flac is not null;
-    public bool HasReleases => Releases.Count > 1;
+    /// <summary>Releases to choose from: several, or only similar discs (none preselected).</summary>
+    public bool HasReleases => Releases.Count > 1 || Releases.Any(r => !r.ExactDisc);
 
     // ---- DVD --------------------------------------------------------------------------------------
 
@@ -176,14 +177,16 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
             foreach (var r in disc.Releases) Releases.Add(r);
             OnPropertyChanged(nameof(HasReleases));
             Apply(disc.DefaultTags);
-            SelectedRelease = disc.Releases.FirstOrDefault();
+            SelectedRelease = disc.Releases.FirstOrDefault(r => r.ExactDisc);
             OffsetText = disc.ListedOffset is { } o ? o.ToString("+0;-0;0", CultureInfo.InvariantCulture) : "";
             OffsetNote = disc.ListedOffset is not null ? $"{disc.Drive.Name}, from AccurateRip's drive list"
                 : disc.AccurateRip.Count > 0 ? $"{disc.Drive.Name} isn't in AccurateRip's list: the offset is found from this disc when the rip starts"
                 : $"{disc.Drive.Name} isn't in AccurateRip's list, nor this disc: type the drive's offset if you know it";
             DiscNote = $"{disc.Toc.AudioTrackCount} tracks, {CdToc.Time(disc.Toc.AudioTracks.Sum(disc.Toc.Sectors))}"
                        + (disc.AccurateRip.Count > 0 ? $" · in AccurateRip ({disc.AccurateRip.Count} pressings)" : " · not in AccurateRip")
-                       + (disc.Releases.Count > 0 ? " · found on MusicBrainz" : disc.CdText is not null ? " · tags from its CD-Text" : " · not found on MusicBrainz: type the tags in");
+                       + (disc.Releases.Any(r => r.ExactDisc) ? " · found on MusicBrainz"
+                          : disc.Releases.Count > 0 ? " · MusicBrainz only knows similar discs: pick one above if it's this one"
+                          : disc.CdText is not null ? " · tags from its CD-Text" : " · not found on MusicBrainz: type the tags in");
             Kind = RipDiscKind.Cd;
             Message = HasFlac ? "" : "FLAC needs the flac encoder, which isn't installed: WAV only.";
             if (!HasFlac) FormatIndex = 1;

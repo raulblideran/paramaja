@@ -12,8 +12,12 @@ public sealed record CdDisc(
     int? ListedOffset,
     IReadOnlyDictionary<int, int> OffsetCounts)
 {
-    /// <summary>The tags to start from: MusicBrainz's first release, else CD-Text, else placeholders.</summary>
-    public AlbumTags DefaultTags => Releases.Count > 0 ? Releases[0] : AlbumTags.Placeholder(Toc, CdText);
+    /// <summary>
+    /// The tags to start from: MusicBrainz's first release of this very disc, else CD-Text, else
+    /// placeholders. A release that only looks like it (same track count, similar lengths) is never
+    /// taken by itself: a two-track test image came up as somebody's single.
+    /// </summary>
+    public AlbumTags DefaultTags => Releases.FirstOrDefault(r => r.ExactDisc) ?? AlbumTags.Placeholder(Toc, CdText);
 }
 
 public sealed record CdRipOptions

@@ -11,7 +11,9 @@ also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
     read offset comes from AccurateRip's list of drives (or, for a drive it doesn't list, from the
     disc itself), the gaps between tracks from the disc's sub-channel. Each track is checked
     against **AccurateRip** (v1 and v2). The tags (and the cover, 1200 px) come from **MusicBrainz**,
-    or from the disc's CD-Text, and can be edited before ripping. Saved as **FLAC level 8**
+    or from the disc's CD-Text, and can be edited before ripping. Where MusicBrainz only knows
+    discs that look like it (as many tracks, similar lengths), they're offered but never picked
+    by themselves. Saved as **FLAC level 8**
     (the reference encoder, verified) or **WAV** (with RIFF tags, no ID3), in Music → Artist →
     Album (Year), with a cue sheet (gaps appended to the previous track), cover.jpg and a log.
   - **The log** has the layout rip logs use (settings, TOC, each track's test and copy CRCs,
@@ -43,7 +45,8 @@ also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
   "5.1 → stereo" / "7.1 → stereo" only with the downmix switch on. 7.1 is never downmixed unless
   asked: it plays as 8 channels. Where the audio device itself is set up with fewer speakers
   (Windows set to stereo), the tooltip says the system mixes it down for them. On discs the
-  downmix switch now works too (it did nothing there).
+  downmix switch now works too (it did nothing there), and a DVD's AC-3 or DTS 5.1 shows "5.1"
+  (its channels come from the disc's IFO: libVLC only told them for LPCM).
 - **Chapter buttons** show only while something with chapters plays: a file without chapters
   after one with them, a stopped player or a disc's menu no longer keep them.
 - **In fullscreen the pointer hides after 3 seconds** without moving, paused or not; moving the

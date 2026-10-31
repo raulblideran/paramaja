@@ -255,6 +255,7 @@ public sealed partial class VlcDiscPlayer : IPlayer
         // A folder, a drive, or an image (ISO) of the disc: libVLC opens them all the same way.
         _title = PlayerService.DiscTitle(root);
         _titleAspects = bluray ? new Dictionary<int, double>() : Input.DvdAspect.TitleAspects(root);
+        _titleAudio = bluray ? new Dictionary<int, IReadOnlyList<Ripping.Dvd.DvdAudio>>() : TitleAudio(root);
         Play(new Media(_vlc, (bluray ? "bluray://" : "dvd://") + DiscPath(root), FromType.FromLocation));
         Later(() =>
         {
@@ -544,6 +545,11 @@ public sealed partial class VlcDiscPlayer : IPlayer
         var audio = _mp.AudioTrack;
         var audioIds = _mp.AudioTrackDescription.Where(t => t.Id >= 0).Select(t => t.Id).ToList();
         var channels = MatchChannels(MediaTracks(), audioIds);
+        // libVLC tells a DVD's LPCM channels at once but an AC-3 or DTS track's only once decoded
+        // (not at all in its track list): the disc's IFO says them.
+        if (_cdTrack < 0 && _titleAudio.TryGetValue(_mp.Title, out var ifo))
+            foreach (var id in audioIds)
+                if (!channels.ContainsKey(id) && DvdAudioIndex(id) is { } n && n < ifo.Count) channels[id] = ifo[n].Channels;
         var list = new List<TrackInfo>();
         foreach (var t in _mp.AudioTrackDescription.Where(t => t.Id >= 0))
             list.Add(new TrackInfo(t.Id, TrackType.Audio, t.Name, null, null, t.Id == audio, false, false,
@@ -867,7 +873,8 @@ public sealed partial class VlcDiscPlayer : IPlayer
         StereoChannel.Left => AudioOutputChannel.Left,
         StereoChannel.Right => AudioOutputChannel.Right,
         _ when sourceChannels == 2 => AudioOutputChannel.Stereo,
-        _ when downmix && sourceChannels > 2 => AudioOutputChannel.Stereo,
+        // Downmixing, libVLC's Stereo leaves stereo as it is: a track not known yet gets it too.
+        _ when downmix && sourceChannels is null or > 2 => AudioOutputChannel.Stereo,
         _ => OriginalChannels,
     };
 
@@ -878,6 +885,30 @@ public sealed partial class VlcDiscPlayer : IPlayer
 
     /// <summary>The DVD's titles' shapes (4:3, 16:9), from its IFOs; libVLC's title n is the DVD's title n.</summary>
     private IReadOnlyDictionary<int, double> _titleAspects = new Dictionary<int, double>();
+
+    /// <summary>Each DVD title's audio streams as its IFO lists them (codec, channels), by title number.</summary>
+    private IReadOnlyDictionary<int, IReadOnlyList<Ripping.Dvd.DvdAudio>> _titleAudio = new Dictionary<int, IReadOnlyList<Ripping.Dvd.DvdAudio>>();
+
+    private static IReadOnlyDictionary<int, IReadOnlyList<Ripping.Dvd.DvdAudio>> TitleAudio(string root)
+    {
+        try { return Ripping.Dvd.DvdInfo.Read(root).Titles.ToDictionary(t => t.Number, t => t.Audio); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        {
+            return new Dictionary<int, IReadOnlyList<Ripping.Dvd.DvdAudio>>();
+        }
+    }
+
+    /// <summary>
+    /// The IFO audio stream a libVLC DVD track is: its id is the MPEG stream's (0xBD00 and the
+    /// private stream's sub-id for AC-3 0x80+n, DTS 0x88+n, LPCM 0xA0+n; 0xC0+n for MPEG audio),
+    /// whose low three bits are the stream's number n.
+    /// </summary>
+    internal static int? DvdAudioIndex(int id) => id switch
+    {
+        >= 0xBD80 and <= 0xBDAF => id & 0x07,
+        >= 0xC0 and <= 0xC7 => id & 0x07,
+        _ => null,
+    };
 
     /// <summary>
     /// The picture's displayed width over height: a DVD title's as its IFO says (libVLC leaves a

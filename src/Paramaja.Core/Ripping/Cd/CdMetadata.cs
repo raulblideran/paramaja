@@ -29,6 +29,11 @@ public sealed record AlbumTags
     public IReadOnlyList<TrackTags> Tracks { get; init; } = [];
     /// <summary>Where the tags came from: "MusicBrainz", "CD-Text" or nothing (typed in).</summary>
     public string? Source { get; init; }
+    /// <summary>
+    /// MusicBrainz knows this very disc (its disc ID). Otherwise the release came from a TOC
+    /// lookup: another disc with as many tracks of similar lengths, which may be anything.
+    /// </summary>
+    public bool ExactDisc { get; init; }
 
     public string? Year => Date is { Length: >= 4 } d ? d[..4] : null;
 
@@ -36,7 +41,8 @@ public sealed record AlbumTags
     public string Description =>
         string.Join(" · ", new[] { $"{AlbumArtist} — {Album}", string.Join(" ", new[] { Date, Country }.Where(s => !string.IsNullOrEmpty(s))),
                 string.Join(" ", new[] { Label, CatalogNumber }.Where(s => !string.IsNullOrEmpty(s))),
-                DiscTotal > 1 ? $"disc {DiscNumber}/{DiscTotal}" : null }
+                DiscTotal > 1 ? $"disc {DiscNumber}/{DiscTotal}" : null,
+                Source == "MusicBrainz" && !ExactDisc ? "a similar disc, not this one" : null }
             .Where(s => !string.IsNullOrEmpty(s)));
 
     /// <summary>Tags for a disc nothing knows: "Track 01" and so on, or the disc's CD-Text.</summary>
@@ -102,7 +108,8 @@ public static class CdMetadata
             var all = media.EnumerateArray().ToList();
             // The medium with this disc ID, else (a fuzzy TOC match) the first with as many tracks.
             var medium = all.FirstOrDefault(m => m.TryGetProperty("discs", out var discs) && discs.EnumerateArray().Any(d => Str(d, "id") == discId));
-            if (medium.ValueKind == JsonValueKind.Undefined)
+            var exact = medium.ValueKind != JsonValueKind.Undefined;
+            if (!exact)
                 medium = all.FirstOrDefault(m => m.TryGetProperty("tracks", out var t) && t.GetArrayLength() == toc.AudioTrackCount);
             if (medium.ValueKind == JsonValueKind.Undefined || !medium.TryGetProperty("tracks", out var trackList)) continue;
             var albumArtist = Credit(release);
@@ -137,6 +144,7 @@ public static class CdMetadata
                 DiscId = discId,
                 Tracks = tracks,
                 Source = "MusicBrainz",
+                ExactDisc = exact,
             });
         }
         return list;
