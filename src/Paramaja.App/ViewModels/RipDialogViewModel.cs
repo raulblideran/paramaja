@@ -179,7 +179,7 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
             "The video is encoded with x265 (CRF 18): it looks the same as the disc's in about half the space. HEVC can't keep "
             + "interlaced video as it is, so interlaced video becomes 50 frames a second (BWDIF, as Paramaja plays DVDs), in "
             + "about two thirds of the space: for an interlaced disc, x264 stays closer to it. Every audio and subtitle track and "
-            + "the chapters are kept (LPCM becomes FLAC). x265 is slow: about as long as the film, longer on an older PC.",
+            + "the chapters are kept (LPCM becomes FLAC). x265 is slow: about as long as the film, twice that for an interlaced one (twice the frames), longer on an older PC.",
         _ =>
             "The longest title, the main film, is picked. The MKV keeps the MPEG-2 video as it is, every audio and subtitle track "
             + "with its language, and the chapters; LPCM audio becomes FLAC, the same audio bit for bit.",

@@ -300,6 +300,10 @@ public class Prompt9WindowsDesktopTests
         Win32Rig.Run(rig =>
         {
             Win32Rig.SetCursorPos(rig.Center.X, rig.Center.Y);
+            // A runner has no mouse, and then every thread's count starts below 0 (no pointer): as if
+            // one were plugged in, both threads' counts go up to 0 first.
+            Win32Rig.ShowPointer();
+            Win32OnThread.Run(rig.Child, Win32Rig.ShowPointer);
             rig.Pump();
             Assert.True(Win32Rig.PointerShowing(), "inconclusive: this session shows no pointer to begin with");
             Win32Pointer.SetHidden(true, [rig.Top]);
@@ -402,6 +406,13 @@ internal sealed class Win32Rig
     [DllImport("user32.dll")] private static extern bool TranslateMessage(ref Msg m);
     [DllImport("user32.dll")] private static extern IntPtr DispatchMessageW(ref Msg m);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern int ShowCursor(bool show);
+
+    /// <summary>This thread's pointer count up to 0 (showing), as a mouse plugged in would have it.</summary>
+    public static void ShowPointer()
+    {
+        for (var i = 0; i < 8 && ShowCursor(true) < 0; i++) { }
+    }
     [DllImport("user32.dll")] private static extern bool GetCursorInfo(ref CursorInfo info);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr GetPropW(IntPtr window, string name);
     [DllImport("ole32.dll")] private static extern int OleInitialize(IntPtr reserved);
