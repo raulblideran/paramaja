@@ -131,7 +131,8 @@ public partial class MainWindow : Window
     {
         _tick.Stop();
         _clicks?.Dispose();
-        Win32Pointer.SetHidden(false);
+        Win32Pointer.SetHidden(false, VideoHosts());
+        if (OperatingSystem.IsWindows()) Win32OnThread.Unhook();
         _bottom?.Close();
         _top?.Close();
         // A resize or move already queued would otherwise try to show the closed bars again.
@@ -169,10 +170,13 @@ public partial class MainWindow : Window
                 foreach (var surface in new[] { Video, DiscVideo })
                     if (surface.Handle is { } xid) X11Cursor.SetHidden(xid, hidden);
                 // On Windows the engines' video windows are their threads': see Win32Pointer.
-                Win32Pointer.SetHidden(hidden);
+                Win32Pointer.SetHidden(hidden, VideoHosts());
                 break;
         }
     }
+
+    private IEnumerable<IntPtr> VideoHosts() =>
+        new[] { Video, DiscVideo }.Select(s => s.Handle).OfType<long>().Select(h => (IntPtr)h);
 
     /// <summary>The surface of the engine that's playing: libVLC's for discs, mpv's otherwise.</summary>
     private Controls.VideoHost ActiveVideo => Vm.IsDiscMode ? DiscVideo : Video;

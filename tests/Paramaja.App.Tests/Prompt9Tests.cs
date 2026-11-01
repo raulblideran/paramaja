@@ -302,10 +302,14 @@ public class Prompt9WindowsDesktopTests
             Win32Rig.SetCursorPos(rig.Center.X, rig.Center.Y);
             rig.Pump();
             Assert.True(Win32Rig.PointerShowing(), "inconclusive: this session shows no pointer to begin with");
-            Win32Pointer.SetHidden(true);
+            Win32Pointer.SetHidden(true, [rig.Top]);
             rig.Pump();
             try { Assert.False(Win32Rig.PointerShowing(), "the pointer still shows over the other thread's window"); }
-            finally { Win32Pointer.SetHidden(false); }
+            finally
+            {
+                Win32Pointer.SetHidden(false, [rig.Top]);
+                Win32OnThread.Unhook();
+            }
             rig.Pump();
             Assert.True(Win32Rig.PointerShowing(), "the pointer didn't come back");
         });
@@ -326,7 +330,7 @@ public class Prompt9WindowsDesktopTests
                 Assert.Equal(IntPtr.Zero, Win32Rig.GetPropW(rig.Child, Win32DropTargets.DropTargetProperty));
                 Assert.Equal(0, Win32DropTargets.RevokeInside(rig.Top));
             }
-            finally { Win32DropTargets.Unhook(); }
+            finally { Win32OnThread.Unhook(); }
         });
     }
 }
