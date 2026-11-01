@@ -74,6 +74,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.11.0" date="2026-10-31">
+      <description>
+        <p>Drag and drop on Linux and over the video on Windows; the fullscreen pointer hides on Windows; links start by themselves after 5 s of buffer; DVD rips to H.264 or H.265 MKVs that look the same as the disc in less space; the Rip Disc window fits the screen.</p>
+      </description>
+    </release>
     <release version="1.10.1" date="2026-10-31">
       <description>
         <p>Crop to 16:9 right after Resize to 4:3 crops by the right shape; the Linux build attached</p>

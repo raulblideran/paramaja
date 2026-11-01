@@ -3,6 +3,43 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.11.0 — 2026-10-31
+
+- **Drag and drop** works on Linux, and over a playing video on Windows. Drop a video, several
+  (they play one after the other, as a folder's do), a folder, a disc image, a cue sheet, a
+  subtitle (it joins the video playing, or the one dropped with it) or a link or magnet from a
+  browser, on the window or on the bars. Linux had none at all: the toolkit (Avalonia 11) has no
+  drag and drop on X11, so Paramaja now speaks X11's protocol (XDND) itself, the one KDE's
+  Wayland apps (Dolphin) use to drop into X11 windows too. On Windows, mpv's video window
+  took every drop and refused it; it no longer gets them.
+- **The pointer hides in fullscreen on Windows.** Over the video it was left to mpv, whose window
+  runs on its own thread and hid it only if it happened to be watching the mouse at that moment.
+  Paramaja now hides it for its whole window, the video included. **Not tried on Windows yet**
+  (no Windows machine here); Settings → Developer → **Create log** now says when the pointer
+  last hid and what showed it again, if it still stays.
+- **Links start by themselves.** Each one waited for 10 s of buffer instead of 5 (the first wait
+  counted as a stall and doubled it), with a black picture and a pause button, so Play pressed
+  meanwhile really paused it. Now a link (YouTube, other sites, direct, MEGA, torrents) starts
+  after 5 s, the top bar says **Opening…** and the play button spins until it does, and Play then
+  never pauses it. A YouTube video starts in about 2 s here.
+- **Rip Disc: DVDs to MKV in H.264 or H.265**, besides the lossless copy: the video encoded to
+  look the same as the disc's in less space, everything else (every audio and subtitle track, the
+  chapters) as before. **x264** (CRF 16, preset slow) keeps interlaced video interlaced, both
+  fields as on the disc, in about ⅔ of the space. **x265** (CRF 18, preset slow) takes about half,
+  but HEVC has no interlaced mode players handle (x265's field coding comes back with its field
+  order swapping every frame), so an interlaced title is deinterlaced to 50p (59.94p) with BWDIF,
+  as Paramaja plays DVDs, at CRF 16: about ⅔. A title counts as interlaced when it's flagged so
+  and 20 s of its picture agree (films flagged interlaced are common). Measured on a PAL concert
+  DVD (576i, "The One"), against the disc's frames: on a minute of it, x264 66% of the video's
+  size, VMAF 98.6; x265 50%, VMAF 98.7 as frames, 64% and VMAF 97.6 as 50p. The whole 40-minute
+  title: x264 at 70% of the size, VMAF 98.9, in 10 minutes here (16 threads); x265 (50p) at 68%,
+  VMAF 97.6, in 64 minutes. The progress shows the encoding speed.
+- **Rip Disc: a VIDEO_TS folder** offers only the MKV: it's decrypted already.
+- **The Rip Disc window fits the screen**: no taller or wider than the one it opens on; the form
+  scrolls and the Rip button and the progress stay in view (a CD's form was taller than a laptop's
+  screen).
+- The Linux build's FFmpeg has x264 and x265 (the Windows zip's had them already).
+
 ## 1.10.1 — 2026-10-31
 
 - **Crop to 16:9** chosen right after **Resize to 4:3** could crop by the stretched 4:3 shape

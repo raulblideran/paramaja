@@ -146,3 +146,12 @@ paramaja/
 - [x] DVD ripper: VIDEO_TS decrypted (libdvdread + libdvdcss; Windows DLLs cross-built), one title to MKV (FFmpeg's dvdvideo reader, LPCM → FLAC); verified lossless on a DVD image
 - [ ] A real CD and a real (CSS) DVD in a drive, on Linux and Windows
 
+
+### Phase 11 — 1.11.0: drag and drop, the Windows pointer, links, x264/x265 rips
+- [x] Drag and drop: one drop path (files queue after the first, subtitles join, links open); XDND drop target over Avalonia's X11 dispatch (Avalonia 11 has none), KWin's Wayland drags included; mpv's Windows drop target revoked; the bars take drops
+- [x] Fullscreen pointer on Windows: ShowCursor on the UI thread covers the engines' cross-thread video windows; Create log says when it hid and what showed it
+- [x] Links: the first buffering no longer counts as a stall (10 s → 5 s); "Opening…" and a spinning play button until they play, where Play never pauses
+- [x] DVD MKVs in x264 (CRF 16, interlaced kept) and x265 (CRF 18; interlaced to 50p with BWDIF, CRF 16), flags confirmed by idet; x264/x265 in the Flatpak's FFmpeg
+- [x] Rip Disc: fits the screen (form scrolls, buttons stay); no decrypted copy for a VIDEO_TS folder
+- [x] Verified: XDND drops on the host build (Xvfb, a script running KWin's side of the protocol); links start with no input (direct, YouTube); The One ripped with x264 and x265
+- [ ] Windows: the pointer hiding and drops over the video, by a tester; Dolphin → Paramaja on the KDE desktop
