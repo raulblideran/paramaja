@@ -318,9 +318,15 @@ public class Prompt9WindowsDesktopTests
         Win32Rig.Run(rig =>
         {
             Assert.NotEqual(IntPtr.Zero, Win32Rig.GetPropW(rig.Child, Win32DropTargets.DropTargetProperty));
-            Assert.Equal(1, Win32DropTargets.RevokeInside(rig.Top));
-            Assert.Equal(IntPtr.Zero, Win32Rig.GetPropW(rig.Child, Win32DropTargets.DropTargetProperty));
-            Assert.Equal(0, Win32DropTargets.RevokeInside(rig.Top));
+            try
+            {
+                Assert.Equal(1, Win32DropTargets.RevokeInside(rig.Top));
+                // The child's thread revokes it as it reads its next message.
+                for (var i = 0; i < 20 && Win32Rig.GetPropW(rig.Child, Win32DropTargets.DropTargetProperty) != IntPtr.Zero; i++) rig.Pump();
+                Assert.Equal(IntPtr.Zero, Win32Rig.GetPropW(rig.Child, Win32DropTargets.DropTargetProperty));
+                Assert.Equal(0, Win32DropTargets.RevokeInside(rig.Top));
+            }
+            finally { Win32DropTargets.Unhook(); }
         });
     }
 }
