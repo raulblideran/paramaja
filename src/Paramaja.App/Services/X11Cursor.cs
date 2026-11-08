@@ -6,6 +6,9 @@ namespace Paramaja.App.Services;
 /// Hides the pointer over an X11 window with a blank cursor of its own (Linux; nothing elsewhere).
 /// A window without a cursor shows its parent's, so mpv's window inside the video surface goes
 /// blank with it; libVLC draws into the surface itself and its own hiding there never worked.
+/// Shown again, the window gets the arrow itself rather than its parent's cursor: that's
+/// Avalonia's window, whose cursor follows the element the pointer was last over in Avalonia's
+/// own drawing, which the pointer over the video never is.
 /// </summary>
 public static partial class X11Cursor
 {
@@ -26,11 +29,15 @@ public static partial class X11Cursor
     private static partial IntPtr XCreatePixmapCursor(IntPtr display, IntPtr source, IntPtr mask, ref XColor foreground,
         ref XColor background, uint x, uint y);
     [LibraryImport(X11)] private static partial int XDefineCursor(IntPtr display, IntPtr window, IntPtr cursor);
+    [LibraryImport(X11)] private static partial IntPtr XCreateFontCursor(IntPtr display, uint shape);
     [LibraryImport(X11)] private static partial int XUndefineCursor(IntPtr display, IntPtr window);
     [LibraryImport(X11)] private static partial int XFlush(IntPtr display);
 
+    private const uint LeftPtr = 68; // XC_left_ptr: the arrow (themed by Xcursor)
+
     private static IntPtr _display;
     private static IntPtr _blank;
+    private static IntPtr _arrow;
     private static bool _failed;
 
     public static void SetHidden(long window, bool hidden)
@@ -50,7 +57,12 @@ public static partial class X11Cursor
                 }
                 XDefineCursor(_display, (IntPtr)window, _blank);
             }
-            else XUndefineCursor(_display, (IntPtr)window);
+            else
+            {
+                if (_arrow == IntPtr.Zero) _arrow = XCreateFontCursor(_display, LeftPtr);
+                if (_arrow != IntPtr.Zero) XDefineCursor(_display, (IntPtr)window, _arrow);
+                else XUndefineCursor(_display, (IntPtr)window);
+            }
             XFlush(_display);
         }
         catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException)

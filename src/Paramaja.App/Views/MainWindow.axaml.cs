@@ -15,6 +15,8 @@ public partial class MainWindow : Window
     private ControlsBar? _bottom;
     private TopBar? _top;
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    /// <summary>While the pointer is hidden its position is polled more often, so it's back as soon as it moves.</summary>
+    private readonly DispatcherTimer _hiddenTick = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private int _ticks;
     private readonly ICursorProbe _cursor = CursorProbe.Create();
     private readonly IDisplayHdrProbe _hdr = DisplayHdr.Create();
@@ -45,17 +47,10 @@ public partial class MainWindow : Window
         Video.LayoutUpdated += (_, _) => UpdateOverlays();
         DiscVideo.LayoutUpdated += (_, _) => UpdateOverlays();
 
+        _hiddenTick.Tick += (_, _) => PollPointer();
         _tick.Tick += (_, _) =>
         {
-            if (_cursor.Position() is { } p)
-            {
-                var pointer = new PixelPoint(p.X, p.Y);
-                var inside = OverlayPlacement.IsPointerOverPlayer(pointer,
-                    OverlayPlacement.WindowRect(Position, ClientSize, RenderScaling),
-                    Screens.ScreenFromWindow(this)?.Bounds,
-                    WindowState == WindowState.FullScreen);
-                Vm.ReportPointer(p.X, p.Y, inside);
-            }
+            PollPointer();
             Vm.TickAutoHide(DateTime.UtcNow);
             // mpv's video window takes drops and refuses them (Windows); without it they reach ours.
             if (OperatingSystem.IsWindows())
@@ -116,8 +111,25 @@ public partial class MainWindow : Window
         ProbeHdr();
         // Double-click fullscreen, from clicks the OS reports; where it can't, the engine's own.
         if (TryGetPlatformHandle()?.Handle is { } hwnd)
-            _clicks = VideoClicks.Watch(hwnd, () => { if (!Vm.IsIdle) Vm.HandleClick(DateTime.UtcNow); });
+            _clicks = VideoClicks.Watch(hwnd, () => { if (!Vm.IsIdle) Vm.HandleClick(DateTime.UtcNow); },
+                () => Vm.NotifyPointerMoved("the mouse's movement"));
         Vm.ClicksFromSystem = _clicks is not null;
+        // A graphics driver the Flatpak can't use (NVIDIA without its extension): said once the window is up.
+        Dispatcher.UIThread.Post(() => _ = Vm.CheckGraphicsAsync(), DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// The pointer's position from the OS: mpv's video window keeps its movements. In fullscreen
+    /// any movement counts while the player is in front, whatever the monitors' layout says.
+    /// </summary>
+    private void PollPointer()
+    {
+        if (_cursor.Position() is not { } p) return;
+        var fullscreen = WindowState == WindowState.FullScreen;
+        var inside = OverlayPlacement.IsPointerOverPlayer(new PixelPoint(p.X, p.Y),
+            OverlayPlacement.WindowRect(Position, ClientSize, RenderScaling),
+            Screens.ScreenFromWindow(this)?.Bounds, fullscreen) || (fullscreen && IsActive);
+        Vm.ReportPointer(p.X, p.Y, inside);
     }
 
     private void ProbeHdr()
@@ -130,6 +142,8 @@ public partial class MainWindow : Window
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         _tick.Stop();
+        _hiddenTick.Stop();
+        VideoClicks.WantMotion = false;
         _clicks?.Dispose();
         Win32Pointer.SetHidden(false, VideoHosts());
         if (OperatingSystem.IsWindows()) Win32OnThread.Unhook();
@@ -164,6 +178,11 @@ public partial class MainWindow : Window
                 break;
             case nameof(MainViewModel.IsCursorHidden):
                 var hidden = Vm.IsCursorHidden;
+                // While hidden, any movement over the player shows it: the OS's mouse events, and
+                // its position polled more often (libVLC's window reports nothing).
+                VideoClicks.WantMotion = hidden;
+                if (hidden) _hiddenTick.Start();
+                else _hiddenTick.Stop();
                 Cursor = hidden ? new Cursor(StandardCursorType.None) : Cursor.Default;
                 // On Linux the video surfaces get a blank pointer of their own as well: libVLC's
                 // hiding doesn't work in a window it was given, and mpv's window takes theirs.

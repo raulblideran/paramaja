@@ -17,6 +17,13 @@ public sealed record DvdAudio(string Codec, int Channels, string? Language)
 public sealed record DvdTitle(int Number, int TitleSet, int Chapters, int Angles, TimeSpan Duration,
     IReadOnlyList<DvdAudio> Audio, IReadOnlyList<string?> Subtitles)
 {
+    /// <summary>Each chapter's length, from its cells' playback times; empty when the IFO doesn't tell.</summary>
+    public IReadOnlyList<TimeSpan> ChapterLengths { get; init; } = [];
+
+    /// <summary>A chapter's length (1-based), if known.</summary>
+    public TimeSpan? ChapterLength(int chapter) =>
+        chapter >= 1 && chapter <= ChapterLengths.Count ? ChapterLengths[chapter - 1] : null;
+
     public string Label
     {
         get
@@ -130,7 +137,10 @@ public sealed class DvdInfo
             if (!sets.TryGetValue(set, out var vts))
                 sets[set] = vts = file($"VTS_{set:00}_0.IFO") is { Length: >= Sector } v && Encoding.ASCII.GetString(v, 0, 12) == "DVDVIDEO-VTS" ? v : null;
             if (vts is null) continue;
-            titles.Add(new DvdTitle(t + 1, set, chapters, Math.Max(1, angles), Duration(vts, inSet), Audio(vts), Subtitles(vts)));
+            titles.Add(new DvdTitle(t + 1, set, chapters, Math.Max(1, angles), Duration(vts, inSet), Audio(vts), Subtitles(vts))
+            {
+                ChapterLengths = ChapterLengths(vts, inSet),
+            });
         }
         return titles;
     }
@@ -156,6 +166,62 @@ public sealed class DvdInfo
             if (at + 8 <= vts.Length) total += PlaybackTime(vts.AsSpan(at + 4, 4));
         }
         return total;
+    }
+
+    /// <summary>
+    /// Each chapter's length. A chapter (PTT) starts at a program of a program chain and runs to
+    /// the next chapter's program in the same chain, or to the chain's end. Its length is the sum
+    /// of its cells' playback times (24-byte cells, the time at 4), from its program's entry cell
+    /// (the program map: one byte per program) to the next one's; of an angle block only the first
+    /// angle's cells count.
+    /// </summary>
+    internal static IReadOnlyList<TimeSpan> ChapterLengths(byte[] vts, int titleInSet)
+    {
+        try
+        {
+            var ptt = (int)BinaryPrimitives.ReadUInt32BigEndian(vts.AsSpan(0xC8)) * Sector;
+            var pgci = (int)BinaryPrimitives.ReadUInt32BigEndian(vts.AsSpan(0xCC)) * Sector;
+            if (ptt <= 0 || pgci <= 0 || ptt + 8 + 4 * titleInSet > vts.Length || pgci + 8 > vts.Length) return [];
+            var titlesInTable = BinaryPrimitives.ReadUInt16BigEndian(vts.AsSpan(ptt));
+            var tableEnd = (int)BinaryPrimitives.ReadUInt32BigEndian(vts.AsSpan(ptt + 4)) + 1;
+            var from = (int)BinaryPrimitives.ReadUInt32BigEndian(vts.AsSpan(ptt + 8 + 4 * (titleInSet - 1)));
+            var to = titleInSet < titlesInTable ? (int)BinaryPrimitives.ReadUInt32BigEndian(vts.AsSpan(ptt + 8 + 4 * titleInSet)) : tableEnd;
+            var parts = new List<(int Chain, int Program)>();
+            for (var p = ptt + from; p + 4 <= ptt + to && p + 4 <= vts.Length; p += 4)
+                parts.Add((BinaryPrimitives.ReadUInt16BigEndian(vts.AsSpan(p)), BinaryPrimitives.ReadUInt16BigEndian(vts.AsSpan(p + 2))));
+            var pgcCount = BinaryPrimitives.ReadUInt16BigEndian(vts.AsSpan(pgci));
+            var lengths = new List<TimeSpan>();
+            for (var i = 0; i < parts.Count; i++)
+            {
+                var (chain, program) = parts[i];
+                if (chain < 1 || chain > pgcCount) return [];
+                var at = pgci + (int)BinaryPrimitives.ReadUInt32BigEndian(vts.AsSpan(pgci + 8 + 8 * (chain - 1) + 4));
+                int programs = vts[at + 2], cells = vts[at + 3];
+                var map = at + BinaryPrimitives.ReadUInt16BigEndian(vts.AsSpan(at + 0xE6));
+                var table = at + BinaryPrimitives.ReadUInt16BigEndian(vts.AsSpan(at + 0xE8));
+                if (program < 1 || program > programs || map == at || table == at) return [];
+                var lastProgram = i + 1 < parts.Count && parts[i + 1].Chain == chain && parts[i + 1].Program > program
+                    ? parts[i + 1].Program - 1
+                    : programs;
+                int firstCell = vts[map + program - 1];
+                var lastCell = lastProgram < programs ? vts[map + lastProgram] - 1 : cells;
+                var total = TimeSpan.Zero;
+                for (var c = firstCell; c <= lastCell && c <= cells; c++)
+                {
+                    var cell = vts.AsSpan(table + 24 * (c - 1), 24);
+                    // Angle blocks (type 01 in bits 5-4): the first angle's cell (mode 01) stands for the block.
+                    var (mode, type) = ((cell[0] >> 6) & 3, (cell[0] >> 4) & 3);
+                    if (type == 1 && mode is 2 or 3) continue;
+                    total += PlaybackTime(cell[4..8]);
+                }
+                lengths.Add(total);
+            }
+            return lengths;
+        }
+        catch (Exception e) when (e is ArgumentOutOfRangeException or IndexOutOfRangeException)
+        {
+            return []; // a short or odd IFO: the lengths just aren't shown
+        }
     }
 
     /// <summary>A program chain's playback time: hours, minutes, seconds in BCD, then frames (BCD, the top two bits the rate: 1 is 25, 3 is 30).</summary>

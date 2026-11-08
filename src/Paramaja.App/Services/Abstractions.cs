@@ -23,6 +23,8 @@ public interface IDialogService
     Task ShowSettingsAsync();
     void OpenFolder(string path);
     Task CopyToClipboardAsync(string text);
+    /// <summary>A yes / no question; true for <paramref name="yes"/>.</summary>
+    Task<bool> ConfirmAsync(string title, string message, string yes);
 }
 
 public sealed class AvaloniaDispatcher : IUiDispatcher

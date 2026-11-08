@@ -17,13 +17,14 @@ public class Prompt9RipTests
         Assert.DoesNotContain("-c:v", args);
     }
 
+    // 1.12.0: x264 deinterlaces too (BWDIF to 50p, at CRF 14), in the field order found; see Prompt10CoreTests.
     [Fact]
-    public void X264_keeps_interlaced_video_interlaced_with_the_discs_field_order()
+    public void X264_deinterlaces_interlaced_video_to_double_rate_in_its_field_order()
     {
         Assert.Equal(["-c:v", "libx264", "-preset", "slow", "-crf", "16"], DvdRipper.VideoArguments(DvdVideo.X264, VideoScan.Progressive));
-        Assert.Equal(["-c:v", "libx264", "-preset", "slow", "-crf", "16", "-flags:v", "+ilme+ildct", "-x264-params", "tff=1"],
+        Assert.Equal(["-filter:v", "bwdif=mode=send_field:parity=tff:deint=all", "-c:v", "libx264", "-preset", "slow", "-crf", "14"],
             DvdRipper.VideoArguments(DvdVideo.X264, VideoScan.TopFieldFirst));
-        Assert.Equal("bff=1", DvdRipper.VideoArguments(DvdVideo.X264, VideoScan.BottomFieldFirst).Last());
+        Assert.Equal("bwdif=mode=send_field:parity=bff:deint=all", DvdRipper.VideoArguments(DvdVideo.X264, VideoScan.BottomFieldFirst).ElementAt(1));
     }
 
     [Fact]
@@ -31,7 +32,7 @@ public class Prompt9RipTests
     {
         Assert.Equal(["-c:v", "libx265", "-preset", "slow", "-crf", "18", "-x265-params", "no-sao=1:aq-mode=3:log-level=error"],
             DvdRipper.VideoArguments(DvdVideo.X265, VideoScan.Progressive));
-        Assert.Equal(["-filter:v", "bwdif=mode=send_field:parity=auto:deint=all",
+        Assert.Equal(["-filter:v", "bwdif=mode=send_field:parity=tff:deint=all",
                 "-c:v", "libx265", "-preset", "slow", "-crf", "16", "-x265-params", "no-sao=1:aq-mode=3:log-level=error"],
             DvdRipper.VideoArguments(DvdVideo.X265, VideoScan.TopFieldFirst));
     }
@@ -42,7 +43,7 @@ public class Prompt9RipTests
         var o = Title3 with { Video = DvdVideo.X265 };
         var args = DvdRipper.MkvArguments(o, preindex: false, lpcm: [0], "Concert", "/out/Concert.mkv", VideoScan.TopFieldFirst).ToList();
         Assert.Equal(["-map", "0", "-c", "copy", "-c:a:0", "flac", "-compression_level:a:0", "8",
-            "-filter:v", "bwdif=mode=send_field:parity=auto:deint=all", "-c:v", "libx265", "-preset", "slow", "-crf", "16",
+            "-filter:v", "bwdif=mode=send_field:parity=tff:deint=all", "-c:v", "libx265", "-preset", "slow", "-crf", "16",
             "-x265-params", "no-sao=1:aq-mode=3:log-level=error", "-metadata", "title=Concert", "-f", "matroska", "/out/Concert.mkv"],
             args.SkipWhile(a => a != "-map"));
     }

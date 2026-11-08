@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Platform.Storage;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Paramaja.App.Services;
@@ -21,6 +22,39 @@ public partial class SettingsWindow : Window
             grid.Children.Add(label);
             return grid;
         });
+    }
+
+    private ViewModels.MainViewModel? Vm => DataContext as ViewModels.MainViewModel;
+
+    private static readonly Avalonia.Platform.Storage.FilePickerFileType SettingsFiles = new("Paramaja settings")
+    {
+        Patterns = ["*.json"],
+    };
+
+    private async void OnExportSettings(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var file = await StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+        {
+            Title = "Export settings",
+            SuggestedFileName = Paramaja.Core.Settings.SettingsStore.ExportName,
+            DefaultExtension = "json",
+            FileTypeChoices = [SettingsFiles],
+        });
+        if (file?.TryGetLocalPath() is { } path) vm.ExportSettings(path);
+    }
+
+    private async void OnImportSettings(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+        {
+            Title = "Import settings",
+            AllowMultiple = false,
+            FileTypeFilter = [SettingsFiles, Avalonia.Platform.Storage.FilePickerFileTypes.All],
+        });
+        // Picked on purpose, so not asked again.
+        if (files.FirstOrDefault()?.TryGetLocalPath() is { } path) await vm.ImportSettingsAsync(path, ask: false);
     }
 
     private async void OnCopyVersion(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

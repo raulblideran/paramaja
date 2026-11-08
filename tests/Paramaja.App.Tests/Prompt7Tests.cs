@@ -207,9 +207,12 @@ public class Prompt7ViewModelTests
     {
         // MEGA's desktop app streams at http://127.0.0.1:4443/…: its server stalled when a second
         // client (yt-dlp, asked for qualities) read the file while mpv played it.
+        // 1.12.0: read ahead by the engine, which is then the only one reading the link.
         using var r = new Rig();
+        r.Torrents.OnReadAhead = _ => new MegaInfo(0, "MJ in Cork 1988_02.mp4", 1000, "http://127.0.0.1:9/proxy/0/MJ%20in%20Cork%201988_02.mp4");
         await r.Vm.OpenInputAsync("http://127.0.0.1:4443/7dhGXQwR/MJ%20in%20Cork%201988_02.mp4");
-        Assert.Contains("Open http://127.0.0.1:4443/7dhGXQwR/MJ%20in%20Cork%201988_02.mp4 [stream]", r.Player.Calls);
+        Assert.Equal(["ReadAhead http://127.0.0.1:4443/7dhGXQwR/MJ%20in%20Cork%201988_02.mp4"], r.Torrents.Calls.Where(c => !c.StartsWith("Dispose")));
+        Assert.Contains("Open http://127.0.0.1:9/proxy/0/MJ%20in%20Cork%201988_02.mp4 MJ in Cork 1988_02.mp4 [stream]", r.Player.Calls);
         r.Player.RaiseState("stream-heights"); // none: yt-dlp never ran for it
         Assert.False(r.Vm.HasStreamQualities);
     }

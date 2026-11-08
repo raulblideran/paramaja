@@ -131,7 +131,7 @@
         <StackPanel Spacing="10" IsVisible="{Binding IsDvd}">
           <TextBlock Classes="muted" FontSize="12" Text="{Binding Source}" TextWrapping="Wrap" />
           <StackPanel Orientation="Horizontal" Spacing="16">
-            <RadioButton x:Name="MkvMode" GroupName="dvdmode" Content="One title as MKV" IsEnabled="{Binding CanMkv}"
+            <RadioButton x:Name="MkvMode" GroupName="dvdmode" Content="A title as MKV" IsEnabled="{Binding CanMkv}"
                          IsChecked="{Binding IsMkv, Mode=OneWay}" Click="OnMkvMode" />
             <!-- A VIDEO_TS folder is decrypted already: only the MKV is offered for one. -->
             <RadioButton x:Name="DecryptMode" GroupName="dvdmode" Content="The VIDEO__TS folder, decrypted" IsEnabled="{Binding CanDecrypt}"
@@ -145,11 +145,37 @@
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
+          <!-- The title's chapters: all of it, or the ones ticked, in one MKV or one per chapter. -->
+          <StackPanel x:Name="ChapterOptions" Spacing="6" IsVisible="{Binding ShowChapters}">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+              <TextBlock x:Name="ChaptersSummary" Text="{Binding ChaptersSummary}" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Classes="ghost" Content="All" Command="{Binding AllChaptersCommand}" />
+              <Button Grid.Column="2" Classes="ghost" Content="None" Command="{Binding NoChaptersCommand}" />
+            </Grid>
+            <ListBox x:Name="ChapterList" ItemsSource="{Binding Chapters}" MaxHeight="170">
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:RipChapterRow">
+                  <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" MinWidth="190" />
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <StackPanel Orientation="Horizontal" Spacing="16">
+              <RadioButton x:Name="OneFile" GroupName="chapterfiles" Content="One file"
+                           IsChecked="{Binding !ChapterFiles, Mode=OneWay}" Click="OnOneFile" />
+              <RadioButton x:Name="FilePerChapter" GroupName="chapterfiles" Content="One file per chapter"
+                           IsChecked="{Binding ChapterFiles, Mode=OneWay}" Click="OnFilePerChapter" />
+            </StackPanel>
+          </StackPanel>
           <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" IsVisible="{Binding IsMkv}">
             <TextBlock Text="Video" VerticalAlignment="Center" />
             <ComboBox x:Name="VideoCodec" Grid.Column="1" HorizontalAlignment="Stretch" SelectedIndex="{Binding DvdVideoIndex}">
               <ComboBoxItem Content="Copy: the disc's MPEG-2 as it is (lossless)" />
-              <ComboBoxItem Content="H.264 (x264): looks the same, about ⅔ the size; interlaced stays interlaced"
+              <ComboBoxItem Content="H.264 (x264): looks the same in less space; interlaced becomes 50p"
                             IsEnabled="{Binding HasX264}" ToolTip.ShowOnDisabled="True" ToolTip.Tip="Needs FFmpeg with x264" />
               <ComboBoxItem Content="H.265 (x265): looks the same, about half the size; interlaced becomes 50p"
                             IsEnabled="{Binding HasX265}" ToolTip.ShowOnDisabled="True" ToolTip.Tip="Needs FFmpeg with x265" />

@@ -24,6 +24,8 @@ public interface IPlayer : IDisposable
     void GoToChapter(int index);
     void StepChapter(int delta);
     void SelectTitle(int id);
+    /// <summary>The playlist's previous (-1) or next (+1) file: a folder's, or several dropped. Discs have none.</summary>
+    void PlaylistStep(int delta);
 
     /// <summary>The disc has menus (DVD, or a Blu-ray with HDMV menus).</summary>
     bool HasDiscMenu { get; }

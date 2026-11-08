@@ -18,6 +18,11 @@ public static partial class Win32Pointer
     [LibraryImport("user32.dll")]
     private static partial IntPtr SetCursor(IntPtr cursor);
 
+    [LibraryImport("user32.dll", EntryPoint = "LoadCursorW")]
+    private static partial IntPtr LoadCursor(IntPtr instance, IntPtr name);
+
+    private const int IdcArrow = 32512;
+
     private static bool _hidden;
 
     /// <summary>On the UI thread. <paramref name="videoHosts"/>: the windows the engines' video windows are inside. Nothing outside Windows.</summary>
@@ -45,6 +50,9 @@ public static partial class Win32Pointer
         else
         {
             for (var i = 0; i < 8 && ShowCursor(true) < 0; i++) { }
+            // The count alone leaves the null shape set above until a window sets one, and over the
+            // video that's the engine's window, which may not: the arrow, now.
+            SetCursor(LoadCursor(IntPtr.Zero, IdcArrow));
         }
     }
 }

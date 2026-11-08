@@ -157,7 +157,7 @@ public sealed class PlayerService : IPlayer
             _mpv.ObserveFlag(p);
         foreach (var p in new[] { "audio-params/channel-count", "audio-out-params/channel-count", "audio-params/samplerate",
                      "audio-out-params/samplerate", "video-params/w",
-                     "video-params/h", "track-list/count", "chapter", "chapter-list/count", "current-edition" })
+                     "video-params/h", "track-list/count", "chapter", "chapter-list/count", "current-edition", "playlist-count", "playlist-pos" })
             _mpv.ObserveLong(p);
         foreach (var p in new[] { "media-title", "path", "hwdec-current", "video-codec", "video-params/gamma",
                      "video-params/primaries", "deinterlace", "vf", "video-format", "current-vo" })
@@ -241,6 +241,8 @@ public sealed class PlayerService : IPlayer
                 break;
             case "track-list/count": RefreshTracks(); break;
             case "chapter": s.Chapter = ToInt(value); break;
+            case "playlist-count": s.PlaylistCount = ToInt(value) ?? 0; break;
+            case "playlist-pos": s.PlaylistPos = ToInt(value) ?? -1; break;
             case "chapter-list/count" or "current-edition": RefreshChapters(); break;
             case "media-title": s.Title = value as string; break;
             case "path": s.Path = value as string; break;
@@ -976,6 +978,9 @@ public sealed class PlayerService : IPlayer
     public void GoToChapter(int index) => _mpv.TrySetProperty("chapter", index.ToString(CultureInfo.InvariantCulture));
 
     /// <summary>Next (+1) or previous (-1) chapter; at the first chapter, back to its start.</summary>
+    /// <summary>The previous or next file of the playlist (a folder's); nothing past either end.</summary>
+    public void PlaylistStep(int delta) => _mpv.TryCommand(delta < 0 ? "playlist-prev" : "playlist-next");
+
     public void StepChapter(int delta) => _mpv.TryCommand("add", "chapter", delta.ToString(CultureInfo.InvariantCulture));
 
     /// <summary>Plays another title of the disc (an mpv edition), or another area of an SACD.</summary>

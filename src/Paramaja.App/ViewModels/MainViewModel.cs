@@ -288,7 +288,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         "duration", "pause", "mute", "volume", "paused-for-cache", "media-title", "deinterlace-active",
         "hwdec-current", "video-params/gamma", "hardware-decoding", "chapter", "video-params/w",
         "audio-params/channel-count", "audio-params/samplerate", "video-format", "video-codec", "stereo-channel", "has-video", "stream-starting",
-        "video-params/aspect", "picture-fit", "stream-heights",
+        "video-params/aspect", "picture-fit", "stream-heights", "playlist-count",
     ];
 
     /// <summary>Back to the disc's root menu (the Menu button).</summary>
@@ -331,7 +331,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case "media-title": MediaTitle = s.Title ?? ""; break;
             case "video-format" or "video-codec": UpdateCodecBadge(); break;
             case "stereo-channel": OnPropertyChanged(nameof(StereoChannelIndex)); break;
-            case "hwdec-current": DecoderBadge = s.IsHardwareDecoding ? $"HW · {s.HwdecCurrent}" : "SW"; break;
+            case "hwdec-current": UpdateVideoBadges(); break;
             case "video-params/gamma" or "video-params/primaries": UpdateHdrBadge(); break;
             case "hardware-decoding":
                 OnPropertyChanged(nameof(HasVideoSwitches));
@@ -339,7 +339,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(HardwareDecoding));
                 break;
             case "chapter": MarkCurrentChapter(); break;
-            case "video-params/h" or "video-params/w": ResolutionBadge = ResolutionLabel(s.VideoWidth, s.VideoHeight); break;
+            case "playlist-count" or "playlist-pos": OnPropertyChanged(nameof(HasPlaylist)); break;
+            case "video-params/h" or "video-params/w": UpdateVideoBadges(); break;
             case "audio-params/channel-count" or "audio-out-params/channel-count" or "audio-params/samplerate"
                 or "audio-out-params/samplerate":
                 UpdateAudioBadge();
@@ -403,7 +404,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool HardwareDecodingApplies => _player?.State.HardwareDecodingApplies == true;
 
-    /// <summary>Settings → Developer has a switch for the playing video (deinterlacing or hardware decoding).</summary>
+    /// <summary>Settings → Video has a switch for the playing video (deinterlacing or hardware decoding).</summary>
     public bool HasVideoSwitches => IsInterlacedVideo || HardwareDecodingApplies;
 
     /// <summary>Audio alone (a music file, an Audio CD, an SACD): no frames to step through, no picture to shape.</summary>
@@ -413,6 +414,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(IsAudioOnly));
         OnPictureChanged();
+        UpdateVideoBadges();
+    }
+
+    /// <summary>
+    /// The picture's badges (resolution, decoder): none for audio alone. A song's cover is a
+    /// picture to mpv (a FLAC's 1400 px cover read as "1440p", decoded in "SW").
+    /// </summary>
+    private void UpdateVideoBadges()
+    {
+        var s = _player?.State;
+        var picture = s is not null && !IsAudioOnly;
+        ResolutionBadge = picture ? ResolutionLabel(s!.VideoWidth, s.VideoHeight) : "";
+        DecoderBadge = !picture || string.IsNullOrEmpty(s!.HwdecCurrent) && s.VideoWidth is null ? ""
+            : s.IsHardwareDecoding ? $"HW · {s.HwdecCurrent}" : "SW";
     }
 
     internal void UpdateHdrBadge()
@@ -470,6 +485,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             InputKind.AudioCd when playing => ("CD", "Audio CD · 44.1 kHz / 16-bit"),
             InputKind.Sacd when playing => ("SACD", SacdTip()),
             InputKind.Dvd when codec.Length > 0 => ("DVD", !string.IsNullOrEmpty(s?.VideoCodec) ? s.VideoCodec! : $"DVD ({codec})"),
+            // A song's cover isn't a video: no codec badge for it.
+            _ when IsAudioOnly => ("", ""),
             _ => (codec, !string.IsNullOrEmpty(s?.VideoCodec) ? s.VideoCodec! : codec),
         };
     }
@@ -558,6 +575,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 return;
             case InputKind.Mega:
                 await OpenMegaAsync(value);
+                return;
+            case InputKind.MegaApp:
+                await OpenMegaAppAsync(value);
                 return;
         }
         CloseTorrent();
@@ -702,6 +722,39 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// A link from MEGA's desktop app ("Stream from MEGA"). It sends about 4-5 MB/s per
+    /// connection, less than a 4K film needs, so the engine reads it six chunks at once and mpv
+    /// reads the engine. If the engine can't (no byte ranges), mpv reads the link itself.
+    /// </summary>
+    private async Task OpenMegaAppAsync(string link)
+    {
+        if (IsResolving) return;
+        var name = Uri.TryCreate(link, UriKind.Absolute, out var uri) ? Uri.UnescapeDataString(uri.Segments[^1]) : link;
+        string url = link;
+        try
+        {
+            IsResolving = true;
+            ShowStatus("Opening the MEGA app's stream…", sticky: true);
+            EnsureEngine();
+            var info = await _torrents.AddReadAheadAsync(link, TimeSpan.FromSeconds(15));
+            (url, name) = (info.StreamUrl, info.Name);
+        }
+        catch (TorrentException)
+        {
+            // Played directly, as before 1.12.
+        }
+        finally
+        {
+            IsResolving = false;
+        }
+        CloseTorrent();
+        SetSource(MediaSource.Mega);
+        UseEngine(_mpvPlayer!);
+        _player!.Open(url, name, streaming: true);
+        ShowStatus($"Streaming {name} from the MEGA app");
+    }
+
     private bool _selectingTorrentFile;
 
     private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -722,8 +775,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         return true;
     }
 
-    [RelayCommand] private void PreviousFile() => StepTorrentFile(-1);
-    [RelayCommand] private void NextFile() => StepTorrentFile(1);
 
     partial void OnSelectedTorrentFileChanged(TorrentFileItem? value)
     {
@@ -941,6 +992,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task DropAsync(IReadOnlyList<string> paths, string? text)
     {
+        // A settings file (exported, or another install's settings.json): taken over, if wanted.
+        if (paths.Count == 1 && SettingsStore.IsSettingsFile(paths[0]))
+        {
+            await ImportSettingsAsync(paths[0], ask: true);
+            return;
+        }
         var media = paths.Where(p => !IsSubtitle(p)).ToList();
         var subtitles = paths.Where(IsSubtitle).ToList();
         if (paths.Count == 0)
@@ -1025,7 +1082,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             _player.FallBackToFastRendering();
             _health.Reset(); // judge the new profile on its own frames
-            const string msg = "Frames were dropping, so Paramaja switched to Fast rendering (Settings → Developer → Rendering quality)";
+            const string msg = "Frames were dropping, so Paramaja switched to Fast rendering (Settings → Video → Rendering quality)";
             _player.ShowText(msg, 5000);
             ShowStatus(msg);
         }

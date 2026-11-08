@@ -514,6 +514,9 @@ public sealed partial class VlcDiscPlayer : IPlayer
         else _mp.Chapter = index;
     }
 
+    /// <summary>A disc has no playlist of files: its titles and chapters have their own buttons.</summary>
+    public void PlaylistStep(int delta) { }
+
     /// <summary>Next (+1) or previous (-1) chapter, or CD track; a few seconds into a track, back goes to its start.</summary>
     public void StepChapter(int delta)
     {
@@ -539,6 +542,9 @@ public sealed partial class VlcDiscPlayer : IPlayer
         Set("video-params/aspect", () => State.DisplayAspect = null);
         Set("video-format", () => State.VideoFormat = null);
         Set("audio-params/channel-count", () => State.SourceChannels = null);
+        // The last disc's picture size, or an Audio CD after a DVD shows a resolution.
+        Set("video-params/w", () => State.VideoWidth = null);
+        Set("video-params/h", () => State.VideoHeight = null);
     }
 
     // ---- Tracks -------------------------------------------------------------------------------

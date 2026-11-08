@@ -24,6 +24,10 @@ public sealed class PlayerState
     public bool DeinterlaceActive { get; set; }
     /// <summary>The current chapter's index, when the video has chapters.</summary>
     public int? Chapter { get; set; }
+    /// <summary>mpv's playlist: a folder's files, or several dropped ones (1 for a single file).</summary>
+    public int PlaylistCount { get; set; }
+    /// <summary>The entry playing, from 0; -1 when none.</summary>
+    public int PlaylistPos { get; set; } = -1;
     /// <summary>"BWDIF" while deinterlacing, otherwise null.</summary>
     public string? DeinterlaceFilter { get; set; }
     /// <summary>The playing video is interlaced: only then is there a deinterlacing switch.</summary>

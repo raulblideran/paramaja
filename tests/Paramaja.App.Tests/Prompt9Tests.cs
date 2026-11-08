@@ -198,7 +198,7 @@ public class Prompt9RipDialogTests
         Assert.Contains("MPEG-2 video as it is", vm.MkvNote);
         vm.DvdVideoIndex = 1;
         Assert.Equal(DvdVideo.X264, vm.DvdOptions()!.Video);
-        Assert.Contains("interlaced video stays interlaced", vm.MkvNote);
+        Assert.Contains("deinterlaced with BWDIF", vm.MkvNote); // 1.12.0: x264 too
         vm.DvdVideoIndex = 2;
         Assert.Equal(DvdVideo.X265, vm.DvdOptions()!.Video);
         Assert.Contains("50 frames a second", vm.MkvNote);

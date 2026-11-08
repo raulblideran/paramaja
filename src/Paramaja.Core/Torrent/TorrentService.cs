@@ -10,6 +10,11 @@ public interface ITorrentService : IDisposable
     Task<TorrentInfo> AddAsync(string magnet, TimeSpan timeout, CancellationToken ct = default);
     /// <summary>Resolves a MEGA file link to a local URL that streams it decrypted.</summary>
     Task<MegaInfo> AddMegaAsync(string link, TimeSpan timeout, CancellationToken ct = default);
+    /// <summary>
+    /// A direct link (MEGA's desktop app) read several chunks at once: a local URL serving the
+    /// same bytes. Throws if the link doesn't serve byte ranges.
+    /// </summary>
+    Task<MegaInfo> AddReadAheadAsync(string link, TimeSpan timeout, CancellationToken ct = default);
     string SelectFile(int torrentId, int fileIndex);
     TorrentStats GetStats(int torrentId);
     void Remove(int torrentId, bool deleteFiles);
@@ -54,6 +59,13 @@ public sealed class TorrentService : ITorrentService
         EnsureStarted();
         return Task.Run(() => Unwrap<MegaInfo>(
             TorrentNative.Take(TorrentNative.nt_mega_add(link, (ulong)timeout.TotalMilliseconds))), ct);
+    }
+
+    public Task<MegaInfo> AddReadAheadAsync(string link, TimeSpan timeout, CancellationToken ct = default)
+    {
+        EnsureStarted();
+        return Task.Run(() => Unwrap<MegaInfo>(
+            TorrentNative.Take(TorrentNative.nt_proxy_add(link, (ulong)timeout.TotalMilliseconds))), ct);
     }
 
     public string SelectFile(int torrentId, int fileIndex)

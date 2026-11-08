@@ -4,6 +4,10 @@
 //!   librqbit `FileStream`, which fetches pieces in order ahead of its read position,
 //!   so seeking in the player re-prioritises the download.
 //! * `GET|HEAD /mega/{id}` — a MEGA file, fetched from MEGA's CDN and decrypted on the fly.
+//! * `GET|HEAD /proxy/{id}/{name}` — a direct link (MEGA's desktop app), read ahead.
+//!
+//! MEGA and direct links are fetched several byte-range chunks at once (`parallel`): one
+//! connection to MEGA is slower than a 4K remux.
 
 use std::{
     net::{Ipv4Addr, SocketAddr},
@@ -18,23 +22,24 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use futures::StreamExt;
 use librqbit::{Session, api::TorrentIdOrHash};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio_util::io::ReaderStream;
 
-use crate::{mega, range, selection};
+use crate::{mega, parallel, proxy, range, selection};
 
 #[derive(Clone)]
 pub struct AppState {
     pub session: Arc<Session>,
     pub mega: Arc<mega::MegaRegistry>,
+    pub proxy: Arc<proxy::ProxyRegistry>,
 }
 
 pub async fn serve(state: AppState, port: u16) -> anyhow::Result<SocketAddr> {
     let app = Router::new()
         .route("/stream/{id}/{file}", get(stream).head(stream))
         .route("/mega/{id}", get(mega_stream).head(mega_stream))
+        .route("/proxy/{id}/{name}", get(proxy_stream).head(proxy_stream))
         .route("/health", get(|| async { "ok" }))
         .with_state(state);
     let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port)).await?;
@@ -148,7 +153,7 @@ async fn mega_stream(
 }
 
 async fn mega_inner(
-    registry: &mega::MegaRegistry,
+    registry: &Arc<mega::MegaRegistry>,
     id: usize,
     method: &Method,
     headers: &HeaderMap,
@@ -156,8 +161,7 @@ async fn mega_inner(
     let entry = registry
         .get(id)
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("no MEGA file {id}")))?;
-    let mut file = entry.file.lock().unwrap().clone();
-
+    let file = entry.file.lock().unwrap().clone();
     let p = match plan(file.size, &file.name, headers) {
         Ok(p) => p,
         Err(resp) => return Ok(resp),
@@ -165,40 +169,45 @@ async fn mega_inner(
     if method == Method::HEAD || p.body_len == 0 {
         return Ok(p.builder.body(Body::empty()).unwrap());
     }
-    let (start, end) = (p.start, p.start + p.body_len - 1);
-
-    // MEGA's CDN takes the byte range as a path suffix.
-    let fetch = |url: String| registry.client.get(format!("{url}/{start}-{end}")).send();
-    let bad_gateway = |e: reqwest::Error| (StatusCode::BAD_GATEWAY, format!("MEGA download failed: {e}"));
-    let mut upstream = fetch(file.url.clone()).await.map_err(bad_gateway)?;
-    if matches!(upstream.status().as_u16(), 403 | 404 | 410) {
-        // Download URLs expire after a while; ask for a fresh one once.
-        file = registry
-            .refresh(&entry)
-            .await
-            .map_err(|e| (StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
-        upstream = fetch(file.url.clone()).await.map_err(bad_gateway)?;
-    }
-    match upstream.status().as_u16() {
-        200 | 206 => {}
-        509 => {
-            return Err((
-                StatusCode::from_u16(509).unwrap(),
-                "MEGA transfer quota exceeded; try again later".into(),
-            ));
+    let source = Arc::new(mega::MegaSource { registry: registry.clone(), entry });
+    let body = parallel::body(source, p.start, p.start + p.body_len - 1).await.map_err(|e| {
+        if e.downcast_ref::<mega::QuotaExceeded>().is_some() {
+            (StatusCode::from_u16(509).unwrap(), e.to_string())
+        } else {
+            (StatusCode::BAD_GATEWAY, format!("MEGA download failed: {e:#}"))
         }
-        s => return Err((StatusCode::BAD_GATEWAY, format!("MEGA returned HTTP {s}"))),
-    }
+    })?;
+    Ok(p.builder.body(Body::from_stream(body)).unwrap())
+}
 
-    let mut cipher = mega::decryptor_at(&entry.link, start);
-    let body = upstream.bytes_stream().map(move |chunk| {
-        chunk
-            .map(|b| {
-                let mut v = b.to_vec();
-                mega::decrypt_in_place(&mut cipher, &mut v);
-                bytes::Bytes::from(v)
-            })
-            .map_err(std::io::Error::other)
-    });
+async fn proxy_stream(
+    State(state): State<AppState>,
+    Path((id, _name)): Path<(usize, String)>,
+    method: Method,
+    headers: HeaderMap,
+) -> Response {
+    into_response(proxy_inner(&state.proxy, id, &method, &headers).await)
+}
+
+async fn proxy_inner(
+    registry: &proxy::ProxyRegistry,
+    id: usize,
+    method: &Method,
+    headers: &HeaderMap,
+) -> Result<Response, HttpError> {
+    let entry = registry
+        .get(id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("no link {id}")))?;
+    let p = match plan(entry.size, &entry.name, headers) {
+        Ok(p) => p,
+        Err(resp) => return Ok(resp),
+    };
+    if method == Method::HEAD || p.body_len == 0 {
+        return Ok(p.builder.body(Body::empty()).unwrap());
+    }
+    let source = Arc::new(registry.source(entry));
+    let body = parallel::body(source, p.start, p.start + p.body_len - 1)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("the link failed: {e:#}")))?;
     Ok(p.builder.body(Body::from_stream(body)).unwrap())
 }

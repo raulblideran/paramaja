@@ -28,6 +28,7 @@ public sealed class FakePlayer(PlayerSettings settings) : IPlayer
     public void RaiseChapters() => ChaptersChanged?.Invoke();
     public void GoToChapter(int index) => Log($"GoToChapter {index}");
     public void StepChapter(int delta) => Log($"StepChapter {delta}");
+    public void PlaylistStep(int delta) => Log($"PlaylistStep {delta}");
     public void SelectTitle(int id) => Log($"SelectTitle {id}");
     public bool HasDiscMenu { get; set; }
     public bool IsInDiscMenu { get; set; }
@@ -175,6 +176,18 @@ public sealed class FakeTorrents : ITorrentService
         return Task.FromResult(OnMega(link));
     }
 
+    /// <summary>Null makes the read-ahead refuse the link (no byte ranges).</summary>
+    public Func<string, MegaInfo?> OnReadAhead { get; set; } =
+        _ => new MegaInfo(0, "Film (2026).mkv", 1000, "http://127.0.0.1:9/proxy/0/Film%20%282026%29.mkv");
+
+    public Task<MegaInfo> AddReadAheadAsync(string link, TimeSpan timeout, CancellationToken ct = default)
+    {
+        Calls.Add($"ReadAhead {link}");
+        return OnReadAhead(link) is { } info
+            ? Task.FromResult(info)
+            : Task.FromException<MegaInfo>(new TorrentException("the link doesn't serve byte ranges"));
+    }
+
     public string SelectFile(int torrentId, int fileIndex)
     {
         Calls.Add($"Select {torrentId} {fileIndex}");
@@ -188,6 +201,15 @@ public sealed class FakeTorrents : ITorrentService
 
 public sealed class FakeDialogs : IDialogService
 {
+    /// <summary>What a question gets answered; the questions asked are kept.</summary>
+    public bool Confirm { get; set; } = true;
+    public List<string> Questions { get; } = [];
+    public Task<bool> ConfirmAsync(string title, string message, string yes)
+    {
+        Questions.Add(message);
+        return Task.FromResult(Confirm);
+    }
+
     public string? NextFile { get; set; }
     public string? NextSubtitle { get; set; }
     public string? NextLink { get; set; }

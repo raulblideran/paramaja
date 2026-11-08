@@ -19,6 +19,15 @@ public sealed partial class RipTrackRow(int number, string title, string artist)
     [ObservableProperty] private string _artist = artist;
 }
 
+/// <summary>A chapter of the DVD title to rip, ticked or not.</summary>
+public sealed partial class RipChapterRow(int number, TimeSpan? length) : ObservableObject
+{
+    public int Number { get; } = number;
+    public TimeSpan? Length { get; } = length;
+    public string Label => Length is { } l ? $"Chapter {Number} · {RipDialogViewModel.Duration(l)}" : $"Chapter {Number}";
+    [ObservableProperty] private bool _isChecked = true;
+}
+
 /// <summary>
 /// The ripper's window: pick a drive (or, for a DVD, an image or folder), check the album's tags
 /// or the DVD's title, and start. An Audio CD is looked up on MusicBrainz and AccurateRip as it's
@@ -112,9 +121,72 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
     [NotifyCanExecuteChangedFor(nameof(StartCommand))]
     private DvdTitle? _selectedTitle;
 
+    /// <summary>The selected title's chapters, all ticked to begin with.</summary>
+    public ObservableCollection<RipChapterRow> Chapters { get; } = [];
+
+    /// <summary>Each ticked chapter as its own MKV (in a folder), rather than all of them in one.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ChaptersSummary))]
+    private bool _chapterFiles;
+
+    /// <summary>Chapters to choose from: the MKV of a title with more than one.</summary>
+    public bool ShowChapters => IsMkv && Chapters.Count > 1;
+
+    private IReadOnlyList<int> CheckedChapters => Chapters.Where(c => c.IsChecked).Select(c => c.Number).ToList();
+
+    /// <summary>"All 12 chapters · 1:05:12", "3 of 12 chapters · 12:34, as 3 files".</summary>
+    public string ChaptersSummary
+    {
+        get
+        {
+            var picked = Chapters.Where(c => c.IsChecked).ToList();
+            if (picked.Count == 0) return "No chapters ticked";
+            var count = picked.Count == Chapters.Count ? $"All {Chapters.Count} chapters" : $"{picked.Count} of {Chapters.Count} chapters";
+            var length = picked.All(c => c.Length is not null) ? $" · {Duration(TimeSpan.FromTicks(picked.Sum(c => c.Length!.Value.Ticks)))}" : "";
+            var files = ChapterFiles && picked.Count > 1 ? $", as {picked.Count} files" : "";
+            return count + length + files;
+        }
+    }
+
+    internal static string Duration(TimeSpan t) =>
+        t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss", CultureInfo.InvariantCulture) : t.ToString(@"m\:ss", CultureInfo.InvariantCulture);
+
+    partial void OnSelectedTitleChanged(DvdTitle? value)
+    {
+        foreach (var row in Chapters) row.PropertyChanged -= OnChapterTicked;
+        Chapters.Clear();
+        if (value is not null)
+            for (var c = 1; c <= value.Chapters; c++)
+            {
+                var row = new RipChapterRow(c, value.ChapterLength(c));
+                row.PropertyChanged += OnChapterTicked;
+                Chapters.Add(row);
+            }
+        OnPropertyChanged(nameof(ShowChapters));
+        OnPropertyChanged(nameof(ChaptersSummary));
+    }
+
+    private void OnChapterTicked(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(ChaptersSummary));
+        StartCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void AllChapters()
+    {
+        foreach (var c in Chapters) c.IsChecked = true;
+    }
+
+    [RelayCommand]
+    private void NoChapters()
+    {
+        foreach (var c in Chapters) c.IsChecked = false;
+    }
+
     /// <summary>0 MKV (one title), 1 the VIDEO_TS folder decrypted.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsMkv), nameof(MkvNote))]
+    [NotifyPropertyChangedFor(nameof(IsMkv), nameof(MkvNote), nameof(ShowChapters))]
     [NotifyCanExecuteChangedFor(nameof(StartCommand))]
     private int _dvdModeIndex;
 
@@ -171,15 +243,15 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
     public string MkvNote => Video switch
     {
         DvdVideo.X264 =>
-            "The video is encoded with x264 (CRF 16): it looks the same as the disc's in about two thirds of the space, and "
-            + "interlaced video stays interlaced, both fields as on the disc. Every audio and subtitle track keeps its language, "
-            + "the chapters are kept, LPCM audio becomes FLAC (the same audio bit for bit). x264 is quick: on a recent PC, a "
-            + "fraction of the film's length.",
+            "The video is encoded with x264 (CRF 16): it looks the same as the disc's in less space. Interlaced video is "
+            + "deinterlaced with BWDIF, as Paramaja plays DVDs: each field becomes a frame (50 a second, 59.94 for NTSC), so "
+            + "motion stays as smooth as on the disc, at CRF 14, in about three quarters of the space. Every audio and subtitle track keeps its language, the chapters are kept, "
+            + "LPCM audio becomes FLAC (the same audio bit for bit). x264 is quick: on a recent PC, a fraction of the film's length.",
         DvdVideo.X265 =>
-            "The video is encoded with x265 (CRF 18): it looks the same as the disc's in about half the space. HEVC can't keep "
-            + "interlaced video as it is, so interlaced video becomes 50 frames a second (BWDIF, as Paramaja plays DVDs), in "
-            + "about two thirds of the space: for an interlaced disc, x264 stays closer to it. Every audio and subtitle track and "
-            + "the chapters are kept (LPCM becomes FLAC). x265 is slow: about as long as the film, twice that for an interlaced one (twice the frames), longer on an older PC.",
+            "The video is encoded with x265 (CRF 18): it looks the same as the disc's in about half the space. Interlaced video "
+            + "is deinterlaced with BWDIF to 50 frames a second (59.94 for NTSC), at CRF 16, in about two thirds of the space. "
+            + "Every audio and subtitle track and the chapters are kept (LPCM becomes FLAC). x265 is slow: about as long as the "
+            + "film, twice that for an interlaced one (twice the frames), longer on an older PC.",
         _ =>
             "The longest title, the main film, is picked. The MKV keeps the MPEG-2 video as it is, every audio and subtitle track "
             + "with its language, and the chapters; LPCM audio becomes FLAC, the same audio bit for bit.",
@@ -216,6 +288,7 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
         Releases.Clear();
         Tracks.Clear();
         Titles.Clear();
+        SelectedTitle = null;
         Cover = null;
         CoverImage = null;
         Kind = kind;
@@ -355,7 +428,9 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
     private bool CanStart() => !IsBusy && !Main.IsRipping && Kind switch
     {
         RipDiscKind.Cd => _disc is not null && _drive is not null,
-        RipDiscKind.Dvd => _dvd is not null && (IsMkv ? CanMkv && CanEncode && SelectedTitle is not null : CanDecrypt && !IsFolderSource),
+        RipDiscKind.Dvd => _dvd is not null && (IsMkv
+            ? CanMkv && CanEncode && SelectedTitle is not null && (Chapters.Count == 0 || Chapters.Any(c => c.IsChecked))
+            : CanDecrypt && !IsFolderSource),
         _ => false,
     };
 
@@ -391,6 +466,9 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
             Mode = IsMkv ? DvdRipMode.Mkv : DvdRipMode.Decrypt,
             Video = IsMkv ? Video : DvdVideo.Copy,
             Title = SelectedTitle?.Number ?? dvd.MainTitle?.Number ?? 1,
+            // Every chapter in one file is the whole title, read as it always was.
+            Chapters = IsMkv && Chapters.Count > 1 && (ChapterFiles || Chapters.Any(c => !c.IsChecked)) ? CheckedChapters : null,
+            ChapterFiles = IsMkv && ChapterFiles,
             OutputRoot = DvdFolder,
             Ffmpeg = Ffmpeg,
             Ffprobe = Ffprobe,

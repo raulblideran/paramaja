@@ -96,6 +96,58 @@ public sealed class PlayerSettings
     public bool AutoLoadExternalSubtitles { get; set; } = true;
     public string PreferredSubtitleLanguages { get; set; } = "";
     public double SubtitleScale { get; set; } = 1.0;
+    /// <summary>The text subtitles' font family; empty for the default (sans-serif).</summary>
+    public string SubtitleFont { get; set; } = "";
+    public bool SubtitleBold { get; set; }
+    /// <summary>Colours as #RRGGBB.</summary>
+    public string SubtitleColor { get; set; } = DefaultSubtitleColor;
+    public string SubtitleBorderColor { get; set; } = DefaultSubtitleBorderColor;
+    /// <summary>The outline's thickness (mpv's sub-border-size, at 720p); 0 for none.</summary>
+    public double SubtitleBorderSize { get; set; } = DefaultSubtitleBorderSize;
+    /// <summary>The drop shadow's offset (mpv's sub-shadow-offset); 0 for none.</summary>
+    public double SubtitleShadow { get; set; }
+    /// <summary>A box behind the text, as TV subtitles have, instead of the outline.</summary>
+    public bool SubtitleBackground { get; set; }
+    /// <summary>The box's opacity, 0 to 1 (black).</summary>
+    public double SubtitleBackgroundOpacity { get; set; } = 0.6;
+    /// <summary>Where the subtitles sit: 100 at the bottom (mpv's sub-pos), less is higher up.</summary>
+    public int SubtitlePosition { get; set; } = 100;
+    /// <summary>Styled subtitles (ASS/SSA, anime's) take these settings too, instead of their own look.</summary>
+    public bool SubtitleStyleAss { get; set; }
+
+    public const string DefaultSubtitleColor = "#FFFFFF";
+    public const string DefaultSubtitleBorderColor = "#000000";
+    public const double DefaultSubtitleBorderSize = 2.5;
+
+    /// <summary>Puts every subtitle style setting back as it was out of the box.</summary>
+    public void ResetSubtitleStyle()
+    {
+        SubtitleScale = 1.0;
+        SubtitleFont = "";
+        SubtitleBold = false;
+        SubtitleColor = DefaultSubtitleColor;
+        SubtitleBorderColor = DefaultSubtitleBorderColor;
+        SubtitleBorderSize = DefaultSubtitleBorderSize;
+        SubtitleShadow = 0;
+        SubtitleBackground = false;
+        SubtitleBackgroundOpacity = 0.6;
+        SubtitlePosition = 100;
+        SubtitleStyleAss = false;
+    }
+
+    // The controls bar
+    /// <summary>
+    /// The controls bar's buttons the user chose to hide (<see cref="ControlIds"/>); empty shows
+    /// them all. Play and Settings always show.
+    /// </summary>
+    public List<string> HiddenControls { get; set; } = [];
+
+    /// <summary>The controls bar's buttons that can be hidden, in the bar's order.</summary>
+    public static readonly IReadOnlyList<string> ControlIds =
+    [
+        "files", "frames", "stop", "chapters", "volume", "badges", "discmenu", "chaptermenu", "subtitles", "audio", "video",
+        "screenshot", "download", "openlink", "open", "fullscreen",
+    ];
 
     // Playback
     public int SeekSeconds { get; set; } = 5;
@@ -107,6 +159,37 @@ public sealed class PlayerSettings
     public int TorrentMetadataTimeoutSeconds { get; set; } = 90;
     public int TorrentListenPort { get; set; }
     public bool TorrentUpnp { get; set; } = true;
+
+    /// <summary>What belongs to this machine rather than to the person: kept when settings come from another install.</summary>
+    public static readonly IReadOnlySet<string> MachineSettings = new HashSet<string>
+    {
+        nameof(PreferHighPerformanceGpu), nameof(ExclusiveAudio), nameof(DisplayFps), nameof(TorrentListenPort),
+    };
+
+    /// <summary>
+    /// Takes every setting from <paramref name="other"/> (another install's), except this
+    /// machine's own (<see cref="MachineSettings"/>). Copied into this object rather than
+    /// replacing it: both engines hold it.
+    /// </summary>
+    public void CopyFrom(PlayerSettings other)
+    {
+        foreach (var p in typeof(PlayerSettings).GetProperties())
+        {
+            if (!p.CanWrite || !p.CanRead || MachineSettings.Contains(p.Name)) continue;
+            var value = p.GetValue(other);
+            if (value is List<string> list) value = list.ToList();
+            p.SetValue(this, value);
+        }
+        Normalize();
+    }
+
+    /// <summary>"#RRGGBB" in capitals for a colour written as #rgb, #rrggbb or rrggbb; else the default.</summary>
+    public static string NormalColor(string? value, string fallback)
+    {
+        var v = (value ?? "").Trim().TrimStart('#');
+        if (v.Length == 3) v = string.Concat(v.Select(c => $"{c}{c}"));
+        return v.Length == 6 && v.All(Uri.IsHexDigit) ? "#" + v.ToUpperInvariant() : fallback;
+    }
 
     /// <summary>What <see cref="HdrMode"/> amounts to on a display that is (or isn't) in HDR mode.</summary>
     public HdrMode EffectiveHdrMode(bool displayIsHdr) => HdrMode switch
@@ -138,6 +221,14 @@ public sealed class PlayerSettings
         TorrentListenPort = Math.Clamp(TorrentListenPort, 0, 65535);
         PreferredAudioLanguages ??= "";
         PreferredSubtitleLanguages ??= "";
+        SubtitleFont = SubtitleFont?.Trim() ?? "";
+        SubtitleColor = NormalColor(SubtitleColor, DefaultSubtitleColor);
+        SubtitleBorderColor = NormalColor(SubtitleBorderColor, DefaultSubtitleBorderColor);
+        SubtitleBorderSize = Math.Clamp(SubtitleBorderSize, 0, 10);
+        SubtitleShadow = Math.Clamp(SubtitleShadow, 0, 10);
+        SubtitleBackgroundOpacity = Math.Clamp(SubtitleBackgroundOpacity, 0, 1);
+        SubtitlePosition = Math.Clamp(SubtitlePosition, 0, 150);
+        HiddenControls = (HiddenControls ?? []).Where(ControlIds.Contains).Distinct().ToList();
         GamutMapping = string.IsNullOrWhiteSpace(GamutMapping) ? "perceptual" : GamutMapping;
     }
 }

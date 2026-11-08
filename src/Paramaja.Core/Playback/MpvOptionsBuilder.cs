@@ -33,7 +33,7 @@ public static class MpvOptionsBuilder
     /// older than the bundled one, and playback shouldn't fail over these.
     /// </summary>
     public static readonly IReadOnlySet<string> OptionalOptions =
-        new HashSet<string> { "directory-filter-types", "display-fps-override", "d3d11-adapter", "audio-exts" };
+        new HashSet<string> { "directory-filter-types", "display-fps-override", "d3d11-adapter", "audio-exts", "sub-border-style" };
 
     /// <summary>The audio files an opened folder plays (mpv 0.41's list, plus DSD).</summary>
     public const string AudioExtensions = "aac,ac3,aiff,ape,au,dts,eac3,flac,m4a,mka,mp3,oga,ogg,ogm,opus,thd,wav,wma,wv,dsf,dff";
@@ -58,7 +58,9 @@ public static class MpvOptionsBuilder
             yield return P("wid", wid.ToString(CultureInfo.InvariantCulture));
             // On Linux the host window is an X11 (XWayland) window; mpv would otherwise
             // pick a Wayland surface of its own and ignore the embedding handle.
-            if (OperatingSystem.IsLinux()) yield return P("gpu-context", "x11vk");
+            // Vulkan first; where the GPU has no Vulkan driver the sandbox can reach (an NVIDIA
+            // driver newer than Flathub's matching GL extension), EGL / OpenGL instead.
+            if (OperatingSystem.IsLinux()) yield return P("gpu-context", "x11vk,x11egl");
         }
         // Our own UI handles input & controls; mpv's built-in OSC and bindings are off.
         yield return P("osc", "no");
@@ -320,16 +322,33 @@ public static class MpvOptionsBuilder
         if (!string.IsNullOrWhiteSpace(s.PreferredAudioLanguages)) yield return P("alang", s.PreferredAudioLanguages);
     }
 
+    /// <summary>Black at an opacity, as mpv writes colours with alpha: #AARRGGBB.</summary>
+    internal static string BoxColor(double opacity) => $"#{(int)Math.Round(Math.Clamp(opacity, 0, 1) * 255):X2}000000";
+
     /// <summary>mpv's base subtitle font size (at 720p); the size slider scales it.</summary>
     public const int SubtitleFontSize = 44;
 
+    /// <summary>
+    /// Subtitles: loading, languages and the text subtitles' look (font, colours, outline, shadow,
+    /// box, position). Styled ASS subtitles keep their own look unless asked (sub-ass-override
+    /// force); picture subtitles (DVD, Blu-ray, PGS) can't be restyled at all.
+    /// </summary>
     public static IEnumerable<KeyValuePair<string, string>> Subtitles(PlayerSettings s)
     {
         yield return P("sub-auto", s.AutoLoadExternalSubtitles ? "fuzzy" : "no");
         yield return P("sub-scale", F(s.SubtitleScale));
         yield return P("sub-font-size", SubtitleFontSize.ToString(CultureInfo.InvariantCulture));
-        yield return P("sub-border-size", "2.5");
-        yield return P("sub-ass-override", "no");
+        yield return P("sub-font", string.IsNullOrWhiteSpace(s.SubtitleFont) ? "sans-serif" : s.SubtitleFont);
+        yield return P("sub-bold", s.SubtitleBold ? "yes" : "no");
+        yield return P("sub-color", PlayerSettings.NormalColor(s.SubtitleColor, PlayerSettings.DefaultSubtitleColor));
+        yield return P("sub-border-color", PlayerSettings.NormalColor(s.SubtitleBorderColor, PlayerSettings.DefaultSubtitleBorderColor));
+        yield return P("sub-border-size", F(s.SubtitleBackground ? 0 : s.SubtitleBorderSize));
+        yield return P("sub-shadow-offset", F(s.SubtitleShadow));
+        // The box behind the text (mpv 0.38+; older ones keep the outline).
+        yield return P("sub-border-style", s.SubtitleBackground ? "background-box" : "outline-and-shadow");
+        yield return P("sub-back-color", s.SubtitleBackground ? BoxColor(s.SubtitleBackgroundOpacity) : "#00000000");
+        yield return P("sub-pos", s.SubtitlePosition.ToString(CultureInfo.InvariantCulture));
+        yield return P("sub-ass-override", s.SubtitleStyleAss ? "force" : "no");
         yield return P("embeddedfonts", "yes");
         if (!string.IsNullOrWhiteSpace(s.PreferredSubtitleLanguages)) yield return P("slang", s.PreferredSubtitleLanguages);
     }

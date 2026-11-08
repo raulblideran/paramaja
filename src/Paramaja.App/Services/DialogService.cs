@@ -82,6 +82,39 @@ public sealed class DialogService(Window owner, Func<MainViewModel> vm) : IDialo
         if (owner.Clipboard is { } c) await c.SetTextAsync(text);
     }
 
+    public async Task<bool> ConfirmAsync(string title, string message, string yes)
+    {
+        var dialog = new Window
+        {
+            Title = title,
+            Width = 460,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#15111A")),
+            Icon = owner.Icon,
+        };
+        var ok = new Button { Content = yes, Classes = { "accent" }, IsDefault = true };
+        var cancel = new Button { Content = "Cancel", IsCancel = true };
+        ok.Click += (_, _) => dialog.Close(true);
+        cancel.Click += (_, _) => dialog.Close(false);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20),
+            Spacing = 16,
+            Children =
+            {
+                new SelectableTextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new StackPanel
+                {
+                    Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 10,
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, ok },
+                },
+            },
+        };
+        return await dialog.ShowDialog<bool?>(owner) == true;
+    }
+
     public void OpenFolder(string path)
     {
         Directory.CreateDirectory(path);

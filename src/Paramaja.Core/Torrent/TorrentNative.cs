@@ -16,6 +16,9 @@ internal static partial class TorrentNative
     [LibraryImport(NativeLibraries.Torrent, StringMarshalling = StringMarshalling.Utf8)]
     public static partial IntPtr nt_mega_add(string link, ulong timeoutMs);
 
+    [LibraryImport(NativeLibraries.Torrent, StringMarshalling = StringMarshalling.Utf8)]
+    public static partial IntPtr nt_proxy_add(string link, ulong timeoutMs);
+
     [LibraryImport(NativeLibraries.Torrent)]
     public static partial IntPtr nt_select(nuint id, nuint file);
 

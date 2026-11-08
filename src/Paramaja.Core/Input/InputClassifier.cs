@@ -1,6 +1,6 @@
 namespace Paramaja.Core.Input;
 
-public enum InputKind { None, Magnet, Url, File, Mega, Folder, Dvd, Bluray, AudioCd, Sacd }
+public enum InputKind { None, Magnet, Url, File, Mega, Folder, Dvd, Bluray, AudioCd, Sacd, MegaApp }
 
 /// <summary>Decides what a pasted/dropped/command-line string is.</summary>
 public static class InputClassifier
@@ -17,6 +17,8 @@ public static class InputClassifier
         {
             // MEGA files are encrypted; they go through the engine, which decrypts them.
             if (uri.Scheme is "http" or "https" && IsMegaHost(uri.Host)) return (InputKind.Mega, t);
+            // MEGA's desktop app streams a cloud file here, slowly per connection: the engine reads it ahead.
+            if (IsMegaAppLink(uri)) return (InputKind.MegaApp, t);
             if (uri.IsFile) return Local(uri.LocalPath);
             if (uri.Scheme is "http" or "https" or "rtsp" or "rtmp" or "rtp" or "udp" or "srt" or "smb" or "ftp")
                 return (InputKind.Url, t);
@@ -171,5 +173,12 @@ public static class InputClassifier
         host is "mega.nz" or "www.mega.nz" or "mega.co.nz" or "www.mega.co.nz" or "mega.io";
 
     /// <summary>Streams that should buffer in bigger chunks (everything that isn't a local file).</summary>
-    public static bool IsStreaming(InputKind kind) => kind is InputKind.Url or InputKind.Magnet or InputKind.Mega;
+    public static bool IsStreaming(InputKind kind) => kind is InputKind.Url or InputKind.Magnet or InputKind.Mega or InputKind.MegaApp;
+
+    /// <summary>The MEGA desktop app's "Stream from MEGA" link: http://127.0.0.1:4443/&lt;handle&gt;/&lt;name&gt;.</summary>
+    public static bool IsMegaAppLink(Uri uri) =>
+        uri.Scheme == "http" && uri.IsLoopback && uri.Port == MegaAppPort
+        && uri.AbsolutePath.Trim('/').Split('/') is [{ Length: > 0 }, { Length: > 0 }];
+
+    public const int MegaAppPort = 4443;
 }

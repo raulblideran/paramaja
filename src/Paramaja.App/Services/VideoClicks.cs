@@ -16,13 +16,31 @@ public static class VideoClicks
 {
     /// <summary>
     /// Calls <paramref name="clicked"/> on the UI thread; dispose to stop. Null where clicks
-    /// can't be read this way (the engines' own reports are used then).
+    /// can't be read this way (the engines' own reports are used then). <paramref name="moved"/>
+    /// is called (at most every <see cref="MotionInterval"/>) while <see cref="WantMotion"/> is
+    /// set, when the mouse moves over the player: the hidden pointer comes back on any movement
+    /// over the video, whatever the engine's window reports and wherever the window thinks it is.
     /// </summary>
-    public static IDisposable? Watch(IntPtr playerWindow, Action clicked)
+    public static IDisposable? Watch(IntPtr playerWindow, Action clicked, Action? moved = null)
     {
-        if (OperatingSystem.IsWindows()) return new Win32ClickHook(playerWindow, clicked);
-        if (OperatingSystem.IsLinux()) return X11ClickWatch.Start(playerWindow, clicked);
+        if (OperatingSystem.IsWindows()) return new Win32ClickHook(playerWindow, clicked, moved);
+        if (OperatingSystem.IsLinux()) return X11ClickWatch.Start(playerWindow, clicked, moved);
         return null;
+    }
+
+    /// <summary>The pointer is hidden: report mouse movement (otherwise it's ignored, cheaply).</summary>
+    public static volatile bool WantMotion;
+
+    public static readonly TimeSpan MotionInterval = TimeSpan.FromMilliseconds(40);
+
+    /// <summary>A movement now is worth reporting: wanted, and not within <see cref="MotionInterval"/> of the last.</summary>
+    internal static bool TakeMotion(ref long lastTicks)
+    {
+        if (!WantMotion) return false;
+        var now = Environment.TickCount64;
+        if (now - lastTicks < MotionInterval.TotalMilliseconds) return false;
+        lastTicks = now;
+        return true;
     }
 }
 
@@ -30,6 +48,7 @@ public static class VideoClicks
 internal sealed partial class Win32ClickHook : IDisposable
 {
     private const int WhMouseLl = 14;
+    private const int WmMouseMove = 0x0200;
     private const int WmLButtonDown = 0x0201;
     private const uint GaRoot = 2;
 
@@ -70,13 +89,16 @@ internal sealed partial class Win32ClickHook : IDisposable
 
     private readonly IntPtr _playerWindow;
     private readonly Action _clicked;
+    private readonly Action? _moved;
+    private long _lastMove;
     private readonly HookProc _proc; // kept alive: the OS holds only a raw pointer to it
     private IntPtr _hook;
 
-    public Win32ClickHook(IntPtr playerWindow, Action clicked)
+    public Win32ClickHook(IntPtr playerWindow, Action clicked, Action? moved)
     {
         _playerWindow = playerWindow;
         _clicked = clicked;
+        _moved = moved;
         _proc = OnMouse;
         // Runs on the calling (UI) thread's message loop.
         _hook = SetWindowsHookEx(WhMouseLl, Marshal.GetFunctionPointerForDelegate(_proc), GetModuleHandle(null), 0);
@@ -90,6 +112,11 @@ internal sealed partial class Win32ClickHook : IDisposable
             // The window under the pointer belongs to the player (mpv's video is a child of it).
             if (GetAncestor(WindowFromPoint(info.Pt), GaRoot) == _playerWindow) _clicked();
         }
+        else if (code >= 0 && wParam == WmMouseMove && _moved is not null && VideoClicks.TakeMotion(ref _lastMove))
+        {
+            var info = Marshal.PtrToStructure<MsLlHookStruct>(lParam);
+            if (GetAncestor(WindowFromPoint(info.Pt), GaRoot) == _playerWindow) _moved();
+        }
         return CallNextHookEx(_hook, code, wParam, lParam);
     }
 
@@ -102,7 +129,7 @@ internal sealed partial class Win32ClickHook : IDisposable
 }
 
 /// <summary>
-/// Every left button press on the X server, from XInput2's raw events (selected on the root
+/// Every left button press on the X server (and, while asked, every movement), from XInput2's raw events (selected on the root
 /// window, which takes nothing from anyone else's events), on a connection and thread of its own.
 /// A press counts when the windows under the pointer, from the root down, include the player's.
 /// </summary>
@@ -113,6 +140,7 @@ internal sealed partial class X11ClickWatch : IDisposable
     private const string Xi = "libXi.so.6";
     private const int GenericEvent = 35;
     private const int XiRawButtonPress = 15;
+    private const int XiRawMotion = 17;
     private const int XiAllMasterDevices = 1;
     private const short PollIn = 1;
 
@@ -164,21 +192,24 @@ internal sealed partial class X11ClickWatch : IDisposable
     private readonly IntPtr _player;
     private readonly int _xiOpcode;
     private readonly Action _clicked;
+    private readonly Action? _moved;
+    private long _lastMove;
     private readonly Thread _thread;
     private volatile bool _stop;
 
-    private X11ClickWatch(IntPtr display, int xiOpcode, IntPtr player, Action clicked)
+    private X11ClickWatch(IntPtr display, int xiOpcode, IntPtr player, Action clicked, Action? moved)
     {
         _display = display;
         _root = XDefaultRootWindow(display);
         _xiOpcode = xiOpcode;
         _player = player;
         _clicked = clicked;
+        _moved = moved;
         _thread = new Thread(Run) { IsBackground = true, Name = "Paramaja X11 clicks" };
     }
 
     /// <summary>Null without an X server, XInput 2.0 or libXi: the engines' own click reports count then.</summary>
-    public static X11ClickWatch? Start(IntPtr playerWindow, Action clicked)
+    public static X11ClickWatch? Start(IntPtr playerWindow, Action clicked, Action? moved = null)
     {
         try
         {
@@ -193,6 +224,7 @@ internal sealed partial class X11ClickWatch : IDisposable
             }
             var mask = new byte[4];
             mask[XiRawButtonPress >> 3] |= (byte)(1 << (XiRawButtonPress & 7));
+            if (moved is not null) mask[XiRawMotion >> 3] |= (byte)(1 << (XiRawMotion & 7));
             var handle = GCHandle.Alloc(mask, GCHandleType.Pinned);
             try
             {
@@ -204,7 +236,7 @@ internal sealed partial class X11ClickWatch : IDisposable
             {
                 handle.Free();
             }
-            var watch = new X11ClickWatch(display, opcode, playerWindow, clicked);
+            var watch = new X11ClickWatch(display, opcode, playerWindow, clicked, moved);
             watch._thread.Start();
             return watch;
         }
@@ -228,6 +260,8 @@ internal sealed partial class X11ClickWatch : IDisposable
                 {
                     XNextEvent(_display, ev);
                     if (IsLeftPress(ev) && PointerIsOverPlayer()) Dispatcher.UIThread.Post(_clicked);
+                    else if (_moved is not null && IsXiEvent(ev, XiRawMotion) && VideoClicks.TakeMotion(ref _lastMove) && PointerIsOverPlayer())
+                        Dispatcher.UIThread.Post(_moved);
                 }
             }
         }
@@ -238,10 +272,13 @@ internal sealed partial class X11ClickWatch : IDisposable
         }
     }
 
+    private bool IsXiEvent(IntPtr ev, int type) =>
+        Marshal.ReadInt32(ev) == GenericEvent && Marshal.ReadInt32(ev, CookieExtension) == _xiOpcode
+        && Marshal.ReadInt32(ev, CookieEvType) == type;
+
     private bool IsLeftPress(IntPtr ev)
     {
-        if (Marshal.ReadInt32(ev) != GenericEvent || Marshal.ReadInt32(ev, CookieExtension) != _xiOpcode
-            || Marshal.ReadInt32(ev, CookieEvType) != XiRawButtonPress) return false;
+        if (!IsXiEvent(ev, XiRawButtonPress)) return false;
         if (XGetEventData(_display, ev) == 0) return false;
         try
         {

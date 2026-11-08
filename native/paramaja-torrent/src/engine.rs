@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
 use crate::{
-    http, magnet, mega,
+    http, magnet, mega, proxy,
     selection::{self, FileEntry},
 };
 
@@ -89,6 +89,7 @@ pub struct Engine {
     http_addr: SocketAddr,
     cache_dir: PathBuf,
     mega: Arc<mega::MegaRegistry>,
+    proxy: Arc<proxy::ProxyRegistry>,
 }
 
 impl Engine {
@@ -103,6 +104,7 @@ impl Engine {
         librqbit::set_stream_readahead(config.stream_readahead_mb * 1024 * 1024);
 
         let mega = Arc::new(mega::MegaRegistry::new(config.mega_api.clone()));
+        let proxy = Arc::new(proxy::ProxyRegistry::default());
         let (session, http_addr) = rt.block_on(async {
             let session = Session::new_with_opts(
                 cache_dir.clone(),
@@ -124,12 +126,12 @@ impl Engine {
             )
             .await
             .context("failed to start torrent session")?;
-            let state = http::AppState { session: session.clone(), mega: mega.clone() };
+            let state = http::AppState { session: session.clone(), mega: mega.clone(), proxy: proxy.clone() };
             let http_addr = http::serve(state, config.http_port).await?;
             anyhow::Ok((session, http_addr))
         })?;
 
-        Ok(Self { rt: Some(rt), session, http_addr, cache_dir, mega })
+        Ok(Self { rt: Some(rt), session, http_addr, cache_dir, mega, proxy })
     }
 
     pub fn http_addr(&self) -> SocketAddr {
@@ -199,6 +201,24 @@ impl Engine {
             name: file.name,
             size: file.size,
             stream_url: format!("http://{}/mega/{id}", self.http_addr),
+        })
+    }
+
+    /// Registers a direct link (MEGA's desktop app) and returns a local URL that reads it
+    /// several chunks at once. Fails if the link doesn't serve byte ranges.
+    pub fn add_proxy(&self, link: &str, timeout: Duration) -> anyhow::Result<proxy::ProxyInfo> {
+        let (id, entry) = self.rt().block_on(async {
+            tokio::time::timeout(timeout, self.proxy.add(link))
+                .await
+                .context("the link didn't answer in time")?
+        })?;
+        let segment: String =
+            percent_encoding::utf8_percent_encode(&entry.name, percent_encoding::NON_ALPHANUMERIC).collect();
+        Ok(proxy::ProxyInfo {
+            id,
+            name: entry.name.clone(),
+            size: entry.size,
+            stream_url: format!("http://{}/proxy/{id}/{segment}", self.http_addr),
         })
     }
 

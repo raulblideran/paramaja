@@ -17,7 +17,7 @@ public class RipDialogTests
     internal static readonly OpticalDrive Dvd = new("/run/media/me/CONCERT", "sr1", "CONCERT");
 
     /// <summary>Three tracks of seeded noise standing in for a CD in a drive.</summary>
-    private static ImageCdDrive CdDrive()
+    internal static ImageCdDrive CdDrive()
     {
         var audio = new byte[900 * CdToc.SectorBytes];
         new Random(3).NextBytes(audio);

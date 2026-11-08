@@ -17,11 +17,11 @@
 
       <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,2,0,0">
         <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-          <Button x:Name="PreviousFileButton" Classes="icon" Command="{Binding PreviousFileCommand}" IsVisible="{Binding HasTorrentFiles}"
-                  ToolTip.Tip="Previous file in this torrent">
+          <Button x:Name="PreviousFileButton" Classes="icon" Command="{Binding PreviousFileCommand}" IsVisible="{Binding ShowFileButtons}"
+                  ToolTip.Tip="{Binding PreviousFileTip}">
             <PathIcon Data="{StaticResource IconPlaylistPrev}" />
           </Button>
-          <Button x:Name="FrameBackButton" Classes="icon" Command="{Binding FrameBackStepCommand}" IsVisible="{Binding !IsAudioOnly}"
+          <Button x:Name="FrameBackButton" Classes="icon" Command="{Binding FrameBackStepCommand}" IsVisible="{Binding ShowFrameButtons}"
                   ToolTip.Tip="Previous frame ( , )">
             <PathIcon Data="{StaticResource IconFramePrev}" />
           </Button>
@@ -32,39 +32,42 @@
               <PathIcon x:Name="OpeningSpinner" Classes="spin" Data="{StaticResource IconSpinner}" IsVisible="{Binding IsStartingStream}" />
             </Panel>
           </Button>
-          <Button x:Name="FrameNextButton" Classes="icon" Command="{Binding FrameStepCommand}" IsVisible="{Binding !IsAudioOnly}"
+          <Button x:Name="FrameNextButton" Classes="icon" Command="{Binding FrameStepCommand}" IsVisible="{Binding ShowFrameButtons}"
                   ToolTip.Tip="Next frame ( . )">
             <PathIcon Data="{StaticResource IconFrameNext}" />
           </Button>
-          <Button x:Name="NextFileButton" Classes="icon" Command="{Binding NextFileCommand}" IsVisible="{Binding HasTorrentFiles}"
-                  ToolTip.Tip="Next file in this torrent">
+          <Button x:Name="NextFileButton" Classes="icon" Command="{Binding NextFileCommand}" IsVisible="{Binding ShowFileButtons}"
+                  ToolTip.Tip="{Binding NextFileTip}">
             <PathIcon Data="{StaticResource IconPlaylistNext}" />
           </Button>
-          <Button x:Name="StopButton" Classes="icon" Command="{Binding StopCommand}" ToolTip.Tip="Stop (Ctrl+S)">
+          <Button x:Name="StopButton" Classes="icon" Command="{Binding StopCommand}" IsVisible="{Binding ShowStopButton}" ToolTip.Tip="Stop (Ctrl+S)">
             <PathIcon Data="{StaticResource IconStop}" />
           </Button>
-          <Button x:Name="PreviousChapterButton" Classes="icon" Command="{Binding PreviousChapterCommand}" IsVisible="{Binding HasChapters}"
+          <Button x:Name="PreviousChapterButton" Classes="icon" Command="{Binding PreviousChapterCommand}" IsVisible="{Binding ShowChapterButtons}"
                   ToolTip.Tip="Previous chapter (Page Up)" Margin="6,0,0,0">
             <PathIcon Data="{StaticResource IconChapterPrev}" />
           </Button>
-          <Button x:Name="NextChapterButton" Classes="icon" Command="{Binding NextChapterCommand}" IsVisible="{Binding HasChapters}"
+          <Button x:Name="NextChapterButton" Classes="icon" Command="{Binding NextChapterCommand}" IsVisible="{Binding ShowChapterButtons}"
                   ToolTip.Tip="Next chapter (Page Down)">
             <PathIcon Data="{StaticResource IconChapterNext}" />
           </Button>
-          <Button Classes="icon" Command="{Binding ToggleMuteCommand}" ToolTip.Tip="Mute (M)" Margin="8,0,0,0">
-            <Panel>
-              <PathIcon Data="{StaticResource IconVolume}" IsVisible="{Binding !IsMuted}" />
-              <PathIcon Data="{StaticResource IconMute}" IsVisible="{Binding IsMuted}" />
-            </Panel>
-          </Button>
-          <Slider Width="110" Minimum="0" Maximum="150" Value="{Binding Volume}" VerticalAlignment="Center"
-                  SmallChange="5" LargeChange="10" Focusable="False"
-                  ToolTip.Tip="{Binding VolumeDecibels, StringFormat='Volume {0} (logarithmic)'}" />
-          <TextBlock Classes="time muted" Text="{Binding VolumeText}" Margin="6,0,0,0" FontSize="12"
-                     ToolTip.Tip="{Binding VolumeDecibels}" />
+          <StackPanel x:Name="VolumeControls" Orientation="Horizontal" Spacing="2" IsVisible="{Binding ShowVolume}">
+            <Button Classes="icon" Command="{Binding ToggleMuteCommand}" ToolTip.Tip="Mute (M)" Margin="8,0,0,0">
+              <Panel>
+                <PathIcon Data="{StaticResource IconVolume}" IsVisible="{Binding !IsMuted}" />
+                <PathIcon Data="{StaticResource IconMute}" IsVisible="{Binding IsMuted}" />
+              </Panel>
+            </Button>
+            <Slider Width="110" Minimum="0" Maximum="150" Value="{Binding Volume}" VerticalAlignment="Center"
+                    SmallChange="5" LargeChange="10" Focusable="False"
+                    ToolTip.Tip="{Binding VolumeDecibels, StringFormat='Volume {0} (logarithmic)'}" />
+            <TextBlock Classes="time muted" Text="{Binding VolumeText}" Margin="6,0,0,0" FontSize="12" VerticalAlignment="Center"
+                       ToolTip.Tip="{Binding VolumeDecibels}" />
+          </StackPanel>
         </StackPanel>
 
-        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel x:Name="Badges" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    IsVisible="{Binding ShowBadges}">
           <Border Classes="badge hdr" IsVisible="{Binding HdrBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
             <TextBlock Text="{Binding HdrBadge}" />
           </Border>
@@ -89,12 +92,12 @@
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-          <Button x:Name="DiscMenuButton" Classes="icon" Command="{Binding ShowDiscMenuCommand}" IsVisible="{Binding CanShowDiscMenu}"
+          <Button x:Name="DiscMenuButton" Classes="icon" Command="{Binding ShowDiscMenuCommand}" IsVisible="{Binding ShowDiscMenuButton}"
                   ToolTip.Tip="Disc menu (arrow keys and Enter move through it)">
             <PathIcon Data="{StaticResource IconHome}" />
           </Button>
 
-          <Button x:Name="ChaptersButton" Classes="icon" ToolTip.Tip="Titles &amp; chapters" IsVisible="{Binding HasChapterMenu}">
+          <Button x:Name="ChaptersButton" Classes="icon" ToolTip.Tip="Titles &amp; chapters" IsVisible="{Binding ShowChapterMenuButton}">
             <PathIcon Data="{StaticResource IconChapters}" />
             <Button.Flyout>
               <Flyout Placement="TopEdgeAlignedRight">
@@ -132,7 +135,7 @@
             </Button.Flyout>
           </Button>
 
-          <Button Classes="icon" ToolTip.Tip="Subtitles">
+          <Button x:Name="SubtitlesButton" Classes="icon" ToolTip.Tip="Subtitles" IsVisible="{Binding ShowSubtitlesButton}">
             <PathIcon Data="{StaticResource IconSubtitles}" />
             <Button.Flyout>
               <Flyout Placement="TopEdgeAlignedRight">
@@ -158,7 +161,7 @@
             </Button.Flyout>
           </Button>
 
-          <Button Classes="icon" ToolTip.Tip="Audio">
+          <Button x:Name="AudioMenuButton" Classes="icon" ToolTip.Tip="Audio" IsVisible="{Binding ShowAudioButton}">
             <PathIcon Data="{StaticResource IconAudio}" />
             <Button.Flyout>
               <Flyout Placement="TopEdgeAlignedRight">
@@ -190,13 +193,13 @@
                   <ToggleSwitch IsChecked="{Binding NormalizeAudio}" OnContent="Normalize volume (evens out loud and quiet parts)"
                                 OffContent="Original dynamics (default)" />
                   <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                             Text="The original audio stream plays as-is, 5.1 as 5.1, unless you choose a downmix, one channel or normalization. A stereo track is picked by default where there is one. Passthrough to an AV receiver is in Settings → Developer." />
+                             Text="The original audio stream plays as-is, 5.1 as 5.1, unless you choose a downmix, one channel or normalization. A stereo track is picked by default where there is one. Passthrough to an AV receiver is in Settings → Audio." />
                 </StackPanel>
               </Flyout>
             </Button.Flyout>
           </Button>
 
-          <Button x:Name="VideoMenuButton" Classes="icon" ToolTip.Tip="Video" IsVisible="{Binding !IsAudioOnly}">
+          <Button x:Name="VideoMenuButton" Classes="icon" ToolTip.Tip="Video" IsVisible="{Binding ShowVideoButton}">
             <PathIcon Data="{StaticResource IconVideo}" />
             <Button.Flyout>
               <Flyout Placement="TopEdgeAlignedRight">
@@ -214,27 +217,27 @@
                               SelectedIndex="{Binding StreamQualityChoiceIndex}" HorizontalAlignment="Stretch" />
                   </StackPanel>
                   <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                             Text="Deinterlacing, hardware decoding, HDR and rendering are in Settings → Developer." />
+                             Text="Deinterlacing, hardware decoding, HDR and rendering are in Settings → Video." />
                 </StackPanel>
               </Flyout>
             </Button.Flyout>
           </Button>
 
-          <Button Classes="icon" Command="{Binding ScreenshotCommand}" CommandParameter="{x:False}"
+          <Button x:Name="ScreenshotButton" Classes="icon" Command="{Binding ScreenshotCommand}" CommandParameter="{x:False}" IsVisible="{Binding ShowScreenshotButton}"
                   ToolTip.Tip="Lossless PNG screenshot (S, Shift+S with subtitles)">
             <PathIcon Data="{StaticResource IconCamera}" />
           </Button>
 
-          <Button x:Name="DownloadVideoButton" Classes="icon" Command="{Binding OpenDownloaderCommand}"
+          <Button x:Name="DownloadVideoButton" Classes="icon" Command="{Binding OpenDownloaderCommand}" IsVisible="{Binding ShowDownloadButton}"
                   ToolTip.Tip="Download Video: pick a quality, or just the audio">
             <PathIcon Data="{StaticResource IconDownload}" />
           </Button>
 
-          <Button Classes="icon" Command="{Binding OpenLinkCommand}" ToolTip.Tip="Open Link: magnet, YouTube, MEGA or any video URL (Ctrl+U)">
+          <Button x:Name="OpenLinkButton" Classes="icon" Command="{Binding OpenLinkCommand}" IsVisible="{Binding ShowOpenLinkButton}" ToolTip.Tip="Open Link: magnet, YouTube, MEGA or any video URL (Ctrl+U)">
             <PathIcon Data="{StaticResource IconLink}" />
           </Button>
 
-          <Button x:Name="OpenMenuButton" Classes="icon" ToolTip.Tip="Open">
+          <Button x:Name="OpenMenuButton" Classes="icon" ToolTip.Tip="Open" IsVisible="{Binding ShowOpenButton}">
             <PathIcon Data="{StaticResource IconFolder}" />
             <Button.Flyout>
               <MenuFlyout Placement="TopEdgeAlignedRight">
@@ -250,10 +253,10 @@
             </Button.Flyout>
           </Button>
 
-          <Button Classes="icon" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings">
+          <Button x:Name="SettingsButton" Classes="icon" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings">
             <PathIcon Data="{StaticResource IconSettings}" />
           </Button>
-          <Button Classes="icon" Command="{Binding ToggleFullscreenCommand}" ToolTip.Tip="Fullscreen (F, double-click)">
+          <Button x:Name="FullscreenButton" Classes="icon" Command="{Binding ToggleFullscreenCommand}" IsVisible="{Binding ShowFullscreenButton}" ToolTip.Tip="Fullscreen (F, double-click)">
             <Panel>
               <PathIcon Data="{StaticResource IconFullscreen}" IsVisible="{Binding !IsFullscreen}" />
               <PathIcon Data="{StaticResource IconFullscreenExit}" IsVisible="{Binding IsFullscreen}" />

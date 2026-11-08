@@ -181,7 +181,7 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>
-    /// Times frames to the display's refresh instead of the audio clock (Developer tab). Off by
+    /// Times frames to the display's refresh instead of the audio clock (Video tab). Off by
     /// default: with a refresh rate mpv gets wrong it stutters.
     /// </summary>
     public bool SyncToDisplay
@@ -413,8 +413,162 @@ public sealed partial class MainViewModel
             Settings.SubtitleScale = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(SubtitleSizeText));
+            OnPropertyChanged(nameof(SubtitleLookText));
             Changed(() => _player?.ApplySubtitles());
         }
+    }
+
+    // ---- The subtitles' look ----------------------------------------------------------------------
+
+    /// <summary>A colour to pick, with a swatch.</summary>
+    public sealed record ColorChoice(string Name, string Hex)
+    {
+        public Avalonia.Media.IBrush Brush { get; } = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(Hex));
+        public override string ToString() => Name;
+    }
+
+    public static IReadOnlyList<ColorChoice> SubtitleColors { get; } =
+    [
+        new("White", "#FFFFFF"), new("Light grey", "#D8D8D8"), new("Yellow", "#FFE600"), new("Pale yellow", "#FFF5A8"),
+        new("Cyan", "#00FFFF"), new("Green", "#5CFF5C"), new("Pink", "#FFB0E0"),
+    ];
+
+    public static IReadOnlyList<ColorChoice> SubtitleBorderColors { get; } =
+    [
+        new("Black", "#000000"), new("Dark grey", "#303030"), new("Navy", "#001A40"), new("Dark brown", "#2A1600"), new("White", "#FFFFFF"),
+    ];
+
+    public const string DefaultFontLabel = "Default (sans-serif)";
+
+    private IReadOnlyList<string>? _subtitleFonts;
+
+    /// <summary>The fonts installed (as the system lists them), the default first.</summary>
+    public IReadOnlyList<string> SubtitleFonts => _subtitleFonts ??= LoadFonts();
+
+    private IReadOnlyList<string> LoadFonts()
+    {
+        var names = new List<string>();
+        try { names.AddRange(Avalonia.Media.FontManager.Current.SystemFonts.Select(f => f.Name)); }
+        catch (Exception e) when (e is InvalidOperationException or NullReferenceException) { } // no font manager (headless)
+        names = names.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.OrdinalIgnoreCase).ToList();
+        if (Settings.SubtitleFont.Length > 0 && !names.Contains(Settings.SubtitleFont, StringComparer.OrdinalIgnoreCase))
+            names.Add(Settings.SubtitleFont); // a font from another machine, still chosen
+        return [DefaultFontLabel, .. names];
+    }
+
+    /// <summary>The font picked in the list; <see cref="DefaultFontLabel"/> is mpv's own.</summary>
+    public string SubtitleFontChoice
+    {
+        get => Settings.SubtitleFont.Length == 0 ? DefaultFontLabel : Settings.SubtitleFont;
+        set => SetSubtitleStyle(Settings.SubtitleFont, value is null or DefaultFontLabel ? "" : value, v => Settings.SubtitleFont = v);
+    }
+
+    /// <summary>The preview's font: the chosen one, or the UI's sans-serif.</summary>
+    public string SubtitlePreviewFont => Settings.SubtitleFont.Length == 0 ? "sans-serif" : Settings.SubtitleFont;
+
+    public bool SubtitleBold
+    {
+        get => Settings.SubtitleBold;
+        set => SetSubtitleStyle(Settings.SubtitleBold, value, v => Settings.SubtitleBold = v);
+    }
+
+    /// <summary>The text colour as #RRGGBB (typed, or from the list).</summary>
+    public string SubtitleColor
+    {
+        get => Settings.SubtitleColor;
+        set
+        {
+            var normal = PlayerSettings.NormalColor(value, "");
+            if (normal.Length > 0) SetSubtitleStyle(Settings.SubtitleColor, normal, v => Settings.SubtitleColor = v);
+        }
+    }
+
+    public ColorChoice? SubtitleColorChoice
+    {
+        get => SubtitleColors.FirstOrDefault(c => c.Hex == Settings.SubtitleColor);
+        set { if (value is not null) SubtitleColor = value.Hex; }
+    }
+
+    public string SubtitleBorderColor
+    {
+        get => Settings.SubtitleBorderColor;
+        set
+        {
+            var normal = PlayerSettings.NormalColor(value, "");
+            if (normal.Length > 0) SetSubtitleStyle(Settings.SubtitleBorderColor, normal, v => Settings.SubtitleBorderColor = v);
+        }
+    }
+
+    public ColorChoice? SubtitleBorderColorChoice
+    {
+        get => SubtitleBorderColors.FirstOrDefault(c => c.Hex == Settings.SubtitleBorderColor);
+        set { if (value is not null) SubtitleBorderColor = value.Hex; }
+    }
+
+    public double SubtitleBorderSize
+    {
+        get => Settings.SubtitleBorderSize;
+        set => SetSubtitleStyle(Settings.SubtitleBorderSize, Math.Round(Math.Clamp(value, 0, 10), 1), v => Settings.SubtitleBorderSize = v);
+    }
+
+    public double SubtitleShadow
+    {
+        get => Settings.SubtitleShadow;
+        set => SetSubtitleStyle(Settings.SubtitleShadow, Math.Round(Math.Clamp(value, 0, 10), 1), v => Settings.SubtitleShadow = v);
+    }
+
+    public bool SubtitleBackground
+    {
+        get => Settings.SubtitleBackground;
+        set => SetSubtitleStyle(Settings.SubtitleBackground, value, v => Settings.SubtitleBackground = v);
+    }
+
+    public double SubtitleBackgroundOpacity
+    {
+        get => Settings.SubtitleBackgroundOpacity;
+        set => SetSubtitleStyle(Settings.SubtitleBackgroundOpacity, Math.Round(Math.Clamp(value, 0, 1), 2), v => Settings.SubtitleBackgroundOpacity = v);
+    }
+
+    /// <summary>How far up the subtitles sit: 0 at the bottom (mpv's sub-pos 100), up to 40 (sub-pos 60).</summary>
+    public double SubtitleRaise
+    {
+        get => 100 - Settings.SubtitlePosition;
+        set => SetSubtitleStyle(Settings.SubtitlePosition, 100 - (int)Math.Round(Math.Clamp(value, 0, 40)), v => Settings.SubtitlePosition = v);
+    }
+
+    public bool SubtitleStyleAss
+    {
+        get => Settings.SubtitleStyleAss;
+        set => SetSubtitleStyle(Settings.SubtitleStyleAss, value, v => Settings.SubtitleStyleAss = v);
+    }
+
+    public string SubtitleLookText =>
+        $"Outline {SubtitleBorderSize:0.0} · shadow {SubtitleShadow:0.0} · {(SubtitleRaise == 0 ? "at the bottom" : $"raised {SubtitleRaise:0}%")}";
+
+    private static readonly string[] SubtitleStyleNames =
+    [
+        nameof(SubtitleFontChoice), nameof(SubtitlePreviewFont), nameof(SubtitleBold), nameof(SubtitleColor), nameof(SubtitleColorChoice),
+        nameof(SubtitleBorderColor), nameof(SubtitleBorderColorChoice), nameof(SubtitleBorderSize), nameof(SubtitleShadow),
+        nameof(SubtitleBackground), nameof(SubtitleBackgroundOpacity), nameof(SubtitleRaise), nameof(SubtitleStyleAss),
+        nameof(SubtitleLookText), nameof(SubtitleScale), nameof(SubtitleSizeText),
+    ];
+
+    private void SetSubtitleStyle<T>(T current, T value, Action<T> assign)
+    {
+        if (EqualityComparer<T>.Default.Equals(current, value)) return;
+        assign(value);
+        foreach (var name in SubtitleStyleNames) OnPropertyChanged(name);
+        Changed(() => _player?.ApplySubtitles());
+    }
+
+    /// <summary>Every subtitle look setting back to how it came (size included).</summary>
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void ResetSubtitleStyle()
+    {
+        Settings.ResetSubtitleStyle();
+        foreach (var name in SubtitleStyleNames) OnPropertyChanged(name);
+        Changed(() => _player?.ApplySubtitles());
     }
 
     /// <summary>What the subtitle slider is set to, in font size (scaled from mpv's base size).</summary>

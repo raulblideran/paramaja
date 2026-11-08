@@ -161,6 +161,58 @@ pub async fn resolve(client: &reqwest::Client, api: &str, link: &MegaLink) -> an
 pub struct MegaEntry {
     pub link: MegaLink,
     pub file: Mutex<MegaFile>,
+    /// One refresh at a time: the read-ahead's chunks all see an expired URL at once.
+    refreshing: tokio::sync::Mutex<()>,
+}
+
+/// MEGA's transfer quota is used up (HTTP 509): retrying won't help, and the player is told so.
+#[derive(Debug)]
+pub struct QuotaExceeded;
+
+impl std::fmt::Display for QuotaExceeded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("MEGA transfer quota exceeded; try again later")
+    }
+}
+
+impl std::error::Error for QuotaExceeded {}
+
+/// A MEGA file's byte ranges, fetched from the CDN and decrypted: what the read-ahead reads.
+pub struct MegaSource {
+    pub registry: Arc<MegaRegistry>,
+    pub entry: Arc<MegaEntry>,
+}
+
+impl crate::parallel::RangeSource for MegaSource {
+    async fn fetch(&self, start: u64, end: u64) -> Result<bytes::Bytes, crate::parallel::FetchError> {
+        use crate::parallel::FetchError::{Fatal, Retry};
+        let current = || self.entry.file.lock().unwrap().url.clone();
+        // MEGA's CDN takes the byte range as a path suffix.
+        let get = |url: String| self.registry.client.get(format!("{url}/{start}-{end}")).send();
+        let url = current();
+        let mut response = get(url.clone()).await.map_err(|e| Retry(e.into()))?;
+        if matches!(response.status().as_u16(), 403 | 404 | 410) {
+            // Download URLs expire after a while: ask for a fresh one, unless another chunk just did.
+            {
+                let _one = self.entry.refreshing.lock().await;
+                if current() == url {
+                    self.registry.refresh(&self.entry).await.map_err(Retry)?;
+                }
+            }
+            response = get(current()).await.map_err(|e| Retry(e.into()))?;
+        }
+        match response.status().as_u16() {
+            200 | 206 => {}
+            509 => return Err(Fatal(anyhow::Error::new(QuotaExceeded))),
+            s if s >= 500 || matches!(s, 403 | 404 | 410 | 429) => {
+                return Err(Retry(anyhow::anyhow!("MEGA returned HTTP {s}")));
+            }
+            s => return Err(Fatal(anyhow::anyhow!("MEGA returned HTTP {s}"))),
+        }
+        let mut data = crate::parallel::read_all(response, end - start + 1).await?.to_vec();
+        decrypt_in_place(&mut decryptor_at(&self.entry.link, start), &mut data);
+        Ok(data.into())
+    }
 }
 
 /// Links resolved this session, addressed by small ids in stream URLs.
@@ -176,6 +228,7 @@ impl MegaRegistry {
         Self {
             client: reqwest::Client::builder()
                 .user_agent("Paramaja")
+                .connect_timeout(std::time::Duration::from_secs(15))
                 .build()
                 .expect("http client"),
             api,
@@ -191,7 +244,7 @@ impl MegaRegistry {
         self.entries
             .lock()
             .unwrap()
-            .insert(id, Arc::new(MegaEntry { link, file: Mutex::new(file.clone()) }));
+            .insert(id, Arc::new(MegaEntry { link, file: Mutex::new(file.clone()), refreshing: Default::default() }));
         Ok((id, file))
     }
 

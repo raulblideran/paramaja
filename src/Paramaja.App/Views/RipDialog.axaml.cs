@@ -57,6 +57,16 @@ public partial class RipDialog : Window
         if (Vm is { } vm) vm.DvdModeIndex = 1;
     }
 
+    private void OnOneFile(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm) vm.ChapterFiles = false;
+    }
+
+    private void OnFilePerChapter(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm) vm.ChapterFiles = true;
+    }
+
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);

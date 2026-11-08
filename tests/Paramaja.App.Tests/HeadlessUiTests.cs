@@ -77,13 +77,13 @@ public class HeadlessUiTests
         var w = new SettingsWindow { DataContext = r.Vm };
         w.Show();
         var tabs = w.GetLogicalDescendants().OfType<TabItem>().Select(t => t.Header as string).ToList();
-        Assert.Equal(["Audio", "Subtitles", "Torrents", "Playback", "Developer", "About", "Shortcuts"], tabs);
+        Assert.Equal(["Video", "Audio", "Subtitles", "Playback", "Torrents", "Interface", "Developer", "About", "Shortcuts"], tabs);
 
-        w.GetLogicalDescendants().OfType<TabControl>().Single().SelectedIndex = 0;
+        w.GetLogicalDescendants().OfType<TabControl>().Single().SelectedItem = w.FindControl<TabItem>("AudioTab");
         Dispatch();
         var switches = w.GetVisualDescendants().OfType<ToggleSwitch>().ToList();
         Assert.DoesNotContain(switches, t => (t.OnContent as string)?.Contains("mono", StringComparison.OrdinalIgnoreCase) == true);
-        Assert.DoesNotContain(switches, t => (t.OnContent as string)?.Contains("Passthrough") == true); // in Developer now
+        Assert.Contains(switches, t => (t.OnContent as string)?.Contains("Passthrough") == true); // back in Audio (1.12.0)
         var toggle = switches.First(t => (t.OnContent as string)?.Contains("Downmix") == true);
         toggle.IsChecked = true;
         Assert.True(r.Settings.DownmixToStereo);
@@ -106,15 +106,16 @@ public class HeadlessUiTests
     }
 
     [AvaloniaFact]
-    public void Advanced_options_live_in_the_developer_tab_only()
+    public void Advanced_options_live_in_their_categories_and_developer_keeps_troubleshooting()
     {
+        // 1.12.0: the Developer tab's options moved to Video, Audio and Playback.
         using var r = new Rig();
         var w = new SettingsWindow { DataContext = r.Vm };
         w.Show();
         Dispatch();
         Assert.Empty(w.GetLogicalDescendants().OfType<Expander>()); // no "Advanced" sections left anywhere
         var tabs = w.GetLogicalDescendants().OfType<TabControl>().Single();
-        tabs.SelectedItem = w.FindControl<TabItem>("DeveloperTab");
+        tabs.SelectedItem = w.FindControl<TabItem>("VideoTab");
         Dispatch();
         Assert.Equal(2, w.FindControl<ComboBox>("RenderQuality")!.SelectedIndex); // Balanced
         var sync = w.FindControl<ToggleSwitch>("SyncToDisplay")!;
@@ -122,6 +123,12 @@ public class HeadlessUiTests
         sync.IsChecked = true;
         Assert.True(r.Settings.SyncToDisplay);
         Assert.Contains(w.GetVisualDescendants().OfType<ComboBox>(), c => ReferenceEquals(c.ItemsSource, r.Vm.ToneMappingCurves));
+
+        tabs.SelectedItem = w.FindControl<TabItem>("DeveloperTab");
+        Dispatch();
+        var developer = w.FindControl<TabItem>("DeveloperTab")!;
+        Assert.Empty(developer.GetLogicalDescendants().OfType<ComboBox>()); // no options left there
+        Assert.Empty(developer.GetLogicalDescendants().OfType<ToggleSwitch>());
         var texts = w.GetVisualDescendants().OfType<Button>().Select(b => b.Content as string).ToList();
         Assert.Contains("Copy diagnostics (Ctrl+I)", texts);
         Assert.Contains("Statistics overlay (I)", texts);
@@ -183,13 +190,13 @@ public class HeadlessUiTests
     }
 
     [AvaloniaFact]
-    public void Developer_tab_has_this_videos_switches_where_they_apply()
+    public void Video_tab_has_this_videos_switches_where_they_apply()
     {
         using var r = new Rig();
         r.Vm.IsIdle = false;
         var w = new SettingsWindow { DataContext = r.Vm };
         w.Show();
-        w.GetLogicalDescendants().OfType<TabControl>().Single().SelectedItem = w.FindControl<TabItem>("DeveloperTab");
+        w.GetLogicalDescendants().OfType<TabControl>().Single().SelectedItem = w.FindControl<TabItem>("VideoTab");
         Dispatch();
         var deinterlace = w.FindControl<StackPanel>("DeinterlaceOptions")!;
         var hardware = w.FindControl<StackPanel>("HardwareOptions")!;
@@ -214,7 +221,7 @@ public class HeadlessUiTests
         w.FindControl<ToggleSwitch>("HardwareSwitch")!.IsChecked = false;
         Assert.Contains("SetHardwareDecoding False", r.Player.Calls);
 
-        // HDR mode, passthrough and the default streaming quality are here too.
+        // HDR mode here; passthrough (Audio) and the default streaming quality (Playback) on their tabs.
         w.FindControl<ComboBox>("HdrMode")!.SelectedIndex = 1;
         Assert.Equal(HdrMode.TonemapToSdr, r.Settings.HdrMode);
         w.FindControl<ToggleSwitch>("PassthroughSwitch")!.IsChecked = true;
@@ -242,7 +249,7 @@ public class HeadlessUiTests
     }
 
     [AvaloniaFact]
-    public void Settings_window_has_no_bob_and_streaming_quality_left_playback()
+    public void Settings_window_has_no_bob_and_the_youtube_quality_is_in_playback()
     {
         using var r = new Rig();
         var w = new SettingsWindow { DataContext = r.Vm };
@@ -253,9 +260,8 @@ public class HeadlessUiTests
         var tabs = w.GetLogicalDescendants().OfType<TabControl>().Single();
         tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(t => t.Header as string == "Playback");
         Dispatch();
-        Assert.DoesNotContain(w.GetVisualDescendants().OfType<ComboBox>(), c => c.Name == "StreamQualityDefault" && c.IsEffectivelyVisible);
-        Assert.DoesNotContain(w.GetVisualDescendants().OfType<ComboBox>().SelectMany(c => c.Items.OfType<ComboBoxItem>()),
-            i => (i.Content as string)?.StartsWith("Up to 1080p") == true);
+        // Back in Playback (1.12.0), under YouTube & other sites.
+        Assert.Contains(w.GetVisualDescendants().OfType<ComboBox>(), c => c.Name == "StreamQualityDefault" && c.IsEffectivelyVisible);
         w.Close();
     }
 

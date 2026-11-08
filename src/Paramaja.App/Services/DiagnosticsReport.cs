@@ -22,6 +22,9 @@ public static class DiagnosticsReport
         sb.AppendLine($"CPU: {cpu ?? SystemInfo.Cpu}");
         var g = gpus ?? SystemInfo.Gpus;
         sb.AppendLine($"GPU: {(g.Count == 0 ? "unknown" : string.Join("; ", g))}");
+        // The Flatpak's drivers: an NVIDIA driver without its GL extension draws on the CPU.
+        if (OperatingSystem.IsLinux() && os is null && Paramaja.Core.Native.GraphicsDriverCheck.Describe() is { Length: > 0 } drivers)
+            sb.AppendLine($"Graphics drivers: {drivers}");
         sb.AppendLine($"RAM: {memory ?? SystemInfo.Memory}");
         sb.AppendLine();
 
