@@ -245,7 +245,8 @@ public sealed partial class RipDialogViewModel : ObservableObject, IDisposable
         DvdVideo.X264 =>
             "The video is encoded with x264 (CRF 16): it looks the same as the disc's in less space. Interlaced video is "
             + "deinterlaced with BWDIF, as Paramaja plays DVDs: each field becomes a frame (50 a second, 59.94 for NTSC), so "
-            + "motion stays as smooth as on the disc, at CRF 14, in about three quarters of the space. Every audio and subtitle track keeps its language, the chapters are kept, "
+            + "motion stays as smooth as on the disc, at CRF 14, which keeps the look but saves little space (75 to 93% of a "
+            + "concert DVD's video). For space, x265. Every audio and subtitle track keeps its language, the chapters are kept, "
             + "LPCM audio becomes FLAC (the same audio bit for bit). x264 is quick: on a recent PC, a fraction of the film's length.",
         DvdVideo.X265 =>
             "The video is encoded with x265 (CRF 18): it looks the same as the disc's in about half the space. Interlaced video "

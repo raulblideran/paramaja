@@ -3,6 +3,69 @@
 Versions follow `MAJOR.MINOR.PATCH`. The in-app version (welcome screen, Settings → About)
 also shows the git commit a build came from, e.g. `1.1.0 (50919f7)`.
 
+## 1.12.0 — 2026-11-08
+
+- **MEGA desktop app links no longer buffer slowly.** The MEGA app's "Stream from MEGA" link
+  (`http://127.0.0.1:4443/…`) sends about 4-5 MB/s per connection, less than a 4K film needs
+  in its busy scenes, so they stalled, and each stall made the next wait longer. Paramaja now
+  reads the link six pieces at once, in order, and mpv plays from that: 18-25 MB/s here on a
+  24 GB 2160p Dolby Vision remux, which started in under 4 s and never buffered again. The MEGA
+  app keeps answering however often you seek. `mega.nz` links pasted into Paramaja are read
+  the same way (they too went over one connection).
+- **Rip Disc: chapters.** Under the title, its chapters are listed with their lengths, all
+  ticked; untick the ones you don't want. They become **one file** (chapters next to each other
+  read in one go, others ripped apart and joined, each mark named after its chapter on the
+  disc) or **one file per chapter**, in a folder. Checked on "The One": the lengths and marks
+  are the disc's, and joined chapters decode cleanly across the join, their audio bit for bit
+  the disc's (LPCM becomes FLAC once, over the whole file). Where two chapters that weren't next
+  to each other meet, the AC-3 track has a gap of a fraction of a second (0.23 s there).
+- **Rip Disc: x264 deinterlaces too**, with BWDIF, as x265 and Paramaja's playback do: each
+  field becomes a frame (50p, 59.94p for NTSC), in the field order found (the flags, confirmed by
+  the picture). Interlaced titles are encoded at CRF 14: on a minute of "The One" (576i), against
+  the disc's fields made frames by BWDIF, CRF 16 gave VMAF 95.9 at 51% of the disc's video size,
+  CRF 14 97.0 at 75% (x265, CRF 16: 97.3 at 53%, five times slower). The whole 40-minute
+  title: VMAF 97.2 at **93%** of the disc's video, in 12 minutes here (16 threads). So at 50p,
+  x264 keeps the disc's look but saves little space on a busy concert; **x265 is the one for
+  space** (68% for the same title, VMAF 97.6, 1.11.0's measure), x264 the one for speed.
+- **Subtitles: their look**, in Settings → Subtitles: font (any installed one), bold, text and
+  outline colours, outline and shadow thickness, a box behind the text instead of the outline (as
+  on TV), how high they sit, and whether styled (ASS) subtitles take it too or keep their own.
+  A preview shows it, and it applies at once to the video playing. Picture subtitles (DVDs,
+  Blu-rays, PGS) can't be restyled.
+- **Choose the controls bar's buttons**: Settings → Interface → Controls bar lists every button
+  (and the badges, the volume); untick the ones you don't use. Play and Settings always stay.
+- **Previous / Next for folders**: a folder of videos or songs (or several files dropped at once)
+  gets the Previous / Next file buttons, as torrents had. Not for DVD and Blu-ray folders: their
+  titles and chapters have their own buttons.
+- **Settings in one file, for a new install or another PC**: Settings → Interface → Export
+  settings… saves `paramaja-settings.json`; drop it on the player of the new install (it asks
+  first) or Import settings… it there. An old install's `settings.json` works the same way. The
+  new machine's own graphics card, refresh rate, audio device and torrent port choices stay.
+- **The Developer tab's options moved where they belong**: a new **Video** tab (rendering
+  quality, frame timing, graphics card, HDR and tonemapping, this video's deinterlacing and
+  hardware decoding switches), passthrough to **Audio**, the YouTube quality to **Playback**.
+  Developer keeps the troubleshooting tools (Create log, the statistics overlay, Copy diagnostics).
+- **No resolution badge for music**: a song's cover showed as "1440p" (or "1080p"), with "MJPEG"
+  and "SW" beside it. Audio alone now shows only its audio badge. An Audio CD after a DVD no
+  longer keeps the DVD's resolution.
+- **The pointer comes back as soon as the mouse moves** in fullscreen, over the video too: any
+  movement the system reports counts (it's also polled every 50 ms while hidden), and the video
+  shows the arrow itself rather than whatever its parent window had. Tried here on Linux (mpv and
+  discs); on Windows the arrow is set again too, **not yet tried there**.
+- **The Linux build (Flatpak) on other distributions**: tried on CachyOS (installed fresh, the
+  runtime downloaded by the bundle), Arch, Debian 13, Ubuntu 24.04 and Fedora 43, each with its
+  own Flatpak (1.14 to 1.18), playing a video and a DVD with its menus. What can differ between
+  machines is the graphics driver:
+  - **NVIDIA's driver needs its Flatpak extension**, built for exactly that driver version
+    (`org.freedesktop.Platform.GL.nvidia-590-44-01` for 590.44.01). Without it nothing can use
+    the graphics card: video was black or crawled. Rolling distributions like CachyOS often run a
+    driver Flathub hasn't built yet. Paramaja now says so at start, with the command that installs
+    it (and a button that copies it); Create log names the drivers too.
+  - Video still plays without one: mpv falls back from Vulkan to OpenGL, and the window from
+    OpenGL to drawing on the CPU, instead of a black picture or no window.
+  - Without an X11 display (a Wayland desktop without Xwayland, as niri or sway can be set up),
+    it says what's missing instead of quitting silently. A crash at start leaves `logs/crash.log`.
+
 ## 1.11.0 — 2026-10-31
 
 - **Drag and drop** works on Linux, and over a playing video on Windows. Drop a video, several

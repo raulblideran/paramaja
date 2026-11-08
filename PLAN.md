@@ -155,3 +155,12 @@ paramaja/
 - [x] Rip Disc: fits the screen (form scrolls, buttons stay); no decrypted copy for a VIDEO_TS folder
 - [x] Verified: XDND drops on the host build (Xvfb, a script running KWin's side of the protocol); links start with no input (direct, YouTube); The One ripped with x264 and x265
 - [ ] Windows: the pointer hiding and drops over the video, by a tester; Dolphin → Paramaja on the KDE desktop
+
+### Phase 12 — 1.12.0: MEGA app links, DVD chapters, subtitle looks, the bar's buttons, settings file, distributions
+- [x] MEGA desktop app links (4-5 MB/s per connection) and mega.nz links read six byte-range chunks at once, in order (Rust `parallel`/`proxy`); the app's server reads only a title-case `Range:`; measured 18-25 MiB/s and no stall in 90 s of a 2160p DV remux
+- [x] DVD rips: x264 deinterlaced with BWDIF to 50p (CRF 14: VMAF 97.0 at 75% on a minute of The One, 97.2 at 93% for the whole title, 12 min), parity from the field order found; any chapters, joined (PCM parts, FLAC once, marks rebuilt) or one file each; chapter lengths from the IFO cells
+- [x] Subtitle font, colours, outline, shadow, box, height, ASS override, with a preview; Settings → Interface: the bar's buttons and the settings file (export, import, drop); Previous / Next for mpv's playlist; no picture badges for audio
+- [x] Developer tab's options moved to Video / Audio / Playback; Developer keeps troubleshooting
+- [x] Pointer: raw OS motion and a 50 ms poll while hidden, an explicit arrow on show (X11 and Win32)
+- [x] Flatpak: mpv `x11vk,x11egl`, Avalonia GLX → EGL → software, NVIDIA extension check with the install command, no-DISPLAY message, crash.log; tried on CachyOS (fresh), Arch, Debian 13, Ubuntu 24.04, Fedora 43 in containers, plus no-Vulkan and fake-NVIDIA runs
+- [ ] The pointer fix on the user's desktop and on Windows; the CachyOS NVIDIA machine itself
