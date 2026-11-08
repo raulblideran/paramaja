@@ -34,10 +34,9 @@ public class PlayerIntegrationTests
             using var mpv = new MpvClient();
             foreach (var (k, v) in MpvOptionsBuilder.Build(s, paths, 1, new YtDlp(app)))
             {
-                // An optional option may be missing from an older libmpv, but where it exists
-                // its value must still be accepted.
-                try { mpv.SetOption(k, v); } // throws on any bad name/value
-                catch (MpvException e) when (e.Code == MpvException.OptionNotFound && MpvOptionsBuilder.OptionalOptions.Contains(k)) { }
+                // An optional option may be missing from an older libmpv, and a list it doesn't
+                // take has a single value to fall back on; anything else must be accepted.
+                MpvOptionsBuilder.SetInitialOption(mpv, k, v); // throws on any other bad name/value
             }
         }
         // Mid-playback commands with the same filter strings must parse too.

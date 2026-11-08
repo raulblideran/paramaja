@@ -312,6 +312,8 @@ public class Prompt10SettingsTests
         var o = MpvOptionsBuilder.Core(new PortablePaths(TestEnvironment.TempDir()), 42).ToDictionary(k => k.Key, k => k.Value);
         if (OperatingSystem.IsLinux()) Assert.Equal("x11vk,x11egl", o["gpu-context"]);
         else Assert.DoesNotContain("gpu-context", o.Keys);
+        // mpv 0.37 takes no list: the first, alone.
+        Assert.Equal("x11vk", MpvOptionsBuilder.OlderFallbacks["gpu-context"]);
     }
 }
 

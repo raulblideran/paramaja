@@ -35,6 +35,29 @@ public static class MpvOptionsBuilder
     public static readonly IReadOnlySet<string> OptionalOptions =
         new HashSet<string> { "directory-filter-types", "display-fps-override", "d3d11-adapter", "audio-exts", "sub-border-style" };
 
+    /// <summary>
+    /// What an older libmpv takes where it refuses the value given: mpv 0.37 (Ubuntu 24.04's)
+    /// takes one GPU context, not a list to try in turn.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> OlderFallbacks = new Dictionary<string, string>
+    {
+        ["gpu-context"] = "x11vk",
+    };
+
+    /// <summary>
+    /// Sets an option before mpv starts: an optional one an older libmpv lacks is left out, and a
+    /// value it refuses is replaced by <see cref="OlderFallbacks"/>'s. Anything else throws.
+    /// </summary>
+    public static void SetInitialOption(Mpv.MpvClient mpv, string key, string value)
+    {
+        try { mpv.SetOption(key, value); }
+        catch (Mpv.MpvException e) when (e.Code == Mpv.MpvException.OptionNotFound && OptionalOptions.Contains(key)) { }
+        catch (Mpv.MpvException) when (OlderFallbacks.TryGetValue(key, out var older) && older != value)
+        {
+            mpv.SetOption(key, older);
+        }
+    }
+
     /// <summary>The audio files an opened folder plays (mpv 0.41's list, plus DSD).</summary>
     public const string AudioExtensions = "aac,ac3,aiff,ape,au,dts,eac3,flac,m4a,mka,mp3,oga,ogg,ogm,opus,thd,wav,wma,wv,dsf,dff";
 

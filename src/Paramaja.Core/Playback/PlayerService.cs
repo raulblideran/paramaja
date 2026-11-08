@@ -45,16 +45,8 @@ public sealed class PlayerService : IPlayer
         _mpv = new MpvClient();
         _hwdec = "no"; // decided per file, once its codec and size are known (DecideHardwareDecoding)
         RenderProfile = MpvOptionsBuilder.InitialProfile(settings.RenderQuality);
-        foreach (var (k, v) in MpvOptionsBuilder.Build(settings, paths, windowId))
-        {
-            try { _mpv.SetOption(k, v); }
-            catch (MpvException e) when (e.Code == MpvException.OptionNotFound && MpvOptionsBuilder.OptionalOptions.Contains(k)) { }
-        }
-        foreach (var (k, v) in extraOptions ?? [])
-        {
-            try { _mpv.SetOption(k, v); }
-            catch (MpvException e) when (e.Code == MpvException.OptionNotFound && MpvOptionsBuilder.OptionalOptions.Contains(k)) { }
-        }
+        foreach (var (k, v) in MpvOptionsBuilder.Build(settings, paths, windowId)) MpvOptionsBuilder.SetInitialOption(_mpv, k, v);
+        foreach (var (k, v) in extraOptions ?? []) MpvOptionsBuilder.SetInitialOption(_mpv, k, v);
         _audioFilters = MpvOptionsBuilder.AudioFilters(settings, null);
         Wire();
         _mpv.Initialize("info"); // info and up go into the log (Create Log), not just warnings
