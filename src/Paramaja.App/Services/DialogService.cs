@@ -87,7 +87,7 @@ public sealed class DialogService(Window owner, Func<MainViewModel> vm) : IDialo
         var dialog = new Window
         {
             Title = title,
-            Width = 460,
+            Width = 540,
             SizeToContent = SizeToContent.Height,
             CanResize = false,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,

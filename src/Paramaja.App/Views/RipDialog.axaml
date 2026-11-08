@@ -41,7 +41,7 @@
           <TextBlock Text="Rip Disc" FontSize="20" FontWeight="SemiBold" />
         </StackPanel>
         <TextBlock Classes="muted" TextWrapping="Wrap"
-                   Text="Audio CDs: read securely (test and copy, every block until two reads agree), checked against AccurateRip, tagged from MusicBrainz and saved as FLAC (level 8) or WAV, with a cue sheet and a log. DVDs: the VIDEO_TS folder as it is, decrypted, or one title as an MKV with every track and the chapters, its video copied as it is or encoded with x264 or x265 to look the same in less space." />
+                   Text="Audio CDs: read securely (test and copy, every block until two reads agree), checked against AccurateRip, tagged from MusicBrainz and saved as FLAC (level 8) or WAV, with a cue sheet and a log. DVDs: the VIDEO_TS folder as it is, decrypted, or a title (or chosen chapters of it) as an MKV with every track and the chapters, its video copied as it is or encoded with x264 or x265 to look the same in less space." />
 
         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
           <TextBlock Text="Drive" VerticalAlignment="Center" />
